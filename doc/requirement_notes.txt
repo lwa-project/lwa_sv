@@ -1,4 +1,15 @@
 
+TBN IO constraints
+------------------
+1.0MHz => 512.0 MB/s total => 43 MB/s/stream
+1.6MHz => 819.2 MB/s total => 69 MB/s/stream
+ledaovro1~$ dd if=/dev/zero of=/data1/one/output conv=fdatasync bs=384k count=1k && rm -f /data1/one/output
+> 104 MB/s
+ledaovro12~$ dd if=/dev/zero of=/data1/one/output conv=fdatasync bs=384k count=1k && rm -f /data1/one/output
+> 52.4 MB/s
+
+No. channels per packet/stream
+------------------------------
    144 channels per stream (2 per server)
 = 1728 total channels
 = 43.2 MHz bandwidth

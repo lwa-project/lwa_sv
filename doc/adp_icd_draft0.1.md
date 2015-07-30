@@ -1,6 +1,55 @@
 
 # ADP ICD
 
+## Hardware
+
+- `headnode`: The ADP cluster head machine, which is named `adp` (aka
+  `adp0`). This machine runs the `adp-control` service and interfaces
+  between the cluster and the outside (of ADP) world.
+
+- `roaches`: The ADP cluster FPGA boards, of which there are 16, named
+  'roach1-16'. These boards run the ADP `F-engine` firmware to
+  frequency-channelise data from the ADCs and send it through the data
+  switch to the servers.
+
+- `servers`: The ADP cluster processing machines, of which there are
+  six, named `adp1-6`. These machines run the `adp-pipeline` service
+  (aka the `X-engine`), which captures and processes data streams from
+  the roaches.
+
+## Observing modes
+
+### TBN
+
+### BAM
+
+The beamformer. Supports up to 4 dual-pol beams, each using any tuning
+set by the DRX command.
+
+### COR
+
+The correlator. Cross-correlates all 512 inputs with 25 kHz frequency
+channels.
+
+### TBW
+
+## Constants
+
+Note that these are defined in `AdpCommon.py`.
+
+Symbol    | Value | Description
+---       | ---   | ---
+SUBSYSTEM | ADP   | Name of the subsystem
+FS (<math>f<sub>s</sub></math>) | 196.0 MHz | Signal sampling frequency unit*.
+FC (<math>f<sub>c</sub></math>) | 25.0 kHz  | Width of each correlator (COR) frequency channel.
+NSTAND    | 256   | No. stands.
+NSERVER   |   6   | No. ADP processing servers.
+NBOARD    | 16    | No. roaches.
+
+*<math>f<sub>s</sub></math> is not actually the sampling frequency
+ used internally by ADP, but this definition is maintained for
+ backwards compatibility with DP.
+
 ## MIB entries
 
 Index    | Label                  | Type      | Bytes | Value(s) | Description
@@ -25,7 +74,28 @@ Index    | Label                  | Type      | Bytes | Value(s) | Description
 
 ## Control commands
 
+### TBN command
+
+#### Description
+Configures and starts TBN mode. All other modes are stopped.
+
+#### Arguments
+
+#### Filter codes
+
+Filter | Sample rate (kHz)
+---    | ---:
+1-4    |      -
+5      |     25
+6      |     50
+7      |    100
+8      |    200
+9      |    400
+10     |    800
+11     |   1600
+
 ### BAM command
+
 #### Description
 Configures a beam with new delays and gains.
 
@@ -39,10 +109,15 @@ Name           | Type                   | Value(s)   | Description
 `sub_slot`     | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
 ### DRX command
+
 #### Description
-Configures a frequency tuning, which can be used by the beamformer, correlator and TBW.
+
+Configures a frequency tuning, which can be used by the beamformer,
+correlator and TBW. Any combination of up to NUM_DRX_TUNINGS tunings
+totalling up to 39.2 MHz of bandwidth may be specified.
 
 #### Arguments
+
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
 ~~`DRX_BEAM`~~ | `uint8`                | [1-NUM_BEAMS] | Beam to be changed.
@@ -52,18 +127,36 @@ Name           | Type                   | Value(s)   | Description
 `DRX_GAIN`     | `sint16`               | [0-15]     | Right-bitshift to compensate for BW reduction.
 `sub_slot`     | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
+#### Filter codes
+
+Filter | Sample rate (kHz)
+---    | ---:
+1-2    |     -
+3      |  1225
+4      |  2450
+5      |  4900
+6      |  9800
+7      | 19600
+8      | 39200
+
 ### FST command
 #### Description
-...
+TODO: ...
 
-TBW
-TBN
-DRX
-FST
-BAM
-INI
-STP
-SHT
+### COR command
+#### Description
+
+Configures and enables the correlator. The correlator generates
+visibilities for all active frequency channels defined via the DRX
+command.
+
+#### Arguments
+
+Name           | Type                   | Value(s)   | Description
+---            | ---                    | ---        | ---
+`COR_NAVG`     | `sint32`               | Full range > 0 | Number of visibility spectra to integrate, in units of 1/<math>f<sub>c</sub></math>.
+`COR_GAIN`     | `sint16`               | [0-15]     | Right-bitshift to compensate for BW reduction.
+`sub_slot`     | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
 ## Correlator output interface
 
