@@ -1,0 +1,209 @@
+
+Get network interface MAC addresses prior to OS install
+  Should be listed in BIOS
+  BMC/IPMI MACs should also be there
+
+OS install
+  IMPORTANT: Make sure the HDD is physically pushed in very firmly
+               before being latched.
+               Several were found to be insufficiently inserted upon arrival,
+			     causing errors when attempting to install the OS from USB.
+  Download Ubuntu server 14.04 and image onto a USB disk with:
+    $ dd if=ubuntu-14.04.2-server-amd64.iso of=/dev/sdb bs=16M
+    (replace /dev/sdb with the path to your USB key, but don't
+    use any partitions (i.e. don't use /dev/sdb1, /dev/sdb2,
+    etc -- just the whole device).
+  Choose the option _not_ to encrypt the home directory
+
+Enable non-BIOS management of IPMI
+  In BIOS, change BMC management settings (both dedicated
+    and shared) to enable non-BIOS control.
+NOTE: The default IPMI login is user='admin' pass='admin'
+      The default web gui port is 80
+
+Enable the root user by setting a password
+ $ sudo passwd root
+
+Prevent boot menu from getting stuck on failure
+Add to /etc/default/grub
+  GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT
+and run
+ $ sudo update-grub
+
+Configure 40 GbE network
+Detect HW config using the command
+ $ sudo lshw -C network
+On head node, add to /etc/network/interfaces
+  # 40 GbE NIC
+  auto p5p1
+  iface p5p1 inet static
+        address 192.168.40.10
+        netmask 255.255.255.0
+        mtu 9000
+Note that adding 'gateway 192.168.40.10' caused a "file exists" error,
+  probably due to an IP conflict; steer clear!
+On other nodes, can use DHCP via
+  auto eth0
+  iface eth0 inet dhcp
+  auto p5p1
+  iface p5p1 inet dhcp
+
+Set up the head node as a DHCP server for the cluster
+ $ sudo apt-get install dnsmasq
+Add to /etc/dnsmasq.conf
+  no-resolv
+  dhcp-host=08:62:66:1a:31:93,169.254.128.11,net:new # adp1
+  dhcp-host=e4:1d:2d:01:76:50,192.168.40.11,net:new  # adp1-40g
+  ...
+  interface=eth1 # Management
+  interface=p5p1 # Data
+  dhcp-range=interface:eth1,169.254.128.128,169.254.128.254,12h
+  dhcp-range=interface:p5p1,192.168.40.128,192.168.40.254,12h
+  dhcp-option=interface:p5p1,option:mtu,9000 # Poorly-documented, but seems to work
+  dhcp-authoritative # Be careful not to do this when on the wrong (e.g., outside-facing) interface!
+  bind-interfaces
+And finally
+ $ sudo service dnsmasq restart
+
+Find MAC addresses of switches
+Use the 'arp' command to detect all attached MACs
+ $ arp
+OR
+Use nmap to do a ping scan of DHCP-assigned addresses
+ $ sudo apt-get install nmap
+ $ nmap -sP 169.254.128.128-254
+Then just ssh port forward to detected addresses and see which web GUIs come up
+Note: Mellanox sx1024 default login is 'admin' 'admin'
+Note: Must set the MTU of the ports on the Mellanox to 9000 if servers are configured with that
+
+Increase SSH security on head node
+Set this in /etc/ssh/sshd_config
+  PermitRootLogin no
+Install denyhosts
+  Note: There is unfortunately no package for 14.04, so must do it manually
+    Download tarball and follow instructions in README.txt _carefully_
+      Can use an installation on 12.04 as a guide for some pathnames
+      Config files are in /usr/share/denyhosts
+On the *non-headnode* servers, can enable root ssh logins
+  PermitRootLogin yes
+
+Allow IPv4 forwarding (i.e., internet through headnode)
+In /etc/sysctl.conf on head node, uncomment the line
+  net.ipv4.ip_forward=1
+Then run the following commands on the head node to forward eth1 to eth0
+ $ sudo iptables -A FORWARD -s 169.254.128.0/24 -i eth1 -o eth0 -m conntrack --ctstate NEW -j ACCEPT
+ $ sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+ $ sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+ $ sudo sh -c "iptables-save > /etc/iptables.rules"
+And finally add this line to the eth0 section in /etc/network/interfaces
+  pre-up iptables-restore < /etc/iptables.rules
+
+Set up name resolution DNS
+On each server, add addresses to /etc/resolvconf/resolv.conf.d/base (or /tail)
+  E.g., nameserver 8.8.8.8
+        nameserver 128.103.200.101
+Then run
+ $ sudo resolvconf -u
+
+Setup NFS-shared home directory
+https://help.ubuntu.com/community/SettingUpNFSHowTo
+On server (head node)
+  $ sudo apt-get install nfs-kernel-server
+  $ sudo mkdir -p /export/home
+  $ sudo chmod 777 /export
+  $ sudo chmod 777 /export/home
+  $ sudo emacs /etc/fstab
+    /home           /export/home    none    bind            0       0
+  $ sudo emacs /etc/exports
+	# Note: no_root_squash is not a great idea, but is needed to allow clients to 'sudo emacs blah'
+    /export/home 169.254.128.0/24(rw,nohide,insecure,no_subtree_check,async,no_root_squash)
+On client (compute node)
+  $ sudo apt-get install nfs-common
+  $ sudo emacs /etc/fstab
+    adp:/export/home	/home			nfs	auto	0 0
+
+Setup password-less SSH within cluster (Host Based Authentication)
+Create a file 'ssh_hosts' listing all the server hostnames (including the headnode) on each line
+Then on the head node run
+ $ ssh-keyscan -t rsa,dsa,ecdsa -f ssh_hosts | sort -u - /etc/ssh/ssh_known_hosts | sudo tee /etc/ssh/ssh_known_hosts
+And copy /etc/ssh/ssh_known_hosts to each server
+Then on the head node, set under Host * in /etc/ssh/ssh_config
+  HostbasedAuthentication yes
+  EnableSSHKeysign yes
+And on the other servers set the following in /etc/ssh/sshd_config
+  HostbasedAuthentication yes
+Finally, on the other servers add the headnode hostname or IP to /etc/ssh/shosts.equiv
+Note: Adding the IP rather than hostname allows setting UseDNS=no in /etc/ssh/sshd_config
+  #adp
+  169.254.128.1
+Note: This only enables headnode-->server logins; can repeat reversed if desired
+Note: This doesn't appear to work for root logins
+Note: May also need keys to be added to nfs-shared ~/.ssh/known_hosts (which happens automatically on first login attempt)
+
+Install CUDA
+ $ wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_7.0-28_amd64.deb
+ $ sudo dpkg -i cuda-repo-ubuntu1404_7.0-28_amd64.deb
+ $ sudo apt-get update
+ $ sudo apt-get install cuda-7-0
+
+[NOT NEEDED]
+Install OpenMPI
+  $ wget http://www.open-mpi.org/software/ompi/v1.8/downloads/openmpi-1.8.5.tar.bz2
+  $ ...
+  $ ./configure --with-cuda=/usr/local/cuda
+  $ ...
+  $ sudo ldconfig
+  $ mpirun
+Default hostfile and --mca parameter files are
+  /usr/local/etc/openmpi-default-hostfile
+  /usr/local/etc/openmpi-mca-params.conf (must be copied to each server)
+Can also use mpirun --hostfile ~/.mpi_hostfile
+Add these lines to the default hostfile
+  localhost  slots=2 # Comment out to prevent things running on the head node
+  adp1       slots=2
+  #adp2       slots=2
+  #adp3       slots=2
+  #adp4       slots=2
+  #adp5       slots=2
+  #adp6       slots=2
+Add these lines to the default --mca parameter file
+  # BB Try to use the specified transport layers
+  btl=self,sm,smcuda,tcp
+  # BB Only use the 40 GbE network
+  #btl_tcp_if_include=192.168.40.0/24
+  # BB Prevent 'tree spawn', which requires chained ssh calls and seems to break things
+  plm_rsh_no_tree_spawn=1
+
+Increase socket buffer size limits (default is only 212992 bytes)
+  $ echo "536870912" | sudo tee /proc/sys/net/core/wmem_max
+  $ echo "536870912" | sudo tee /proc/sys/net/core/rmem_max
+Note that setsockopt(SO_SND/RCVBUF) actually allocates double the requested amount
+
+Install NTP daemon to keep system time accurate
+Start by force-syncing the system time:
+  $ sudo /usr/sbin/ntpdate ntp.ubuntu.com pool.ntp.org cfa-ntp.cfa.harvard.edu
+Then install the NTP daemon
+  $ sudo apt-get install ntp
+And add these lines to the top of the server list in /etc/ntp.conf
+  server 0.us.pool.ntp.org
+  server 1.us.pool.ntp.org
+  server 2.us.pool.ntp.org
+  server 3.us.pool.ntp.org
+(Also add "server cfa-ntp.cfa.harvard.edu" to the bottom for use on the CfA network)
+Then restart the NTP service
+  $ sudo service ntp restart
+And after a few mins check that there is a '*' next to a line from the command:
+  $ ntpq -p
+     remote           refid      st t when poll reach   delay   offset  jitter
+==============================================================================
+ lithium.constan .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ deekayen.net    .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ ns2.uplogon.com .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ ntp1.linuxhoste .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ natasha.netwurx .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ cheezum.mattnor .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ tock.usshc.com  .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ ntp.wdc1.us.lea .INIT.          16 u    -   64    0    0.000    0.000   0.000
+ golem.canonical .INIT.          16 u    -   64    0    0.000    0.000   0.000
+*chronos.cfa.har .GPS.            1 u    6   64   17    0.177   45.443   5.992
+

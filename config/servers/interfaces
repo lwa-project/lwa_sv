@@ -1,0 +1,14 @@
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# Management network
+auto eth0
+iface eth0 inet dhcp
+
+# 40 GbE data network
+auto p5p1
+iface p5p1 inet dhcp

@@ -1,0 +1,164 @@
+
+   144 channels per stream (2 per server)
+= 1728 total channels
+= 43.2 MHz bandwidth
+= 14.7456 Gbps per capture stream (2 per server, 12 total)
+
+Correlator output packets
+-------------------------
+144 channels per stream
+Each packet: [144 chans][2 pol][2 pol][2 complex + 1 weight + 1 bit padding][21 bits] = 4608 bytes
+
+MSB                               LSB
+0        8        16       24     31
+======== ======== ======== ========
+<------- --REAL-- ----><-- --------
+IMAG---- -><----- -WEIGHT- ------>0
+======== ======== ======== ========
+
+Required modes
+--------------
+1) TBN: Continuous recording of 1 MHz from all dipoles using 8+8 bits
+           1.0 MHz, 256 antennas,     8+8 bits, Nyquist
+2) BX1: Continuous recording of 1 beam over 19.6 MHz and visibilities over 9.8 MHz
+          19.6 MHz, 1 beam,       16+16 bits, Nyquist
+          13.0 MHz, visibilities, 32+32 bits, 8 secs
+3) BX2: Continuous recording of 2 beams over 13.0 MHz and visibilities over 13.0 MHz
+          13.0 MHz, 2 beams,      16+16 bits, Nyquist
+          13.0 MHz, visibilities, 32+32 bits, 8 secs
+
+T-engine
+--------
+Should include some additional 'guard-band' channels either side of the target band
+  E.g., 28 MHz (1120 chans) for 26 MHz (1040 chans) target
+Multiply by bandpass window (Kaiser?) to spectrum before inverse Fourier transforming
+  to the time domain.
+Multiply by phase ramp to shift center frequency
+Resample via FFT, crop, IFFT with window size a multiple of 14=28./26.*13
+TODO: How big should the resampling FFT be?
+      What needs to be done regarding overlap-save?
+	  Does padding need to be included anywhere?
+A smooth bandpass => compact time-domain filter
+A small  delay    => compact time-domain filter
+
+
+
+Oct 14 - Dec 14
+Jan 15 - March 15
+Substantive activity on which you focused
+Oct-Dec 2014:
+  Clean-up of pipeline management scripts
+  Reordering of inputs before correlation
+  New output format with triangular ordering and separate 1s outrigger visibilities
+  Investigation and implementation of HDF5 conversion and BDI
+Jan-Mar 2015:
+  Aggregation of OVRO telescope metadata
+  Streaming to transient cluster
+  Dynamic control over disk writing
+  Compression of visibility data
+Apr-Jun 2015:
+  Quick-look imaging scripts with visibility calibration
+  Preliminary investigation of clean beamforming concept
+  PeXC, Sevietta
+Jul-Sep 2015:
+  Integration of Sevietta codebase at OVRO
+Distractions:
+  Unreliability of state switching forcing rethink of data management
+  Transient cluster streaming requirements conflicting with LEDA SOP
+  Oct: LEDA
+  Nov: LEDA
+  Jan: LEDA, xGPU
+  Feb: LEDA
+  Mar: LEDA, PeXC
+  Apr: PeXC
+  May: PeXC, Sevietta
+  Jun: Sevietta
+  Jul: Sevietta
+
+
+Packet capture/transmission
+---------------------------
+Need  block-based UDP capture and transmission for streaming data
+Need packet-based UDP (or perhaps TCP) capture and transmission for monitor and control
+
+Unpacker
+--------
+    [seq][32 packets][~2 time][88 chans]            [8 ants][2 pols][4+4 bits]
+--> [seq]            [ 2 time][88 chans][32 packets][8 ants][2 pols][8+8 bits]
+=> Transposing blocks of 8*2*2 bytes = 32 bytes
+
+//uint32_t a = in[:32];
+//uint32_t b = in[:32];
+//uint32_t c = 
+//uint32_t d =
+
+System setup
+------------
+Software pipelines run as a service on the servers
+  
+Roach firmware controlled as a service?
+  Log the UTC_START to a globally-shared space (nfs disk?) when starting
+Hub service(?) connects to server pipelines
+
+Pipeline
+--------
+RecvUDP
+ReorderFrames
+ADP::Unpack
+ADP::GainCorrect
+ADP::Correlate, ADP::Beamform, CopyD2H
+ADP::PktzCorr,  ADP::PktzBeam, ADP::TBW (large input ring and guaranteed reads)
+SendUDP         SendUDP        CnrTurnSend
+
+// Services:
+// adp-capture:    RecvUDP, ReorderFrames, Unpack, GainCorrect
+// adp-beamformer: ADP::Beamform, SendUDP
+// adp-correlator: ADP::Correlate, SendUDP
+// adp-tbw:        CopyD2H, ADP::TBW, SendUDP
+
+Standard tasks to implement:
+  FIR filter
+  FFT
+  Filterbank (FIR, FFT)
+  Coherent dedispersion (FIR)
+  Transform
+  Requantize (Transform)
+  xGPU
+  
+Control commands
+----------------
+Common concepts:
+  Stands are numbered 1-260
+  Inputs are numbered 1-520, interleaved X,Y (so x1 y1 x2 y2 ... x260 y260)
+    Note: Inputs are referred to as 'channels' in the DP ICD docs
+----------------
+FST: Configure FIR coefs
+  sint16 INDEX: -1 => Load defaults from file
+                 0 => Apply to all inputs
+                 i => Apply to input i
+  sint16 COEFF_DATA[16][32]: filters for each of 16 fine delays
+  Internal ADP data format: complex64 weights[nchan][nstand][pol];
+  Max delay is 28 @ 196 MHz
+
+BAM:
+  Max delay is 1023+15/16 = 1023.9375 @ 196 MHz = 5.224170918 us = 1 / 7.65671733 spectra
+    ** Redefine limit to 256 @ 196 MHz = 1.30612245 us = 1 / 30.625 spectra
+         (Or check the max dynamically, if have time to implement)
+
+DRX: 1x 39.2   MHz = 196 MHz /   5 = 1568x 25 kHz
+     2x 19.6   MHz = 196 MHz /  10 =  784x 25 kHz
+     4x  9.8   MHz = 196 MHz /  20 =  392x 25 kHz
+     8x  4.9   MHz = 196 MHz /  40 =  196x 25 kHz
+    16x  2.45  MHz = 196 MHz /  80 =   98x 25 kHz
+    32x  1.225 MHz = 196 MHz / 160 =   49x 25 kHz
+	Add guard bands of 4x 0.025 to either side of each sub-band
+      => Max extra of 32x 0.2 MHz = 6.4 MHz
+      => Max total of 39.2 MHz + 6.4 MHz = 45.6 MHz (~= 78% of peak 40 GbE)
+
+TBN: Stops any active beams and correlator, waits for any active TBW to finish
+DRX: Set tunings for TBW/beam/corr
+BAM: [Start and] configure the beamformer
+TBW: Trigger a TBW dump of the current tunings
+Question: How to allow TBW dump while in TBN mode?
+
+  

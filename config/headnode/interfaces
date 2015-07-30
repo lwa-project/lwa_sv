@@ -1,0 +1,32 @@
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# Internet connection
+auto eth0
+iface eth0 inet static
+	address 131.142.8.137
+	netmask 255.255.255.0
+	network 131.142.8.0
+	broadcast 131.142.8.255
+	gateway 131.142.8.1
+	# dns-* options are implemented by the resolvconf package, if installed
+	dns-nameservers 128.103.200.101
+	dns-search cfa.harvard.edu
+	pre-up iptables-restore < /etc/iptables.rules
+
+# Management network
+auto eth1
+iface eth1 inet static
+      address 169.254.128.1
+      netmask 255.255.255.0
+
+# 40 GbE data network
+auto p5p1
+iface p5p1 inet static
+      address 192.168.40.10
+      netmask 255.255.255.0
+      mtu 9000

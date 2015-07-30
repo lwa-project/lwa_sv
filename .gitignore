@@ -2,8 +2,21 @@
 __pycache__/
 *.py[cod]
 
-# C extensions
+# Compiled files
 *.so
+*.o*
+*.lo
+*.la
+
+# Backup files
+*~
+*.bak*
+junk/
+outtakes.*
+
+# Log files
+*.log
+*.prof
 
 # Distribution / packaging
 .Python

@@ -83,8 +83,9 @@ packed value of 8 bytes, for a total payload size of 4608 bytes.
 Polarisations are ordered X then Y, giving a combined order of XiXj,
 XiYj, YiXj, YiYj. The 8-byte value structure shall contain the real
 and imaginary components of a complex number, each 21 bits, followed
-by a weight value of 22 bits. All three values are signed and in two's
-complement format, with the structure packed MSB first.
+by a weight value with format `fixed22.21`. All three values are
+signed and in two's complement format, with the structure packed MSB
+first. Negative weight values indicate that samples were flagged.
 
     MSB                               LSB
     0        8        16       24     31
