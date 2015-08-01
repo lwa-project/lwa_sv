@@ -1,4 +1,40 @@
 
+Correlator output rate
+----------------------
+39.2 MHz = 1568 channels
+256*257/2 baselines * 4 pols * 8 bytes/sample = 1052672 bytes/channel = 1.651 GB/integration
+Beamformer output rate is: 39.2 MHz * 2 pols * 2 bytes/sample = 156.8 MB/s
+ => Equivalent correlator rate with 10.53 s integrations
+
+Beamformer data ordering
+------------------------
+** If can always compute 32 beams for all channels, things are straightforward
+     The overall limits will then be a max of 32 pointings and 39.2 MHz
+	   with a max total output data rate of 39.2 MHz.
+	   E.g.,  1 pointing  @ 39.2 MHz
+	          2 pointings @ 19.6 MHz
+			  4 pointings @  9.8 MHz
+			  2 @ 9.8 + 1 @ 19.6
+Btvbd = Wvipbd * Vtvip
+Input:  [time][144 chans][256 stands][2 pols][2 cpx][fixed8.7]
+Output: [time][144 chans][ 32 beams ][2 pols][2 cpx][float32]
+
+T-engine input:    [beam][pol][time][144 chans][2 cpx][float32]
+Merge subbands:    [beam][pol][time][all chans][2 cpx][float32]
+# Note: Each beam will do its own freq->time conversion depending on its tuning
+          Operations will be homogeneously batched over the [time] dimension though
+freq->time output: [beam][pol][time           ][2 cpx][float32]
+Requantize:        [beam][pol][time           ][2 cpx][sint8]
+
+At 39.2 MHz, 40us = 1568 complex samples
+Need 4096 samples per packet
+So buffering up 4096 spectra allows creating 1568x 39.2   MHz packets
+                                              784x 19.6   MHz packets
+											  392x  9.8   MHz packets
+											  196x  4.9   MHz packets
+											   98x  2.45  MHz packets
+											   49x  1.225 MHz packets
+
 TBN IO constraints
 ------------------
 1.0MHz => 512.0 MB/s total => 43 MB/s/stream
