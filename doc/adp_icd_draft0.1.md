@@ -1,16 +1,43 @@
 
 # ADP ICD
 
+## Document history
+
+### 2015-08-10
+
+* Changed definition of COR_NAVG from units of
+  1/<math>f<sub>c</sub></math> to units of subslots due to
+  implementation constraints.
+
+* Re-named "TBW" --> "TBF" (Transient Frequency Buffer) due to
+  significant deviation from DP's TBW mode.
+
+* Added low-bandwidth TBN filters 1-4 to match DP spec.
+
+* Changed DRX filters 1-4 to match DP spec.
+
+### 2015-08-01
+
+Initial mostly-complete draft.
+
 ## *TODO*
 
 * *Finish RPT MIB entries*
 
-* *New TBW output packet format for channelised data*
+* *New TBF output packet format for channelised data*
+
+* *Update TBN and DRX packet formats with bits-per-sample info, new DRX_ID etc.*
 
 * *Empirically confirm limits on input, computation and output
  rates. Can we capture ~45.6 MHz of bandwidth? Can we support 1.6 MHz
  TBN? Can we achieve 32 beams? How short can correlator integrations
- be? How much TBW data/time can we buffer?*
+ be? How much TBF data/time can we buffer?*
+
+* Consider changing the word "recording" to "streaming".
+
+* Add MIB entry for querying disk usage (primarily for TBN mode).
+
+* Add discription/diagram of ADP network configuration.
 
 ## Observing modes
 
@@ -20,24 +47,24 @@ Narrow-band recording of all inputs. Supports continuous recording of
 all inputs at up to 1.6 MHz. This mode cannot be run concurrently with
 any other modes.
 
-### TBW
+### TBF
 
 Wide-band recording of all inputs at low duty-cycle or on a
-trigger. Supports recording of all inputs across any subset of active
-DRX tunings for up to 10 seconds.
+trigger. Supports recording of frequency-domain data for all inputs
+across any subset of active DRX tunings for up to 10 seconds.
 
 ### BAM
 
 The beamformer. Supports up to 32 dual-pol beams, each using any
 tuning set by the DRX command, up to a maximum combined bandwidth of
-39.2 MHz dual-pol. This mode can operate concurrently with TBW and
+39.2 MHz dual-pol. This mode can operate concurrently with TBF and
 COR.
 
 ### COR
 
 The correlator. Cross-correlates all 512 inputs using 25 kHz frequency
 channels across any subset of frequency tunings set by the DRX
-command. This mode can operate concurrently with TBW and BAM.
+command. This mode can operate concurrently with TBF and BAM.
 
 ## Example command sequence
 
@@ -46,7 +73,7 @@ command. This mode can operate concurrently with TBW and BAM.
 1. BAM 2 -- *Start another beam recording*
 1. COR -- *Start the correlator recording*
 1. BAM 1 -- *Change beam parameters*
-1. TBW -- *Trigger a TBW dump of active tunings*
+1. TBF -- *Trigger a TBF dump of active tunings*
 1. COR -- *Change correlator parameters*
 1. STP "BAM2" -- *Stop the beam recording*
 1. STP "COR" -- *Stop correlator recording*
@@ -90,7 +117,7 @@ FC (<math>f<sub>c</sub></math>) | 25.0 kHz  | Width of each correlator (COR) fre
 
 Index    | Label                  | Type      | Bytes | Value(s) | Description
 ---      | ---                    | ---       | ---:  | ---      | ---
-2        | `TBW_STATUS`           | `uint8`   | 1 | <ul><li>0: Idle.</li><li>4: Actively recording or writing out.</li></ul> | Current status of TBW.
+2        | `TBF_STATUS`           | `uint8`   | 1 | <ul><li>0: Idle.</li><li>4: Actively recording or writing out.</li></ul> | Current status of TBF.
 3        | `NUM_TBN_BITS`         | `uint8`   | 1 | Always 16 (8 real + 8 imag) | No. bits per sample in TBN output. Currently always 16 (8 real + 8 imag).
 4.1      | `NUM_DRX_TUNINGS`      | `uint8`   | 1 | Always 32 | Max no. frequency tunings.
 4.2      | `NUM_BEAMS`            | `uint8`   | 1 | Always 32 | Max no. active beams.
@@ -135,7 +162,10 @@ Name           | Type                   | Value(s)   | Description
 
 `TBN_DRX_FILTERn` | Sample rate (kHz)
 ---       | ---:
-1-4       |      -
+1         |      1.000
+2         |      3.125
+3         |      6.250
+4         |     12.500
 5         |     25
 6         |     50
 7         |    100
@@ -148,12 +178,12 @@ Name           | Type                   | Value(s)   | Description
 
 #### Description
 
-Reconfigures a frequency tuning and enables TBW/BAM/COR
+Reconfigures a frequency tuning and enables TBF/BAM/COR
 observing.
 
 Note that this command can only be applied on a 1PPS boundary, so the
 `sub_slot` argument is ignored. The command also requires all
-TBW/BAM/COR recordings be stopped, and takes 1 second before
+TBF/BAM/COR recordings be stopped, and takes 1 second before
 recordings can be started again (i.e., it requires 1 second of downtime).
 
 Any combination of up to NUM_DRX_TUNINGS tunings totalling up to the
@@ -177,9 +207,10 @@ Name           | Type                   | Value(s)   | Description
 `DRX_FILTERn` | Sample rate (kHz)
 :---:     | ---:
 0         | Disable
-1-2       | Unused
-3         |  1225
-4         |  2450
+1         |   250
+2         |   500
+3         |  1000
+4         |  2000
 5         |  4900
 6         |  9800
 7         | 19600
@@ -198,14 +229,14 @@ between the roaches and the servers. Note that the similarity to the
 BAM constraint is only a coincidence, as the two constraints stem from
 different hardware limitations.
 
-### TBW command
+### TBF command
 #### Description
 
-Configures and starts a TBW capture.
+Configures and starts a TBF capture.
 
 Because ADP servers only have access to active tunings and not the
-full band, TBW captures must specify which tunings to capture. Also as
-a result of this constraint, ADP TBW output is in the form of
+full band, TBF captures must specify which tunings to capture. Also as
+a result of this constraint, ADP TBF output is in the form of
 frequency channels (similar to the correlator but with no
 time-averaging).
 
@@ -216,9 +247,9 @@ channels and the use of `DRX_TUNING_MASK`.</b>
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`TBW_BITS`     | `uint8`                | Must be 16 | No. bits per (complex) sample to output.
-`TBW_TRIG_TIME`| `sint32`               | Full range | Trigger time since start of slot in units of <math>1/f<sub>s</sub></math>. Can be negative and/or multiple slots.
-`TBW_SAMPLES`  | `sint32`               | [1-TODO]   | Length of time to output, in units of samples at <math>f<sub>s</sub></math>.
+`TBF_BITS`     | `uint8`                | Must be 16 | No. bits per (complex) sample to output.
+`TBF_TRIG_TIME`| `sint32`               | Full range | Trigger time since start of slot in units of <math>1/f<sub>s</sub></math>. Can be negative and/or multiple slots.
+`TBF_SAMPLES`  | `sint32`               | [1-TODO]   | Length of time to output, in units of samples at <math>f<sub>s</sub></math>.
 <b>`DRX_TUNING_MASK`</b> | `uint64`            | `NUM_DRX_TUNINGS` bits starting at MSB | Bit-mask specifying DRX tunings from which frequency channels are selected. MSB represents the 1<sup>st</sup> tuning.
 
 ### BAM command
@@ -278,7 +309,7 @@ strictly required to satisfy the `DRX_TUNING_MASK` argument.
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`COR_NAVG`     | `sint32`               | >= 250,000 | The integration time, in units of 1/<math>f<sub>c</sub></math>.
+`COR_NAVG`     | `sint32`               | >= 1000    | The integration time, in units of subslots.
 `DRX_TUNING_MASK` | `uint64`            | `NUM_DRX_TUNINGS` bits starting at MSB | Bit-mask specifying DRX tunings from which frequency channels are selected. MSB represents the 1<sup>st</sup> tuning.
 `COR_GAIN`     | `sint16`               | [0-15]     | Right-bitshift to compensate for BW reduction.
 `sub_slot`     | `uint8`                | [0-99]     | Sub-slot at which to take effect.
@@ -288,7 +319,7 @@ Name           | Type                   | Value(s)   | Description
 Due to output data rate limits, the value of `COR_NAVG` must obey
 certain minimums as a function of the combined bandwidth of all DRX
 tunings selected via the `DRX_TUNING_MASK` argument. Currently, only a
-single global minimum of COR_NAVG >= 250,000 (= 10.0 seconds) is
+single global minimum of COR_NAVG >= 1000 (= 10.0 seconds) is
 specified.
 
 *TODO: Empirically determine lower limits on `COR_NAVG` as a function of correlated bandwidth.
@@ -302,7 +333,7 @@ Stops data output from an active observing mode.
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`DATA`         | `string`               | One of [`"TBN"`,`"TBW"`,`"BEAMn"`,`"COR"`] | The observing mode to stop.
+`DATA`         | `string`               | One of [`"TBN"`,`"TBF"`,`"BEAMn"`,`"COR"`] | The observing mode to stop.
 
 #### INI command
 #### Description
