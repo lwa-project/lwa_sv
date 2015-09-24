@@ -214,7 +214,7 @@ class AdpServerMonitorClient(object):
 	def _request(self, query):
 		try:
 			self.sock.send(query)
-			response = self.recv_json()
+			response = self.sock.recv_json()
 		except zmq.error.Again:
 			raise RuntimeError("Server '%s' did not respond" % self.host)
 		# TODO: Choose a better form of status codes

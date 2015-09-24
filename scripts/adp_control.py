@@ -105,7 +105,7 @@ def main(argv):
 	parser = argparse.ArgumentParser(description='LWA-SV ADP control script')
 	parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
 	parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
-	parser.add_argument('-d', '--dryrun',     default=False,             help='Test without acting')
+	parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
 	parser.add_argument('-v', '--verbose',    action='count', default=0, help='Increase verbosity')
 	parser.add_argument('-q', '--quiet',      action='count', default=0, help='Decrease verbosity')
 	args = parser.parse_args()
@@ -136,6 +136,7 @@ def main(argv):
 	log.info("Current MPM:  %i", Adp.MCS2.slot2mpm())
 	log.info("Config file:  %s", args.configfile)
 	log.info("Log file:     %s", args.logfile)
+	log.info("Dry run:      %b", args.dryrun)
 	log.info('All dates and times are in UTC unless otherwise noted')
 	
 	# TODO: Change these names to something more easily understood
