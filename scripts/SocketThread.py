@@ -4,7 +4,7 @@ import socket
 import Queue
 
 class UDPRecvThread(threading.Thread):
-	STOP = '__UDPRecvThread_STOP__'
+	#STOP = '__UDPRecvThread_STOP__'
 	def __init__(self, address, bufsize=16384):
 		threading.Thread.__init__(self)
 		self._addr      = address
@@ -13,16 +13,25 @@ class UDPRecvThread(threading.Thread):
 		self.socket     = socket.socket(socket.AF_INET,
 		                                socket.SOCK_DGRAM)
 		self.socket.bind(address)
+		self.stop_requested = threading.Event()
 	def request_stop(self):
+		"""
 		sendsock = socket.socket(socket.AF_INET,
 		                         socket.SOCK_DGRAM)
 		sendsock.connect(self._addr)
 		sendsock.send(UDPRecvThread.STOP)
+		"""
+		self.stop_requested.set()
+		# WAR for "107: Transpose endpoint is not connected" in socket.shutdown
+		self.socket.connect(("0.0.0.0", 0))
+		self.socket.shutdown(socket.SHUT_RD)
 	def run(self):
-		while True:
+		while True:#not self.stop_requested.is_set():
 			pkt = self.socket.recv(self._bufsize)
-			if pkt == UDPRecvThread.STOP:
+			if self.stop_requested.is_set():
 				break
+			#if pkt == UDPRecvThread.STOP:
+			#	break
 			self.process(pkt)
 		self.shutdown()
 	def process(self, pkt):
