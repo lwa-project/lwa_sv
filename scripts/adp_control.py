@@ -105,6 +105,7 @@ def main(argv):
 	parser = argparse.ArgumentParser(description='LWA-SV ADP control script')
 	parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
 	parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
+	parser.add_argument('-d', '--dryrun',     default=False,             help='Test without acting')
 	parser.add_argument('-v', '--verbose',    action='count', default=0, help='Increase verbosity')
 	parser.add_argument('-q', '--quiet',      action='count', default=0, help='Decrease verbosity')
 	args = parser.parse_args()
@@ -148,7 +149,7 @@ def main(argv):
 	try:
 		services = {
 			'msg_receiver':  MCS2.MsgReceiver(recv_addr, subsystem=Adp.SUBSYSTEM),
-			'msg_processor':  Adp.MsgProcessor(config, log),
+			'msg_processor':  Adp.MsgProcessor(config, log, dry_run=args.dryrun),
 			'msg_sender':    MCS2.MsgSender(send_addr, subsystem=Adp.SUBSYSTEM)
 		}
 	except MCS2.socket.error as e:

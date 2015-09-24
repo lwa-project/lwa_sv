@@ -254,11 +254,12 @@ class Roach2MonitorClient(object):
 
 class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
-	             max_process_time=1.0, ncmd_save=4):
+	             max_process_time=1.0, ncmd_save=4, dry_run=False):
 		ConsumerThread.__init__(self)
 		self.config           = config
 		self.log              = log
 		self.shutdown_timeout = 3.
+		self.dry_run          = dry_run
 		self.msg_queue        = Queue()
 		max_concurrent_msgs = int(MAX_MSGS_PER_SEC*max_process_time)
 		self.thread_pool = ThreadPool(max_concurrent_msgs)
@@ -304,16 +305,22 @@ class MsgProcessor(ConsumerThread):
 		
 	def process(self, msg):
 		if msg.cmd == 'PNG':
-			self.process_msg(msg, lambda msg: True, '')
+			self.log.info('Received PNG: '+str(msg))
+			if not self.dry_run:
+				self.process_msg(msg, lambda msg: True, '')
 		elif msg.cmd == 'RPT':
-			# Note: RPT messages are processed asynchronously
-			#         to avoid stalls.
-			# TODO: Check that this doesn't cause any problems
-			#         due to race conditions.
-			self.thread_pool.add_task(self.process_msg,
-			                          msg, self.process_report)
+			self.log.info('Received RPT request: '+str(msg))
+			if not self.dry_run:
+				# Note: RPT messages are processed asynchronously
+				#         to avoid stalls.
+				# TODO: Check that this doesn't cause any problems
+				#         due to race conditions.
+				self.thread_pool.add_task(self.process_msg,
+				                          msg, self.process_report)
 		else:
-			self.process_msg(msg, self.process_command)
+			self.log.info('Received command: '+str(msg))
+			if not self.dry_run:
+				self.process_msg(msg, self.process_command)
 		
 		next_slot = MCS2.get_current_slot() + 1
 		# TODO: Could defer replies until here for better error handling
@@ -494,9 +501,11 @@ class MsgProcessor(ConsumerThread):
 		exec_delay = 2
 		exec_slot  = msg.slot + exec_delay
 		accept = True
+		reply_data = ""
 		if msg.cmd == 'INI':
 			# If server power status is 'off', turn them on
-			pass
+			self.servers.do_power('on')
+			# TODO: Initialisation, ADC calibration etc.
 		elif msg.cmd == 'SHT':
 			if 'SCRAM' in msg.data:
 				if 'RESTART' in msg.data:
