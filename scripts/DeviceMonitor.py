@@ -10,10 +10,13 @@ import os
 from telnetlib import Telnet # For reading ROACH2 sensors
 import subprocess            # For calling adc16_dump_chans
 # Available at https://pypi.python.org/pypi/nvidia-ml-py/
-from pynvml import *
-import atexit
-nvmlInit()
-atexit.register(nvmlShutdown)
+try:
+	from pynvml import *
+	nvmlInit()
+	import atexit
+	atexit.register(nvmlShutdown)
+except ImportError:
+	pass
 
 class DiskDevice(object):
 	def __init__(self, path):
