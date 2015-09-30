@@ -1,4 +1,64 @@
 
+TBF
+---
+Output packet format:                [12 chans, 256 stands, 2 pols, 2 cpx, 4 bits] = 6144 bytes
+Pipeline:
+  RecvUDP                           [144 chans,  16 stands, 2 pols, 2 cpx, 4 bits]
+  Depacketize     [time, 16 roaches, 144 chans,  16 stands, 2 pols, 2 cpx, 4 bits]
+  Reorder         [time,             144 chans, 256 stands, 2 pols, 2 cpx, 4 bits]
+  TBFPacketize    [packet,            12 chans, 256 stands, 2 pols, 2 cpx, 4 bits] = 6144 bytes
+QUESTION: Use a flag input to filter which packets are actually transmitted?
+            E.g., TBFPacketize task receives TBF commands and generates a
+			        bool for each packet (or simply size=0?).
+SendUDP: params: packet_size_max, rate_limit [Gb/s per dest], destination (optional)
+         inputs: packets, headers, sizes, destinations (optional)
+** TODO: sendmmsg can actually gather each packet from multiple source arrays,
+           which means the headers could be stored separately to the payloads!
+		   TBFPacketize would then just have to generate header and size streams
+TBFPacketize:
+  Wait for TBF command (doing nothing else)
+  Open (large) input buffer at requested time window, with guarantee
+  For each packet:
+    Generate and write header to header output
+	Copy packet data to data output
+	Write size and destination to corresponding outputs
+	  (Allow one destination per packet-subband; i.e., 12 destinations)
+
+Reorder
+-------
+Depacketize     [time, 16 roaches, 144 chans,  16 stands, 2 pols, 2 cpx, 4 bits]
+Reorder         [time,             144 chans, 256 stands, 2 pols, 2 cpx, 4 bits]
+Transpose using elements of size 32 bytes
+
+struct __attribute__((aligned(32))) aligned256_type {
+  char data[32];
+};
+
+for( int chan=0; chan<nchan; ++chan ) {
+  //for( int roach=0; roach<NROACH; ++roach ) {
+#define COPY_CHUNK(roach,chan) \
+  out[roach + NROACH*chan] = in[chan + nchan*roach];
+    COPY_CHUNK( 0,chan); COPY_CHUNK( 1,chan);
+	COPY_CHUNK( 2,chan); COPY_CHUNK( 3,chan);
+	COPY_CHUNK( 4,chan); COPY_CHUNK( 5,chan);
+	COPY_CHUNK( 6,chan); COPY_CHUNK( 7,chan);
+	COPY_CHUNK( 8,chan); COPY_CHUNK( 9,chan);
+	COPY_CHUNK(10,chan); COPY_CHUNK(11,chan);
+	COPY_CHUNK(12,chan); COPY_CHUNK(13,chan);
+	COPY_CHUNK(14,chan); COPY_CHUNK(15,chan);
+  //}
+}
+
+Data flow start/stop
+--------------------
+Depacketize receives reset (or stop+start) command for future slot
+  Command contains a new data header with UTC_START + other metadata
+
+Live data monitoring
+--------------------
+// Broadcast data via ZMQ PUB socket
+void publish(stream_name, const T* data, frame_shape, nframe, t0, dt, axis_names, axis_scales);
+
 Correlator output rate
 ----------------------
 39.2 MHz = 1568 channels
@@ -15,9 +75,23 @@ Beamformer data ordering
 	          2 pointings @ 19.6 MHz
 			  4 pointings @  9.8 MHz
 			  2 @ 9.8 + 1 @ 19.6
-Btvbd = Wvipbd * Vtvip
-Input:  [time][144 chans][256 stands][2 pols][2 cpx][fixed8.7]
-Output: [time][144 chans][ 32 beams ][2 pols][2 cpx][float32]
+//Btvbd = Wvipbd * Vtvip
+Input:   [250 time][144 chans][256 stands][2 pols][2 cpx][fixed8.7]
+Output:  [32 beams][144 chans][250 time  ][2 pols][2 cpx][float32]
+Requant: [32 beams][144 chans][250 time  ][2 pols][2 cpx][fixed8.7]
+//Output: [time][144 chans][ 32 beams ][2 pols][2 cpx][float32]
+
+Exchange beams for channels, with packets containing a sub-band and some time
+  Send each beam to a different destination
+  Receive each sub-band from a different source
+
+Bbdvt = Wbdvip * Vtvip^ // This is also the most efficient ordering for gemm
+Beamform ...
+Send: [12 beamsets][<=3 beams][2 pols]             [144 chans][250 time][2 cpx][fixed8.7]
+Recv:              [<=3 beams][2 pols][12 subbands][144 chans][250 time][2 cpx][fixed8.7]
+Reintprt:          [<=3 beams][2 pols]            [1728 chans][250 time][2 cpx][fixed8.7]
+Reorder:           [<=3 beams][2 pols]            [250 time][1728 chans][2 cpx][fixed8.7]
+T-engine ...
 
 T-engine input:    [beam][pol][time][144 chans][2 cpx][float32]
 Merge subbands:    [beam][pol][time][all chans][2 cpx][float32]
@@ -62,6 +136,41 @@ MSB                               LSB
 <------- --REAL-- ----><-- --------
 IMAG---- -><----- -WEIGHT- ------>0
 ======== ======== ======== ========
+
+Correlator processing:
+  GainCorrect output: (time, 144 chan,   256 stand, 2 pol, 2 cpx, 8b)
+  Correlator  output: (snap, 32896 bline, 144 chan, 2 pol, 2pol, 2 cpx, 21b)
+                       + 22b weight
+    Preproc:  Dequantize 8b->fp32
+	Process:  cublasCherk (tcip,tcjq->cipjq) fp32
+	Postproc: Reorder (cipjq->bcpq) and quantize fp32->21b + 22b weight
+	(*Actually this postproc is really CorPacketize, which can then be sent directly
+	    through a socket.)
+	  Note: Exposing the raw output (cipjq, fp32) to other tasks would be very useful
+	          as this is a natural ordering in which to apply calibration operations.
+
+COR commands
+------------
+Applied at a target subslot
+  The current integration should be pushed out (possibly with lower weights)
+    and a new integration started.
+Updates COR_NAVG (no. subslots to integrate) and COR_GAIN (alpha scale factor)
+Updates DRX_TUNING_MASK
+  This just means which 144-chan subbands are exported via the output socket and
+    which are not needed.
+	Could either always compute everything and then just filter packets, or
+	  could try to disable computation altogether.
+	  The STP command will work similarly (effectively equivalent to setting
+	    DRX_TUNING_MASK to 0).
+	  Note that the COR command technically only applies to the export of
+	    correlator data, not to the generation of it.
+		I.e., other tasks may want to use the correlator output even if
+		  it's not being exported to storage.
+		  E.g., RT calibration, imaging etc.
+		This also means that the COR_NAVG and COR_GAIN parameters should
+		  really be applied _after_ correlation.
+		  E.g., GainCorrect->Correlate->Integrate(COR_NAVG,COR_GAIN)->CorPacketize(DRX_TUNING_MASK)
+		  *This makes things easy wrt tracking time, as everything is continuous until the very last stage
 
 Required modes
 --------------
@@ -133,6 +242,10 @@ Unpacker
     [seq][32 packets][~2 time][88 chans]            [8 ants][2 pols][4+4 bits]
 --> [seq]            [ 2 time][88 chans][32 packets][8 ants][2 pols][8+8 bits]
 => Transposing blocks of 8*2*2 bytes = 32 bytes
+
+    [seq][16 packets][~2 time][144 chans]            [16 ants][2 pols][4+4 bits]
+--> [seq]            [ 2 time][144 chans][16 packets][16 ants][2 pols][8+8 bits]
+=> Transposing blocks of 16*2*1 bytes = 32 bytes
 
 //uint32_t a = in[:32];
 //uint32_t b = in[:32];

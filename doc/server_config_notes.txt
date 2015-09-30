@@ -20,6 +20,8 @@ Enable non-BIOS management of IPMI
     and shared) to enable non-BIOS control.
 NOTE: The default IPMI login is user='admin' pass='admin'
       The default web gui port is 80
+Enable Wake-on-LAN (WOL):
+  In BIOS, change Advanced->APM->"Power on by PCIE" to Enabled.
 
 Enable the root user by setting a password
  $ sudo passwd root
@@ -75,6 +77,12 @@ Use nmap to do a ping scan of DHCP-assigned addresses
 Then just ssh port forward to detected addresses and see which web GUIs come up
 Note: Mellanox sx1024 default login is 'admin' 'admin'
 Note: Must set the MTU of the ports on the Mellanox to 9000 if servers are configured with that
+
+Add mgmt network MAC addresses to /etc/ether on headnode
+  $ more /etc/ethers
+  08:62:66:1a:31:93 adp1
+  08:62:66:1f:df:4d adp2
+  ...
 
 Increase SSH security on head node
 Set this in /etc/ssh/sshd_config
@@ -136,6 +144,7 @@ Finally, on the other servers add the headnode hostname or IP to /etc/ssh/shosts
 Note: Adding the IP rather than hostname allows setting UseDNS=no in /etc/ssh/sshd_config
   #adp
   169.254.128.1
+Note: *MUST* add UseDNS=no to /etc/ssh/sshd_config
 Note: This only enables headnode-->server logins; can repeat reversed if desired
 Note: This doesn't appear to work for root logins
 Note: May also need keys to be added to nfs-shared ~/.ssh/known_hosts (which happens automatically on first login attempt)

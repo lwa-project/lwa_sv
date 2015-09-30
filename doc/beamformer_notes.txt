@@ -1,0 +1,90 @@
+
+Input:      [8000 time][109 chans][256 stands][2 pols][2 cpx][8 bit]
+Dequantize: ...[float32]
+Output:       [n beams][109 chans][8000 time ][2 pols][2 cpx][float32]
+Requantize: ...[8 bit]
+
+	// CUBLAS/Fortran matrix ordering:
+	//// sct^ scb -> tcb // Beamform
+	//// sct  tcb -> scb // Calibrate
+	// bcs sct  -> bct // Beamform
+	// bct sct^ -> bcs // Calibrate
+	// Note that keeping time as the slowest dim may be a wise idea
+	// This is good motivation to use a generic gemm task
+
+WeightsUpdate task
+  Listen for sequence updates
+  Weights shape: [256 stand, 2 pol, 109 chan, 4 beam, 2 beampol] complex64
+
+Output rate = 2398 chans * 0.024 MHz * 2 pols * 2 cpx * 8 bits = 230.208 MB/s/beam total
+            = 10.464 MB/s/beam/stream
+=> Record 4 dual-pol beams = 41.856 MB/s/disk
+    Write as 4k json header + binary data
+
+Weights: [4 beams][2 pols][109 chans][256 stands][2 pols][2 cpx][float32] (= 3.57 MB)
+  Send updates as complete ready-to-use weight sets
+
+PSRDADAReader
+Unpack8to32
+Beamform
+Requantize
+DiskWrite
+
+PSRDADA reader task:
+  Read blocks of 8000 spectra
+  Output data plus timestamp
+    Time stored as uint64 with units of clock cycles since the Unix epoch (1970)
+      In this case, 1 clock cycle = 1/24kHz of a second (or perhaps 1/196.608MHz)
+        For LWA-SV, 1 clock cycle = 1/25kHz of a second (or perhaps 1/196.000MHz)
+
+telescope_id:  52? (LWA-OV)
+machine_id:    52?
+data_type:     2 # Time-series data
+rawdatafile:   <delete>
+source_name:   <observer-specified>
+barycentric:   0
+pulsarcentric: <delete>
+az_start:      <delete> or <observer-specified>
+za_start:      <delete> or <observer-specified>
+src_raj:       <observer-specified> or <delete>
+src_dej:       <observer-specified> or <delete>
+tstart:        MJD of first sample
+tsamp:         (secs) E.g., 0.5/(2400*24kHz=57.6MHz)=8.68055556ns
+nbits:         8
+nsamples:      No. time samples in file ("rarely used any more")
+fch1:          58.776 MHz (center frequency)
+foff:          <delete>
+nchans:        1
+nifs:          2 (pols)
+refdm:         0.0 [pc/cm^3]
+period:        <delete>
+data:          [time][pol][nbit] (General case: [time][if/pol][chan][nbit])
+
+
+Write each slot (or maybe subslot) of data as (little-endian):
+  4096-byte json string header;
+  complex64 data[];
+Keep writing to one file until it exceeds a size limit.
+  Implement bifrost disk writing task that uses the frame size of its input
+    and does the writing and file changing.
+    ** What to name files?
+        UTC_START + first frame number?
+          Where to get UTC_START from?
+
+After recording, run Python script to gather data and transform into Sigproc time series
+
+Output format: Sigproc time series
+  See sigproc_header.hpp and ./Swinburne/code/c_cpp/pulsar_gpu/newseek_trunk/psrsynth/src/psrsynth.cpp
+    for reference.
+  Store beam output as Nyquist-sampled time series (Sigproc data_type=2)
+    Can then use Sigproc 'filterbank' app to convert to detected filterbank (data_type=1)
+
+OVRO notes
+----------
+data:    [8000 time][109 chan][512 input][2 cpx][8  bit]
+weights:   [N beams][109 chan][512 input][2 cpx][32 bit]
+
+beam = (data * weights).sum(axis=input)
+beam: [8000 time][109 chans][2 cpx][32 bit]
+
+#weights: [512 input][109 chan][  N  beam][2 cpx][8 bit]
