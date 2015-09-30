@@ -2,6 +2,7 @@
 # TODO: python-simplejson
 
 INSTALL_BIN_DIR           ?= /usr/local/bin
+INSTALL_SHARE_DIR         ?= /usr/local/share/adp
 SERVICE_CONF_DIR          ?= /etc/init
 
 all:
@@ -21,7 +22,10 @@ $(INSTALL_BIN_DIR)/adp_control.py: scripts/adp_control.py
 	cp $< $@
 $(SERVICE_CONF_DIR)/adp-control.conf: config/headnode/adp-control.conf
 	cp $< $@
-install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DIR)/adp-control.conf
+$(INSTALL_SHARE_DIR)/adp_config.json: config/adp_config.json
+	test -d $(INSTALL_SHARE_DIR) || mkdir $(INSTALL_SHARE_DIR)
+	cp $< $@
+install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DIR)/adp-control.conf $(INSTALL_SHARE_DIR)/adp_config.json
 	initctl reload-configuration
 	start adp-control
 .PHONY: install_adp_control_service
