@@ -66,8 +66,7 @@ Process thread:
 
 """
 
-import MCS2
-import Adp
+from adp import MCS2, Adp
 
 import signal
 import logging

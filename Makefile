@@ -4,6 +4,7 @@
 INSTALL_BIN_DIR           ?= /usr/local/bin
 INSTALL_SHARE_DIR         ?= /usr/local/share/adp
 SERVICE_CONF_DIR          ?= /etc/init
+#SERVICE_LOG_DIR           ?= /var/log
 
 all:
 	@echo "Please run either 'make configure/install_headnode/server'"
@@ -18,7 +19,10 @@ configure_server:
 install_headnode: install_adp_control_service
 install_server:   cuda install_adp_pipeline
 
-$(INSTALL_BIN_DIR)/adp_control.py: scripts/adp_control.py
+$(INSTALL_BIN_DIR)/adp/: scripts/adp/
+	test -d $(INSTALL_BIN_DIR)/adp || mkdir $(INSTALL_BIN_DIR)/adp
+	cp $<* $@
+$(INSTALL_BIN_DIR)/adp_control.py: scripts/adp_control.py $(INSTALL_BIN_DIR)/adp/
 	cp $< $@
 $(SERVICE_CONF_DIR)/adp-control.conf: config/headnode/adp-control.conf
 	cp $< $@
