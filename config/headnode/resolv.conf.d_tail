@@ -1,0 +1,4 @@
+nameserver 10.3.33.10 # LWA-SV 1
+nameserver 10.3.32.10 # LWA-SV 2
+#nameserver 128.103.200.101 # Harvard CfA
+nameserver 8.8.8.8 # Google

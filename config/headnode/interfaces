@@ -8,16 +8,17 @@ iface lo inet loopback
 # Internet connection
 auto eth0
 iface eth0 inet static
-	address 131.142.8.137
+	address 10.1.1.10
+	gateway 10.1.1.204
+	#address 198.59.133.190
+	#gateway 198.59.133.1
 	netmask 255.255.255.0
-	network 131.142.8.0
-	broadcast 131.142.8.255
-	gateway 131.142.8.1
 	# dns-* options are implemented by the resolvconf package, if installed
-	dns-nameservers 128.103.200.101
-	dns-search cfa.harvard.edu
+	#   See /etc/resolvconf/resolv.conf.d/tail
+	#dns-nameservers 10.3.33.10 10.3.32.10 8.8.8.8
+	#dns-nameservers 8.8.8.8 209.244.0.3 37.235.1.174
 	pre-up iptables-restore < /etc/iptables.rules
-
+	
 # Management network
 auto eth1
 iface eth1 inet static
