@@ -102,7 +102,7 @@ def join_all(threads, timeout):
 		alive_threads[0].join(available_time)
 
 def main(argv):
-	parser = argparse.ArgumentParser(description='LWA-SV ADP control script')
+	parser = argparse.ArgumentParser(description='LWA-SV ADP control service')
 	parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
 	parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
 	parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
@@ -136,7 +136,7 @@ def main(argv):
 	log.info("Current MPM:  %i", Adp.MCS2.slot2mpm())
 	log.info("Config file:  %s", args.configfile)
 	log.info("Log file:     %s", args.logfile)
-	log.info("Dry run:      %b", args.dryrun)
+	log.info("Dry run:      %r", args.dryrun)
 	log.info('All dates and times are in UTC unless otherwise noted')
 	
 	# TODO: Change these names to something more easily understood

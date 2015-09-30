@@ -1,23 +1,4 @@
 
-"""
-  MsgReceiver:
-    self.socket = zmqctx.socket( )
-    self.queue  = Queue()
-  Adp:
-    def __init__(self, msgqueue):
-      ConsumerThread.__init__(self, msgqueue)
-      self.output_queue
-      
-  MsgSender:
-    def __init__(self, ):
-      
-      self.queue = Queue()
-    def put(self, msg):
-      pass
-    
-  
-"""
-
 from AdpCommon  import *
 from AdpConfig  import *
 from AdpLogging import *
