@@ -6,8 +6,8 @@ def print_synth(synth, which):
 	print "Synth A" if which == valon.SYNTH_A else "Synth B"
 	print "  Label:       ", synth.get_label(     which)
 	print "  Freq:        ", synth.get_frequency( which), "MHz"
-	print "  RF level:    ", synth.get_rf_level(  which), "dBm"
 	print "  Phase locked:", synth.get_phase_lock(which)
+	print "  RF level:    ", synth.get_rf_level(  which), "dBm"
 	print "  VCO range:   ", synth.get_vco_range( which), "MHz"
 	options = synth.get_options(which)
 	doubled = options[0]
@@ -28,6 +28,6 @@ if __name__ == "__main__":
 	ref_names = {valon.INT_REF: "internal",
 	             valon.EXT_REF: "external"}
 	print "Ref source:", ref_names[synth.get_ref_select()]
-	print "Ref freq:  ", synth.get_reference(), "MHz"
+	print "Ref freq:  ", synth.get_reference()/1e6, "MHz"
 	print_synth(synth, valon.SYNTH_A)
 	print_synth(synth, valon.SYNTH_B)
