@@ -1,0 +1,120 @@
+ssh admin@mellanox
+<password=admin>
+> enable
+# configure terminal
+# show configuration
+# interface ethernet 1/14 flowcontrol receive on force
+# interface ethernet 1/49 flowcontrol send on force
+...
+# write memory
+
+For ADP, we need to set the MTU to 9000 and enable flow control from
+roaches to servers. The below commands can be copied+pasted into the
+terminal to do this:
+
+interface ethernet 1/1 mtu 9000 force
+interface ethernet 1/2 mtu 9000 force
+interface ethernet 1/3 mtu 9000 force
+interface ethernet 1/4 mtu 9000 force
+interface ethernet 1/5 mtu 9000 force
+interface ethernet 1/6 mtu 9000 force
+interface ethernet 1/7 mtu 9000 force
+interface ethernet 1/8 mtu 9000 force
+interface ethernet 1/9 mtu 9000 force
+interface ethernet 1/10 mtu 9000 force
+interface ethernet 1/11 mtu 9000 force
+interface ethernet 1/12 mtu 9000 force
+interface ethernet 1/13 mtu 9000 force
+interface ethernet 1/14 mtu 9000 force
+interface ethernet 1/15 mtu 9000 force
+interface ethernet 1/16 mtu 9000 force
+interface ethernet 1/17 mtu 9000 force
+interface ethernet 1/18 mtu 9000 force
+interface ethernet 1/19 mtu 9000 force
+interface ethernet 1/20 mtu 9000 force
+interface ethernet 1/21 mtu 9000 force
+interface ethernet 1/22 mtu 9000 force
+interface ethernet 1/23 mtu 9000 force
+interface ethernet 1/24 mtu 9000 force
+interface ethernet 1/25 mtu 9000 force
+interface ethernet 1/26 mtu 9000 force
+interface ethernet 1/27 mtu 9000 force
+interface ethernet 1/28 mtu 9000 force
+interface ethernet 1/29 mtu 9000 force
+interface ethernet 1/30 mtu 9000 force
+interface ethernet 1/31 mtu 9000 force
+interface ethernet 1/32 mtu 9000 force
+interface ethernet 1/33 mtu 9000 force
+interface ethernet 1/34 mtu 9000 force
+interface ethernet 1/35 mtu 9000 force
+interface ethernet 1/36 mtu 9000 force
+interface ethernet 1/37 mtu 9000 force
+interface ethernet 1/38 mtu 9000 force
+interface ethernet 1/39 mtu 9000 force
+interface ethernet 1/40 mtu 9000 force
+interface ethernet 1/41 mtu 9000 force
+interface ethernet 1/42 mtu 9000 force
+interface ethernet 1/43 mtu 9000 force
+interface ethernet 1/44 mtu 9000 force
+interface ethernet 1/45 mtu 9000 force
+interface ethernet 1/46 mtu 9000 force
+interface ethernet 1/47 mtu 9000 force
+interface ethernet 1/48 mtu 9000 force
+interface ethernet 1/49 mtu 9000 force
+interface ethernet 1/50 mtu 9000 force
+interface ethernet 1/51 mtu 9000 force
+interface ethernet 1/52 mtu 9000 force
+interface ethernet 1/53 mtu 9000 force
+interface ethernet 1/54 mtu 9000 force
+interface ethernet 1/55 mtu 9000 force
+interface ethernet 1/56 mtu 9000 force
+interface ethernet 1/57 mtu 9000 force
+interface ethernet 1/58 mtu 9000 force
+interface ethernet 1/59 mtu 9000 force
+interface ethernet 1/60 mtu 9000 force
+
+interface ethernet 1/1 flowcontrol receive on force
+interface ethernet 1/2 flowcontrol receive on force
+interface ethernet 1/4 flowcontrol receive on force
+interface ethernet 1/5 flowcontrol receive on force
+interface ethernet 1/7 flowcontrol receive on force
+interface ethernet 1/8 flowcontrol receive on force
+interface ethernet 1/10 flowcontrol receive on force
+interface ethernet 1/11 flowcontrol receive on force
+interface ethernet 1/13 flowcontrol receive on force
+interface ethernet 1/14 flowcontrol receive on force
+interface ethernet 1/16 flowcontrol receive on force
+interface ethernet 1/17 flowcontrol receive on force
+interface ethernet 1/19 flowcontrol receive on force
+interface ethernet 1/20 flowcontrol receive on force
+interface ethernet 1/22 flowcontrol receive on force
+interface ethernet 1/23 flowcontrol receive on force
+interface ethernet 1/25 flowcontrol receive on force
+interface ethernet 1/26 flowcontrol receive on force
+interface ethernet 1/28 flowcontrol receive on force
+interface ethernet 1/29 flowcontrol receive on force
+interface ethernet 1/31 flowcontrol receive on force
+interface ethernet 1/32 flowcontrol receive on force
+interface ethernet 1/34 flowcontrol receive on force
+interface ethernet 1/35 flowcontrol receive on force
+interface ethernet 1/37 flowcontrol receive on force
+interface ethernet 1/38 flowcontrol receive on force
+interface ethernet 1/40 flowcontrol receive on force
+interface ethernet 1/41 flowcontrol receive on force
+interface ethernet 1/43 flowcontrol receive on force
+interface ethernet 1/44 flowcontrol receive on force
+interface ethernet 1/46 flowcontrol receive on force
+interface ethernet 1/47 flowcontrol receive on force
+
+interface ethernet 1/49 flowcontrol send on force
+interface ethernet 1/50 flowcontrol send on force
+interface ethernet 1/51 flowcontrol send on force
+interface ethernet 1/52 flowcontrol send on force
+interface ethernet 1/53 flowcontrol send on force
+interface ethernet 1/54 flowcontrol send on force
+interface ethernet 1/55 flowcontrol send on force
+interface ethernet 1/56 flowcontrol send on force
+interface ethernet 1/57 flowcontrol send on force
+interface ethernet 1/58 flowcontrol send on force
+interface ethernet 1/59 flowcontrol send on force
+interface ethernet 1/60 flowcontrol send on force
