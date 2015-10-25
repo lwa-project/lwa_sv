@@ -5,6 +5,8 @@ GRUB_CONF                 ?= /etc/default/grub
 NETWORK_CONF              ?= /etc/network/interfaces
 RESOLVCONF                ?= /etc/resolvconf/resolv.conf.d/tail
 DNSMASQ_CONF              ?= /etc/dnsmasq.conf
+HOSTS_CONF                ?= /etc/hosts
+ETHERS_CONF               ?= /etc/ethers
 IPTABLES_CONF             ?= /etc/iptables.rules
 MGMT_SUBNET               ?= 169.254.128.0/24
 SSHD_CONFIG               ?= /etc/ssh/sshd_config
@@ -49,12 +51,22 @@ $(DNSMASQ_CONF): ./dnsmasq.conf network
 dnsmasq: $(DNSMASQ_CONF)
 .PHONY dnsmasq
 
+$(HOSTS_CONF): ../hosts network
+	cp $< $@
+hosts: $(HOSTS_CONF)
+.PHONY: hosts
+
+$(ETHERS_CONF): ./ethers network
+	cp $< $@
+ethers: $(ETHERS_CONF)
+.PHONY: ethers
+
 $(SSHD_CONF): ./sshd_config
 	cp $< $@
 $(SSH_CONF): ./ssh_config
 	cp $< $@
-ssh: $(SSHD_CONF) $(SSH_CONF) ./ssh_hosts network
-	ssh-keyscan -t rsa,dsa,ecdsa -f ssh_hosts | sort -u - /etc/ssh/ssh_known_hosts | tee /etc/ssh/ssh_known_hosts
+ssh: $(SSHD_CONF) $(SSH_CONF) ../ssh_hosts network
+	ssh-keyscan -t rsa,dsa,ecdsa -f ../ssh_hosts | sort -u - /etc/ssh/ssh_known_hosts | tee /etc/ssh/ssh_known_hosts
 	restart ssh
 .PHONY: ssh
 

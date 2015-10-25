@@ -1,0 +1,78 @@
+127.0.0.1	localhost
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost ip6-localhost ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+# Internet (eth0)
+#131.142.8.137	adp.cfa.harvard.edu	adp
+#131.142.8.137	adp.cfa.harvard.edu
+#10.1.1.10 adp
+10.1.1.10 adp-external
+
+# Management network (eth1 on adp, eth0 on adpX)
+169.254.128.1	adp
+169.254.128.11	adp1
+169.254.128.12	adp2
+169.254.128.13	adp3
+169.254.128.14	adp4
+169.254.128.15	adp5
+169.254.128.16	adp6
+
+# Management IPMI
+169.254.128.31	adp1-ipmi
+169.254.128.32	adp2-ipmi
+169.254.128.33	adp3-ipmi
+169.254.128.34	adp4-ipmi
+169.254.128.35	adp5-ipmi
+169.254.128.36	adp6-ipmi
+
+# ROACH2 PowerPC ethernet
+169.254.128.60	roach1
+169.254.128.61	roach2
+169.254.128.62	roach3
+169.254.128.63	roach4
+169.254.128.64	roach5
+169.254.128.65	roach6
+169.254.128.66	roach7
+169.254.128.67	roach8
+169.254.128.68	roach9
+169.254.128.69	roach10
+169.254.128.70	roach11
+169.254.128.71	roach12
+169.254.128.72	roach13
+169.254.128.73	roach14
+169.254.128.74	roach15
+169.254.128.75	roach16
+# TODO: Deprecated
+169.254.128.60	rofl1
+169.254.128.61	rofl2
+169.254.128.62	rofl3
+169.254.128.63	rofl4
+169.254.128.64	rofl5
+169.254.128.65	rofl6
+169.254.128.66	rofl7
+169.254.128.67	rofl8
+169.254.128.68	rofl9
+169.254.128.69	rofl10
+169.254.128.70	rofl11
+169.254.128.71	rofl12
+169.254.128.72	rofl13
+169.254.128.73	rofl14
+169.254.128.74	rofl15
+169.254.128.75	rofl16
+
+# Data network (p5p1)
+192.168.40.10	adp-40g
+192.168.40.11	adp1-40g
+192.168.40.12	adp2-40g
+192.168.40.13	adp3-40g
+192.168.40.14	adp4-40g
+192.168.40.15	adp5-40g
+192.168.40.16	adp6-40g
+192.168.40.41	drsu1 # Data recorder
+
+169.254.128.101 mgmt-switch
+169.254.128.101 hp48        # Alias for mgmt-switch
+169.254.128.102 data-switch
+169.254.128.102 mellanox    # Alias for data-switch

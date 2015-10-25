@@ -3,4 +3,4 @@ include ../common.mk
 
 all:
 
-configure: grub iptables network resolvconf dnsmasq ssh nfs_server ntp dev_ttyUSB0
+configure: grub iptables network resolvconf dnsmasq hosts ethers ssh nfs_server ntp dev_ttyUSB0

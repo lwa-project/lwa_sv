@@ -1,6 +1,10 @@
 
 include ../common.mk
 
+# TODO: See ledaovro:/root/at_reboot.sh and /root/set_irqs.sh
+#         nvidia-smi; nvidia-smi -pm 1
+#         /sbin/rmmod mlx4_core; /sbin/modprobe mlx4_en; /sbin/ifup eth2
+
 all:
 
-configure: grub network resolvconf ssh nfs_client ntp socket_buffers
+configure: grub network resolvconf hosts ssh nfs_client ntp socket_buffers
