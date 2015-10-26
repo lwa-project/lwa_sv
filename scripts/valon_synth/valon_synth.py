@@ -239,6 +239,37 @@ class Synthesizer:
         ack = struct.unpack('>B', bytes)[0]
         return ack == ACK
 
+    def get_rf_output_enabled(self, synth):
+        self.conn.open()
+        bytes = struct.pack('>B', 0x80 | synth)
+        self.conn.write(bytes)
+        bytes = self.conn.read(24)
+        checksum = self.conn.read(1)
+        self.conn.close()
+        #self._verify_checksum(bytes, checksum)
+        reg0, reg1, reg2, reg3, reg4, reg5 = struct.unpack('>IIIIII', bytes)
+        enabled = bool(reg4 & (1<<5))
+        return enabled
+
+    def set_rf_output_enabled(self, synth, enabled):
+        self.conn.open()
+        bytes = struct.pack('>B', 0x80 | synth)
+        self.conn.write(bytes)
+        bytes = self.conn.read(24)
+        checksum = self.conn.read(1)
+        #self._verify_checksum(bytes, checksum)
+        reg0, reg1, reg2, reg3, reg4, reg5 = struct.unpack('>IIIIII', bytes)
+        reg4 &= 0xffffffdf
+        reg4 |= (1 if enabled else 0) << 5
+        bytes = struct.pack('>BIIIIII', 0x00 | synth,
+                            reg0, reg1, reg2, reg3, reg4, reg5)
+        checksum = self._generate_checksum(bytes)
+        self.conn.write(bytes + checksum)
+        bytes = self.conn.read(1)
+        self.conn.close()
+        ack = struct.unpack('>B', bytes)[0]
+        return ack == ACK
+
     def get_options(self, synth):
         """
         Get options tuple:

@@ -18,6 +18,7 @@ def print_synth(synth, which):
 	print "  Divisor:     ", options[2]
 	print "  Mode:        ", ("minimize PLL spurs" if options[3] else
 	                          "minimize phase noise")
+	print "  RF enabled:  ", synth.get_rf_output_enabled(which)
 
 if __name__ == "__main__":
 	import sys
