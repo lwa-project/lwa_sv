@@ -11,6 +11,8 @@ from ThreadPool import ThreadPool
 from ThreadPool import ObjectPool
 #from Cache      import threadsafe_lru_cache as lru_cache
 from Cache      import lru_cache
+from AdpRoach   import AdpRoach
+from iptools    import *
 
 from Queue import Queue
 import numpy as np
@@ -221,8 +223,20 @@ class AdpServerMonitorClient(object):
 		#	raise RuntimeError(str(e))
 
 class Roach2MonitorClient(object):
-	def __init__(self, host):
-		self.device = ROACH2Device(host)
+	def __init__(self, config, log, num):
+		# Note: num is 1-based index of the roach
+		self.config = config
+		self.log    = log
+		self.roach  = AdpRoach(num, config['roach']['port'])
+		self.host   = self.roach.hostname
+		self.device = ROACH2Device(self.host)
+	def reboot(self):
+		# Note: This requires ssh authorized_keys to have been set up
+		try:
+			subprocess.check_output(['ssh', 'root@'+self.host,
+			                         'shutdown -r now'])
+		except subprocess.CalledProcessError:
+			raise RuntimeError("Roach reboot command failed")
 	def get_samples(self, slot, stand, pol, nsamps=None):
 		return self.get_samples_all(nsamps)[stand,pol]
 	@lru_cache(maxsize=4)
@@ -232,6 +246,36 @@ class Roach2MonitorClient(object):
 	@lru_cache(maxsize=4)
 	def get_temperatures(self, slot):
 		return self.device.temperatures()
+	def program(self):
+		# Program with ADP firmware
+		# Note: ADCs must be re-calibrated after doing this
+		boffile      = self.config['roach']['firmware']
+		max_attempts = self.config['roach']['max_program_attempts']
+		adc_gain     = self.config['roach']['adc_gain']
+		adc_gain_bits   = ( adc_gain       | (adc_gain <<  4) |
+		                   (adc_gain << 8) | (adc_gain << 12) )
+		adc_gain_reg    = 0x2a
+		adc_registers = {adc_gain_reg: adc_gain_bits}
+		self.roach.program(boffile, adc_registers, max_attempts)
+	#def calibrate(self):
+		# TODO: Implement this
+	def configure_mode(self, mode='DRX'):
+		# Configure 10GbE ports
+		if mode == 'DRX':
+			dst_hosts = self.config['host']['servers-data']
+		elif mode == 'TBN':
+			dst_hosts = self.config['host']['servers-tbn']
+		else:
+			raise KeyError("Invalid roach mode")
+		dst_ports = self.config['server']['data_ports']
+		dst_ips   = [host2ip(host) for host in dst_hosts]
+		macs = load_ethers()
+		dst_macs  = [macs[ip] for ip in dst_ips]
+		arp_table = gen_arp_table(dst_ips, dst_macs)
+		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports[0], arp_table)
+		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports[1], arp_table)
+		if not ret0 or not ret1:
+			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
 
 class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
@@ -262,8 +306,10 @@ class MsgProcessor(ConsumerThread):
 		
 		self.servers = ObjectPool([AdpServerMonitorClient(config, log, host)
 		                           for host in self.config['host']['servers']])
-		self.roaches = ObjectPool([Roach2MonitorClient(host)
-		                           for host in self.config['host']['roaches']])
+		#self.roaches = ObjectPool([Roach2MonitorClient(config, log, host)
+		#                           for host in self.config['host']['roaches']])
+		self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
+		                           for num in xrange(16)])
 		
 		#*self.fst = Fst(config, log)
 		#self.bam =
@@ -277,12 +323,115 @@ class MsgProcessor(ConsumerThread):
 		                         (self.serial_number, self.version))
 		self.state['activeProcess'] = []
 		
+	def raise_error_state(self, state):
+		# TODO: Need new codes? Need to document them?
+		state_map = {'BOARD_SHUTDOWN_FAILED':    (0x08,'Board-level shutdown failed'),
+					 'BOARD_PROGRAMMING_FAILED': (0x04,'Board programming failed'),
+					 'SERVER_STARTUP_FAILED':    (0x09,'Server startup failed')}
+		code, msg = state_map[state]
+		self.state['status'] = 'ERROR'
+		self.state['info']   = 'SUMMARY! 0x%02X! %s' % (code, msg)
+		self.state['activeProcess'].pop()
+		
 	def ini(self):
+		self.state['activeProcess'].append('INI')
 		self.state['status'] = 'BOOTING'
 		self.state['info']   = 'Running INI sequence'
-		self.state['activeProcess'].append('INI')
-		# ...
+		self.state['info']   = 'Programming FPGAs'
+		try:
+			self.roaches.program()
+		except RuntimeError:
+			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
+			return
+		#self.state['info']   = 'Calibrating ADCs'
+		#try:
+		#	self.roaches.calibrate()
+		#except RuntimeError:
+		#	self.raise_error_state('BEAMFORMER_CALIBRATION_FAILED')
+		#	return
+		self.state['info']   = 'Configuring FPGAs for DRX mode'
+		try:
+			self.roaches.configure_mode('DRX')
+		except RuntimeError:
+			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
+			return
+		self.state['info']   = 'Powering on servers'
+		try:
+			# Note: This does nothing if they're already on
+			self.servers.do_power('on')
+			self._wait_until_servers_power('on', 90)
+		except RuntimeError:
+			self.raise_error_state('SERVER_STARTUP_FAILED')
+			return
+		
+		# TODO: Need to make sure server pipelines etc. start up and respond here
+		
+		self.state['status'] = 'NORMAL'
 		self.state['activeProcess'].pop()
+		
+	def sht(self, arg):
+		self.state['activeProcess'].append('SHT')
+		self.state['status'] = 'SHUTDWN'
+		self.state['info']   = 'System is shutting down'
+		
+		# TODO: Check for errors and set self.state['lastLog'] = 'SHT: finished with error'
+		
+		if 'SCRAM' in arg:
+			if 'RESTART' in arg:
+				try:
+					self.servers.do_power('reset')
+					self.roaches.reboot()
+				except RuntimeError:
+					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
+					return
+			else:
+				try:
+					self.servers.do_power('off')
+					self.roaches.reboot()
+				except RuntimeError:
+					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
+					return
+			self.state['status'] = 'SHUTDWN'
+			self.state['info']   = 'System has been shut down'
+			self.state['activeProcess'].pop()
+		else:
+			if 'RESTART' in arg:
+				def soft_reboot():
+					try:
+						self.servers.do_power('soft')
+						self._wait_until_servers_power('off')
+						self.servers.do_power('on')
+						self.roaches.reboot()
+					except RuntimeError:
+						self.set_error_state('BOARD_SHUTDOWN_FAILED')
+					else:
+						self.state['status'] = 'SHUTDWN'
+						self.state['info']   = 'System has been shut down'
+						self.state['activeProcess'].pop()
+				self.thread_pool.add_task(soft_reboot)
+			else:
+				def soft_power_off():
+					try:
+						self.servers.do_power('soft')
+						self._wait_until_servers_power('off')
+						self.roaches.reboot()
+					except RuntimeError:
+						self.set_error_state('BOARD_SHUTDOWN_FAILED')
+					else:
+						self.state['status'] = 'SHUTDWN'
+						self.state['info']   = 'System has been shut down'
+						self.state['activeProcess'].pop()
+				self.thread_pool.add_task(soft_power_off)
+		
+	def _wait_until_servers_power(self, state, max_wait=30):
+		# TODO: Need to check for ping (or even ssh connectivity) instead of 'power is on'?
+		time.sleep(6)
+		wait_time = 6
+		while not all(self.servers.get_power_state() == state):
+			time.sleep(2)
+			wait_time += 2
+			if wait_time >= max_wait:
+				raise RuntimeError("Timed out waiting for server(s) to turn "+state)
 		
 	def process(self, msg):
 		if msg.cmd == 'PNG':
@@ -484,30 +633,9 @@ class MsgProcessor(ConsumerThread):
 		accept = True
 		reply_data = ""
 		if msg.cmd == 'INI':
-			# If server power status is 'off', turn them on
-			self.servers.do_power('on')
-			# TODO: Initialisation, ADC calibration etc.
+			self.ini()
 		elif msg.cmd == 'SHT':
-			if 'SCRAM' in msg.data:
-				if 'RESTART' in msg.data:
-					self.servers.do_power('reset')
-					# ...
-				else:
-					self.servers.do_power('off')
-					# ...
-			else:
-				if 'RESTART' in msg.data:
-					def soft_reboot_servers():
-						self.servers.do_power('soft')
-						time.sleep(6)
-						while not all(self.servers.get_power_state() == 'off'):
-							time.sleep(2)
-						self.servers.do_power('on')
-					self.thread_pool.add_task(soft_reboot_servers)
-					# ...
-				else:
-					self.servers.do_power('soft')
-					# ...
+			self.sht(msg.data)
 		elif msg.cmd == 'STP':
 			mode = msg.data
 			
