@@ -3,6 +3,24 @@
 
 ## Document history
 
+### 2015-10-27
+
+* Completed MIB entry table
+
+* Added placeholder tables for exit and status codes
+
+* Completed COR output packet format description
+
+* Added TBF and BAM output packet format descriptions
+
+* Added output data rate derivations
+
+* Changed `TBF_BITS` from 16 to 8
+
+* Corrected `NFREQCHAN` --> `NUM_FREQ_CHANS`
+
+* Removed unused command arguments (previously marked strike-through)
+
 ### 2015-08-10
 
 * Changed definition of COR_NAVG from units of
@@ -115,26 +133,77 @@ FC (<math>f<sub>c</sub></math>) | 25.0 kHz  | Width of each correlator (COR) fre
 
 ## MIB entries
 
-Index    | Label                  | Type      | Bytes | Value(s) | Description
----      | ---                    | ---       | ---:  | ---      | ---
-2        | `TBF_STATUS`           | `uint8`   | 1 | <ul><li>0: Idle.</li><li>4: Actively recording or writing out.</li></ul> | Current status of TBF.
-3        | `NUM_TBN_BITS`         | `uint8`   | 1 | Always 16 (8 real + 8 imag) | No. bits per sample in TBN output. Currently always 16 (8 real + 8 imag).
-4.1      | `NUM_DRX_TUNINGS`      | `uint8`   | 1 | Always 32 | Max no. frequency tunings.
-4.2      | `NUM_BEAMS`            | `uint8`   | 1 | Always 32 | Max no. active beams.
-4.3      | `NUM_STANDS`           | `uint16`  | 2 | Always 256 | No. stands.
-4.4.1    | `NUM_BOARDS`           | `uint8`   | 1 | Always 16 | No. ROACH (FPGA) boards.
-4.4.2    | `NUM_SERVERS`          | `uint8`   | 1 | Always 6 | No. servers.
-??       | `NUM_FREQ_CHANS`       | `uint16`  | 2 | Always 4096 | Total no. correlator frequency channels.
-4.5      | `BEAM_FIR_COEFFS`      | `uint8`   | 1 | Always 32 | No. FIR coeffs implemented.
-4.6.n    | `T_NOMn`               | `uint16`  | 2 | Full range | T<sub>nom</sub>=L from LWA Memo 151, in units of samples at <math>f<sub>s</sub></math> for beam `n`.
-5.1      | `FIR`                  | `sint16[16,32]` | 1024 | Full range | FIR coeffs for input specified by `FIR_CHAN_INDEX`.
-5.5      | `FIR_CHAN_INDEX`       | `uint16`  | 2 | [1-512] | Returns and increments index of the input whose FIR coeffs are returned by `FIR`.
-6        | `CLK_VAL`              | `uint32`  | 4 | [0:86401000) | Time at start of previous slot, in ms past station time midnight (MPM).
-7.n.1    | `ANTn_RMS`             | `float32` | 4 | Full range | RMS power of `STAT_SAMP_SIZE` current samples for input `n`.
-7.n.2    | `ANTn_DCOFFSET`        | `float32` | 4 | Full range | Mean of `STAT_SAMP_SIZE` current samples for input `n`.
-7.n.3    | `ANTn_SAT`             | `float32` | 4 | Full range | No. saturated values (+-127) in `STAT_SAMP_SIZE` current samples for input `n`.
-7.n.4    | `ANTn_PEAK`            | `float32` | 4 | Full range | Max of `STAT_SAMP_SIZE` current samples for input `n`.
-7.0      | `STAT_SAMP_SIZE`       | `uint32`  | 4 | Typically 1024 | No. samples used to compute statistics.
+Index    | Label                  | Type        | Bytes | Value(s) | Description
+---      | ---                    | ---         | ---:  | ---      | ---
+1.1      | `SUMMARY`              | `char[7]`   | 7   | "NORMAL", "WARNING", "ERROR", "BOOTING", "SHUTDWN" | Summary state of the subsystem.
+1.2      | `INFO`                 | `char[256]` | 256 | "label1 [label2...]!String" | Information about "WARNING" or "ERROR" conditions.
+1.3      | `LASTLOG`              | `char[256]` | 256 | String | Last internal log message.
+1.4      | `SUBSYSTEM`            | `char[3]`   | 3   | String | Subsystem identification code.
+1.5      | `SERIALNO`             | `char[5]`   | 5   | String | Subsystem hardware identification code.
+1.6      | `VERSION`              | `char[256]` | 256 | String | Version number of subsystem software.
+2.1      | `TBF_STATUS`           | `uint8`     | 1   | <ul><li>0: Idle.</li><li>4: Actively recording or writing out.</li></ul> | Current status of TBF.
+2.2      | `TBF_TUNING_MASK`      | `uint64`    | 8   | Bitmask | Bit-mask representing which DRX tunings to record in TBF output.
+3        | `NUM_TBN_BITS`         | `uint8`     | 1   | Always 16 (8 real + 8 imag) | No. bits per sample in TBN output. Currently always 16 (8 real + 8 imag).
+4.1.1    | `NUM_DRX_TUNINGS`      | `uint8`     | 1   | Always 32 | Max no. frequency tunings.
+4.1.2    | `NUM_FREQ_CHANS`       | `uint16`    | 2   | Always 4096 | Total no. correlator frequency channels.
+4.2      | `NUM_BEAMS`            | `uint8`     | 1   | Always 32 | Max no. active beams.
+4.3      | `NUM_STANDS`           | `uint16`    | 2   | Always 256 | No. stands.
+4.4.1    | `NUM_BOARDS`           | `uint8`     | 1   | Always 16 | No. ROACH (FPGA) boards.
+4.4.2    | `NUM_SERVERS`          | `uint8`     | 1   | Always 6 | No. servers.
+4.5      | `BEAM_FIR_COEFFS`      | `uint8`     | 1   | Always 32 | No. FIR coeffs implemented.
+4.6.n    | `T_NOMn`               | `uint16`    | 2   | Full range | T<sub>nom</sub>=L from LWA Memo 151, in units of samples at <math>f<sub>s</sub></math> for beam `n`.
+5.1      | `FIR`                  | `sint16[16,32]`   | 1024 | Full range | FIR coeffs for input specified by `FIR_CHAN_INDEX`.
+5.5      | `FIR_CHAN_INDEX`       | `uint16`    | 2   | [1-512] | Returns and increments index of the input whose FIR coeffs are returned by `FIR`.
+6        | `CLK_VAL`              | `uint32`    | 4   | [0:86401000) | Time at start of previous slot, in ms past station time midnight (MPM).
+7.n.1    | `ANTn_RMS`             | `float32`   | 4   | Full range | RMS power of `STAT_SAMP_SIZE` current samples for input `n`.
+7.n.2    | `ANTn_DCOFFSET`        | `float32`   | 4   | Full range | Mean of `STAT_SAMP_SIZE` current samples for input `n`.
+7.n.3    | `ANTn_SAT`             | `float32`   | 4   | Full range | No. saturated values (+-127) in `STAT_SAMP_SIZE` current samples for input `n`.
+7.n.4    | `ANTn_PEAK`            | `float32`   | 4   | Full range | Max of `STAT_SAMP_SIZE` current samples for input `n`.
+7.0      | `STAT_SAMP_SIZE`       | `uint32`    | 4   | Typically 1024 | No. samples used to compute statistics.
+8.n.1    | `BOARDn_STAT`          | `uint64`    | 8   | Full range | Status of FPGA board `n` voltage, temperature etc. *TODO: Spec this*.
+8.n.2\3\4 | `BOARDn_TEMP_MIN\MAX\AVG` | `float32` | 4 | >= 0 or -1 | Min\max\avg FPGA die temperature in Celcius on board `n`. Value is -1 after a temperature-induced shutdown.
+8.n.5    | `BOARDn_FIRMWARE`      | `char[256]` | 256 | String     | Firmware version used on board `n`.
+8.n.6    | `BOARDn_HOSTNAME`      | `char[256]` | 256 | String     | Network hostname for communicating with board `n`.
+9        | `CMD_STAT`             | `struct CmdStat`  | <= 606     | Full range | Cmd status info for all control cmds scheduled to exec in the slot before this. See structure def below.
+10.1     | `TBN_CONFIG_FREQ`      | `float32`   | 4   | Full range | Current TBN tuning frequency in Hz.
+10.2     | `TBN_CONFIG_FILTER`    | `uint16`    | 2   | 5-11       | nCurrent TBN filter mode.
+10.3     | `TBN_CONFIG_GAIN`      | `uint16`    | 2   | 0-30       | Current TBN gain.
+11.n.1   | `DRX_CONFIG_n_FREQ`    | `float32`   | 4   | Full range | Current DRX tuning frequency in Hz for tuning `n`.
+11.n.2   | `DRX_CONFIG_n_FILTER`  | `uint16`    | 2   | 3-8 or 0   | Current DRX filter for tuning `n`.
+11.n.3   | `DRX_CONFIG_n_GAIN`    | `uint16`    | 2   | 0-15       | Current DRX gain for tuning `n`.
+12.n.1   | `SERVERn_STAT`         | `uint64`    | 8   | Full range | Status of server `n`.  *TODO: Spec this*.
+12.n.2\3\4 | `SERVERn_TEMP_MIN\MAX\AVG` | `float32` | 4 | >= 0 or -1 | Min\max\avg server temperature in Celcius on server `n`. Value is -1 after a temperature-induced shutdown.
+12.n.5    | `SERVERn_SOFTWARE`    | `char[256]` | 256 | String     | Software version used on server `n`.
+12.n.6    | `SERVERn_HOSTNAME`    | `char[256]` | 256 | String     | Network hostname for communicating with server `n`.
+
+#### TODO: `GLOBAL_TEMP_MIN\MAX\AVG`?
+
+### `struct CmdStat`
+
+Name              | Type        | Value      | Description
+---               | ---         | ---        | ---
+`slot_time`       | `uint32`    | Full range | Seconds past station time midnight.
+`num_commands`    | `uint16`    | <= 120     | Number of commands, `N`, described in this message.
+`reference`       | `uint32[N]` | Full range | MCS reference number associated with each control command.
+`completion_code` | `uint8[N]`  | 0: OK; >0: error code | Completion status of each control command. See table below.
+
+### Command Exit Codes
+
+#### TODO: Finish this table (then label and reference it in the MIB entries table)
+
+Code    | Description
+---     | ---
+0x00    | Accepted/processed without error
+0x01    | TODO
+
+### Subsystem Status Codes
+
+#### TODO: Finish this table (then label and reference it in the MIB entries table)
+
+Code    | Description
+---     | ---
+0x00    | Subsystem is operating normally
+0x01    | TODO
 
 ## Control commands
 
@@ -144,23 +213,22 @@ Index    | Label                  | Type      | Bytes | Value(s) | Description
 Configures and starts TBN mode.
 
 TBN mode cannot be run while any other mode is running. Note that TBN
-mode can only be started on a 1PPS boundary, so the `sub_slot`
-argument is ignored. The command also requires any existing TBN
-recording be stopped, and takes 1 second before recording can be
-started again (i.e., it requires 1 second of downtime).
+mode can only be started on a 1PPS boundary. The command also requires
+any existing TBN recording be stopped, and takes 1 second before
+recording can be started again (i.e., it requires 1 second of
+downtime).
 
 #### Arguments
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
 `TBN_FREQ`     | `float32`              | 0-100e6    | Center frequency in units of Hz.
-`TBN_BW`       | `sint16`               | 5-11       | Filter code indicating sample rate. See `DRX_FILTERn` codes below.
+`TBN_BW`       | `sint16`               | 5-11       | Filter code indicating sample rate. See `TBN_FILTERn` codes below.
 `TBN_GAIN`     | `sint16`               | 0-30       | Right-bitshift used to select which bits are output.
-~~`sub_slot`~~ | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
 #### Filter codes
 
-`TBN_DRX_FILTERn` | Sample rate (kHz)
+`TBN_FILTERn` | Sample rate (kHz)
 ---       | ---:
 1         |      1.000
 2         |      3.125
@@ -195,12 +263,10 @@ specified. The specified tuning can be disabled by specifying `DRX_BW
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-~~`DRX_BEAM`~~ | `uint8`                | [1-NUM_BEAMS] | Beam to be changed.
 `DRX_TUNING`   | `uint8`                | [1-NUM_DRX_TUNINGS] | Frequency tuning to be changed.
 `DRX_FREQ`     | `float32`              | [0-102.1875e6] Hz | Center freq. in Hz.
-`DRX_BW`       | `uint8`                | [3-8] or 0 | Filter code indicating sample rate. See `DRX_FILTERn` codes below. Zero disables the tuning.
+`DRX_BW`       | `uint8`                | [1-8] or 0 | Filter code indicating sample rate. See `DRX_FILTERn` codes below. Zero disables the tuning.
 `DRX_GAIN`     | `sint16`               | [0-15]     | Right-bitshift to compensate for BW reduction.
-~~`sub_slot`~~ | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
 #### Filter codes
 
@@ -247,10 +313,10 @@ channels and the use of `DRX_TUNING_MASK`.</b>
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`TBF_BITS`     | `uint8`                | Must be 16 | No. bits per (complex) sample to output.
+`TBF_BITS`     | `uint8`                | Must be 8  | No. bits per (complex) sample to output.
 `TBF_TRIG_TIME`| `sint32`               | Full range | Trigger time since start of slot in units of <math>1/f<sub>s</sub></math>. Can be negative and/or multiple slots.
 `TBF_SAMPLES`  | `sint32`               | [1-TODO]   | Length of time to output, in units of samples at <math>f<sub>s</sub></math>.
-<b>`DRX_TUNING_MASK`</b> | `uint64`            | `NUM_DRX_TUNINGS` bits starting at MSB | Bit-mask specifying DRX tunings from which frequency channels are selected. MSB represents the 1<sup>st</sup> tuning.
+<b>`DRX_TUNING_MASK`</b> | `uint64`     | `NUM_DRX_TUNINGS` bits starting at MSB | Bit-mask specifying DRX tunings from which frequency channels are selected. MSB represents the 1<sup>st</sup> tuning.
 
 ### BAM command
 
@@ -260,10 +326,10 @@ Configures and enables a beam recording with new delays and gains.
 #### Arguments
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`BEAM_ID`      | `sint16`               | [1-NUM_BEAMS] | Beam to be changed.
+`BEAM_ID`      | `sint16`               | [1-`NUM_BEAMS`] | Beam to be changed.
 `BEAM_DELAY`   | `fixed16.4[512]`       | [0-256)    | Sample delay for each input.
 `BEAM_GAIN`    | `fixed16.1[256][2][2]` | Full range | 2x2 polarisation mixing matrix for each stand.
-<b>`DRX_TUNING`</b> | `uint8`     | [1-NUM_DRX_TUNINGS] | Frequency tuning to be used.
+<b>`DRX_TUNING`</b> | `uint8`     | [1-`NUM_DRX_TUNINGS`] | Frequency tuning to be used.
 `sub_slot`     | `uint8`                | [0-99]     | Sub-slot at which to take effect.
 
 #### Constraints
@@ -292,7 +358,7 @@ active DRX tunings.
 
 Correlator frequency channels have a width of
 <math>f<sub>c</sub></math>, with channel <math>n &isin;
-[0,`NFREQCHAN`-1]<math> centered at
+[0,`NUM_FREQ_CHANS`-1]<math> centered at
 <math>f<sub>n</sub>=n*f<sub>c</sub></math>. E.g., the first channel is
 centered at 0 Hz (i.e., DC) and spans the frequencies
 <math>[-f<sub>c</sub>/2, +f<sub>c</sub>/2</math>)</math>, the second
@@ -394,12 +460,18 @@ The packet data header shall contain the following entries:
 
 Name           | Type     | Value(s)   | Description
 ---            | ---      | ---        | ---
-`COR_NAVG`     | `sint32` | Full range >0 | The integration time, in units of 1/<math>f<sub>c</sub></math>.
+`sync_word`    | `uint32` | 0xDEC0DE5C | Mark 5C magic number.
+`ID`           | `uint8`  | 0x02       | Mark 5C ID field, used to identify COR packet.
+`Frame no.`    | `uint24` | Full range | Mark 5C frame number within second.
+`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
+`freq_chan`    | `sint16` | [1-`NUM_FREQ_CHANS`] | Frequency channel id of the first channel in the packet.
+`COR_GAIN`     | `sint16` | Full range >0 | Right-bitshift used for gain compensation.
+`time_tag`     | `sint64` | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
+`COR_NAVG`     | `sint32` | Full range >0 | Integration time, in units of subslots.
 `stand_i`      | `sint16` | [1-255]    | Stand number of the unconjugated stand.
 `stand_j`      | `sint16` | [1-255]    | Stand number of the conjugated stand.
-`freq_chan`    | `sint16` | [1-`NFREQCHAN`]   | Frequency channel id of the first channel in the packet.
 
-Each packet payload shall contain 144 frequency channels (each
+Each packet payload shall contain 144 frequency channels (each channel
 spanning a bandwidth of <math>f<sub>c</sub></math>) and 4 polarisation
 products for one baseline (unique pair of stands). The data shall be
 ordered with frequency channel changing slowest, followed by the
@@ -424,3 +496,86 @@ MSB first. Negative weight values indicate that samples were flagged.
     <------- --REAL-- ----><-- --------
     IMAG---- -><----- -WEIGHT- ------->
     ======== ======== ======== ========
+
+### Data rate
+
+Each 3.6 MHz (144-chan) subband:
+
+      4608 B * 256*257/2 / COR_NAVG s
+	= 151.6 MB / COR_NAVG s
+	= 15.16 MB/s @ COR_NAVG=10s
+
+## TBF output interface
+
+The packet data header shall contain the following entries:
+
+Name           | Type     | Value(s)   | Description
+---            | ---      | ---        | ---
+`sync_word`    | `uint32` | 0xDEC0DE5C | Mark 5C magic number.
+`ID`           | `uint8`  | 0x01       | Mark 5C ID field, used to identify TBF packet.
+`Frame no.`    | `uint24` | Full range | Mark 5C frame number within second.
+`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
+`freq_chan`    | `sint16` | [1-`NUM_FREQ_CHANS`] | Frequency channel id of the first channel in the packet.
+`unassigned`   | `sint16` | 0          | Unassigned entry.
+`time_tag`     | `sint64` | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
+
+Each packet payload shall contain 12 frequency channels (each channel
+spanning a bandwidth of <math>f<sub>c</sub></math>) and 2
+polarisations for all stands. The data shall be ordered with frequency
+channel changing slowest, followed by the stand, the polarisation, the
+complex component, and finally a 4-bit sample, for a total payload
+size of 6144 bytes.
+
+    Slowest-changing                             Fastest-changing
+    [12 chans][256 stands][2 pols (X,Y)][2 complex (I,Q)][4 bits] = 6144 bytes
+
+### Data rate
+
+The instantaneous transfer rate for TBF data will be limited to no
+more than 100 MB/s.
+
+Each 0.3 MHz (12-chan) subband:
+
+       6144 B * 25 kHz
+    =  153.6 MB/s
+	=> 65% duty cycle (max)
+
+## BAM output interface
+
+The packet data header shall contain the following entries:
+
+Name           | Type         | Value(s)   | Description
+---            | ---          | ---        | ---
+`sync_word`    | `uint32`     | 0xDEC0DE5C | Mark 5C magic number.
+`ID`           | `uint8`      | Full range | Mark 5C ID field; see BAM_ID table below.
+`Frame no.`    | `uint24`     | Full range | Mark 5C frame number within second.
+`secs_count`   | `uint32`     | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
+`decimation`   | `sint16`     | 5,10,20,40,98,196,392,784 | Sampling rate decimation factor relative to <math>f<sub>s</sub></math>.
+`time_offset`  | `sint16`     | Full range | Time offset (Tnom) in units of <math>f<sub>s</sub></math> since beginning of second.
+`time_tag`     | `sint64`     | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
+`tuning_word`  | `fixed32.32` | Full range | Central tuning frequency as fraction of <math>f<sub>s</sub></math>.
+`DRX_BW`       | `uint8`      | [1-8]      | Bandwidth filter number.
+`status_flags` | `uint24`     | 0          | Unused entry.
+
+Each packet payload shall contain 2048 complex samples from one
+polarisation of one beam. The data shall be ordered with each time
+sample represented by adjacent complex components I,Q, each being
+an 8-bit signed value, for a total payload size of 4096 bytes.
+
+    Slowest-changing       Fastest-changing
+    [2048 samples][2 complex (I,Q)][8 bits] = 4096 bytes
+
+### `BAM_ID`
+
+Bit(s) | Name         | Value           | Description
+---    | ---          | ---             | ---
+0-5    | BEAM_ID      | [1-`NUM_BEAMS`] | Beam number.
+ 6     | ADP flag     | Always 1        | Identifies ADP-BAM packet vs. DP-DRX packet.
+ 7     | Polarisation | 0: X, 1: Y      | Polarisation number.
+
+### Data rate
+
+One 39.2 MHz dual-polarisation 8+8-bit beam:
+
+      2*2 B * 39.2 MHz
+    = 156.8 MB/s
