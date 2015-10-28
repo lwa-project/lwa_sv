@@ -267,15 +267,18 @@ class Roach2MonitorClient(object):
 			dst_hosts = self.config['host']['servers-tbn']
 		else:
 			raise KeyError("Invalid roach mode")
+		src_ip_base = self.config['roach']['data_ip_base']
 		dst_ports = self.config['server']['data_ports']
 		dst_ips   = [host2ip(host) for host in dst_hosts]
 		macs = load_ethers()
 		dst_macs  = [macs[ip] for ip in dst_ips]
 		arp_table = gen_arp_table(dst_ips, dst_macs)
-		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports[0], arp_table)
-		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports[1], arp_table)
+		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports[0], arp_table, src_ip_base)
+		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports[1], arp_table, src_ip_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
+	# TODO: Configure channel selection (based on FST)
+	# TODO: start/stop data flow (remember to call roach.reset() before start)
 
 class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
@@ -504,11 +507,12 @@ class MsgProcessor(ConsumerThread):
 		if key == 'SUBSYSTEM':       return SUBSYSTEM
 		if key == 'SERIALNO':        return self.serial_number
 		if key == 'VERSION':         return self.version
+		# TODO: TBF_STATUS
+		#       TBF_TUNING_MASK
 		if key == 'NUM_STANDS':      return NSTAND
 		if key == 'NUM_SERVERS':     return NSERVERS
 		if key == 'NUM_BOARDS':      return NBOARDS
-		# TODO: TBW_STATUS
-		#       NUM_TBN_BITS, TBN_CONFIG_FREQ, TBN_CONFIG_FILTER, TBN_CONFIG_GAIN
+		# TODO: NUM_TBN_BITS, TBN_CONFIG_FREQ, TBN_CONFIG_FILTER, TBN_CONFIG_GAIN
 		#       NUM_DRX_TUNINGS
 		#       NUM_BEAMS
 		if key == 'BEAM_FIR_COEFFS': return FIR_NCOEF
@@ -586,9 +590,16 @@ class MsgProcessor(ConsumerThread):
 			'SUBSYSTEM':        lambda x: x,
 			'SERIALNO':         lambda x: x,
 			'VERSION':          lambda x: x,
+			#'TBF_STATUS':
+			#'TBF_TUNING_MASK':
+			#'NUM_TBN_BITS':
+			#'NUM_FREQ_CHANS':
+			#'NUM_BEAMS':
 			'NUM_STANDS':       lambda x: struct.pack('>H', x),
 			'NUM_BOARDS':       lambda x: struct.pack('>B', x),
+			#'NUM_SERVERS'
 			'BEAM_FIR_COEFFS':  lambda x: struct.pack('>B', x),
+			#'T_NOMn:
 			'FIR_CHAN_INDEX':   lambda x: struct.pack('>H', x),
 			'FIR':              lambda x: x.astype('>h').tobytes(),
 			'CLK_VAL':          lambda x: struct.pack('>I', x),
@@ -598,10 +609,11 @@ class MsgProcessor(ConsumerThread):
 			'ANT_DCOFFSET':     lambda x: struct.pack('>f', x),
 			'ANT_PEAK':         lambda x: struct.pack('>i', x),
 			# TODO: Implement these BEAM requests
-			'BEAM_RMS':         lambda x: struct.pack('>f', x),
-			'BEAM_SAT':         lambda x: struct.pack('>i', x),
-			'BEAM_DCOFFSET':    lambda x: struct.pack('>f', x),
-			'BEAM_PEAK':        lambda x: struct.pack('>i', x),
+			#         Are these actually in the spec?
+			#'BEAM_RMS':         lambda x: struct.pack('>f', x),
+			#'BEAM_SAT':         lambda x: struct.pack('>i', x),
+			#'BEAM_DCOFFSET':    lambda x: struct.pack('>f', x),
+			#'BEAM_PEAK':        lambda x: struct.pack('>i', x),
 			# TODO: In the spec this is >I ?
 			'BOARD_STAT':       lambda x: struct.pack('>L', x),
 			'BOARD_TEMP_MAX':   lambda x: struct.pack('>f', x),
@@ -609,6 +621,7 @@ class MsgProcessor(ConsumerThread):
 			'BOARD_TEMP_AVG':   lambda x: struct.pack('>f', x),
 			'BOARD_FIRWARE':    lambda x: x,
 			'BOARD_HOSTNAME':   lambda x: x,
+			# TODO: SERVER_STAT
 			'SERVER_TEMP_MAX':  lambda x: struct.pack('>f', x),
 			'SERVER_TEMP_MIN':  lambda x: struct.pack('>f', x),
 			'SERVER_TEMP_AVG':  lambda x: struct.pack('>f', x),
@@ -618,6 +631,12 @@ class MsgProcessor(ConsumerThread):
 			'GLOBAL_TEMP_MIN':  lambda x: struct.pack('>f', x),
 			'GLOBAL_TEMP_AVG':  lambda x: struct.pack('>f', x),
 			'CMD_STAT':         lambda x: pack_reply_CMD_STAT(*x)
+			#'TBN_CONFIG_FREQ
+			#'TBN_CONFIG_FILTER
+			#'TBN_CONFIG_GAIN
+			#'DRX_CONFIG_FREQ
+			#'DRX_CONFIG_FILTER
+			#'DRX_CONFIG_GAIN
 		}[key](value)
 	def _format_report_result(self, key, value):
 		format_function = defaultdict(lambda : str)

@@ -9,6 +9,7 @@ import os
 # TODO: Replace this with katcp (commands remain the same)
 from telnetlib import Telnet # For reading ROACH2 sensors
 import subprocess            # For calling adc16_dump_chans
+import numpy as np
 # Available at https://pypi.python.org/pypi/nvidia-ml-py/
 try:
 	from pynvml import *
@@ -111,8 +112,8 @@ class ROACH2Device(object):
 		nstand = 16 # Not changeable
 		npol   = 2  # Not changeable
 		cmd    = "adc16_dump_chans.rb"
-		out = subprocess.check_output([cmd, "-l", str(nsamps), self.host],
-		                              shell=True)
+		out = subprocess.check_output([cmd, "-l", str(nsamps), self.host])#,
+		                              #shell=True)
 		data = np.fromstring(out, sep=' ', dtype=np.int8)
 		data_shape = (nsamps, nstand, npol)
 		try:

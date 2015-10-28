@@ -64,9 +64,10 @@ class AdpRoach(object):
 			raise RuntimeError("Firmware status request failed: "+err)
 		ok = not ('X' in out or 'BAD' in out)
 		return ok, out
-	def configure_10gbe(self, gbe_idx, dst_ips, dst_ports, arp_table):
+	def configure_10gbe(self, gbe_idx, dst_ips, dst_ports, arp_table,
+						src_ip_base="192.168.40.50"):
 		mac_base    = mac2int("02:02:00:00:00:00")
-		src_ip_base = ip2int("192.168.40.50")
+		src_ip_base = ip2int(src_ip_base)
 		src_port    = 4000 + gbe_idx
 		src_ip      = src_ip_base + (self.num-1)*2 + gbe_idx
 		src_mac     = mac_base + src_ip

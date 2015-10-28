@@ -4,8 +4,8 @@
 		"headnode": {
 			"local_host":   "0.0.0.0",
 			"local_port":        1742,
-			"remote_host_TODO": "10.1.1.2",
-			"remote_host": "localhost",
+			"remote_host": "10.1.1.2",
+			"remote_host_TEST": "localhost",
 			"remote_port":       1743
 		},
 		"server": {
@@ -65,6 +65,7 @@
 		"port":              7147,
 		"username":        "root",
 		"#password":     "130Jy/K",
+		"data_ip_base":  "192.168.40.50",
 		"firmware":     "test_packet_logic_dual_2015_Oct_23_1604.bof",
 		"adc_gain":     4,
 		"max_program_attempts": 5,
