@@ -43,9 +43,9 @@ class AdpRoach(object):
 			attempt += 1
 			sp = subprocess.Popen(cmd_line, stdout=subprocess.PIPE)
 			out, err = sp.communicate()
-			if err is not None:
+			if err is not None or 'error' in out:
 				print out
-				raise RuntimeError("Firmware programming failed: "+err)
+				raise RuntimeError("Firmware programming failed: "+str(err))
 			time.sleep(1.0) # Note: Problems arose when this was set to only 0.1s
 			try:
 				ok, _ = self.check_serdes()
@@ -61,11 +61,13 @@ class AdpRoach(object):
 			raise ValueError("Not an ADC16 firmware")
 		if err is not None or 'deskew' not in out:
 			print out
-			raise RuntimeError("Firmware status request failed: "+err)
+			raise RuntimeError("Firmware status request failed: "+str(err))
 		ok = not ('X' in out or 'BAD' in out)
 		return ok, out
 	def configure_10gbe(self, gbe_idx, dst_ips, dst_ports, arp_table,
-						src_ip_base="192.168.40.50"):
+	                    src_ip_base="192.168.40.50"):
+		if isinstance(dst_ports, int):
+			dst_ports = [dst_ports] * len(dst_ips)
 		mac_base    = mac2int("02:02:00:00:00:00")
 		src_ip_base = ip2int(src_ip_base)
 		src_port    = 4000 + gbe_idx

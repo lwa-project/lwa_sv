@@ -273,8 +273,10 @@ class Roach2MonitorClient(object):
 		macs = load_ethers()
 		dst_macs  = [macs[ip] for ip in dst_ips]
 		arp_table = gen_arp_table(dst_ips, dst_macs)
-		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports[0], arp_table, src_ip_base)
-		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports[1], arp_table, src_ip_base)
+		dst_ports0 = [dst_ports[0]] * len(dst_ips)
+		dst_ports1 = [dst_ports[1]] * len(dst_ips)
+		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base)
+		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
 	# TODO: Configure channel selection (based on FST)
@@ -534,7 +536,7 @@ class MsgProcessor(ConsumerThread):
 			board      = input2board(inp)
 			samples = self.roaches[board].get_samples(slot, stand, pol,
 			                                          STAT_SAMP_SIZE)
-			op = args[3]
+			op = args[2]
 			return reduce_ops[op](samples)
 		# TODO: BEAM_*
 		#  BEAM%i_DELAY
