@@ -21,6 +21,7 @@ from collections import defaultdict
 import logging
 import struct
 import zmq
+import paramiko # For ssh'ing into roaches to call reboot
 
 __version__    = "0.1"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -231,12 +232,19 @@ class Roach2MonitorClient(object):
 		self.host   = self.roach.hostname
 		self.device = ROACH2Device(self.host)
 	def reboot(self):
-		# Note: This requires ssh authorized_keys to have been set up
-		try:
-			subprocess.check_output(['ssh', 'root@'+self.host,
-			                         'shutdown -r now'])
-		except subprocess.CalledProcessError:
-			raise RuntimeError("Roach reboot command failed")
+		# TODO: Use this instead (requires paramiko to be pip installed)
+		ssh = paramiko.SSHClient()
+		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+		ssh.connect(self.host, username='root',
+		            password=self.config['roach']['password'])
+		ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('reboot')
+		#ssh_stdout.read()
+		## Note: This requires ssh authorized_keys to have been set up
+		#try:
+		#	subprocess.check_output(['ssh', 'root@'+self.host,
+		#	                         'shutdown -r now'])
+		#except subprocess.CalledProcessError:
+		#	raise RuntimeError("Roach reboot command failed")
 	def get_samples(self, slot, stand, pol, nsamps=None):
 		return self.get_samples_all(nsamps)[stand,pol]
 	@lru_cache(maxsize=4)
