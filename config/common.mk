@@ -19,48 +19,49 @@ SOCK_BUF_LIMIT            ?= "536870912"
 
 all:
 
+.PHONY: configure_grub
 $(GRUB_CONF): ./grub
 	cp $< $@
 	update-grub
-grub: $(GRUB_CONF)
-.PHONY grub
+configure_grub: $(GRUB_CONF)
 
+.PHONY: iptables
 $(IPTABLES_CONF):
 	iptables -A FORWARD -s $(MGMT_SUBNET) -i eth1 -o eth0 -m conntrack --ctstate NEW -j ACCEPT
 	iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 	iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 	sh -c "iptables-save > $@"
 iptables: $(IPTABLES_CONF)
-.PHONY iptables
 
+.PHONY: network
 $(NETWORK_CONF): ./interfaces
 	cp $< $@
 	ifdown --exclude=lo -a && ifup --exclude=lo -a # Restart networking
 network: $(NETWORK_CONF) iptables
-.PHONY network
 
+.PHONY: resolvconf
 $(RESOLVCONF): ./resolv.conf.d_tail
 	cp $< $@
 	resolvconf -u
 resolvconf: $(RESOLVCONF)
-.PHONY resolvconf
 
+.PHONY: dnsmasq
 $(DNSMASQ_CONF): ./dnsmasq.conf network
 	cp $< $@
 	service dnsmasq restart
 dnsmasq: $(DNSMASQ_CONF)
-.PHONY dnsmasq
 
+.PHONY: configure_hosts
 $(HOSTS_CONF): ../hosts network
 	cp $< $@
-hosts: $(HOSTS_CONF)
-.PHONY: hosts
+configure_hosts: $(HOSTS_CONF)
 
+.PHONY: configure_ethers
 $(ETHERS_CONF): ./ethers network
 	cp $< $@
-ethers: $(ETHERS_CONF)
-.PHONY: ethers
+configure_ethers: $(ETHERS_CONF)
 
+.PHONY: ssh
 $(SSHD_CONF): ./sshd_config
 	cp $< $@
 $(SSH_CONF): ./ssh_config
@@ -68,7 +69,6 @@ $(SSH_CONF): ./ssh_config
 ssh: $(SSHD_CONF) $(SSH_CONF) ../ssh_hosts network
 	ssh-keyscan -t rsa,dsa,ecdsa -f ../ssh_hosts | sort -u - /etc/ssh/ssh_known_hosts | tee /etc/ssh/ssh_known_hosts
 	restart ssh
-.PHONY: ssh
 
 nfs_server: network
 	apt-get install -y nfs-kernel-server
