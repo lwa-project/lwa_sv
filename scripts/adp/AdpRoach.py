@@ -78,34 +78,50 @@ class AdpRoach(object):
 		ip_addr_bram_vals = np.zeros(1024, 'L')
 		ip_addr_bram_vals[:len(dst_ips)] = [ip2int(ip) for ip in dst_ips]
 		ip_addr_bram_packed = struct.pack('>1024L', *ip_addr_bram_vals)
-		self.fpga.write('gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
+		self.fpga.write('pkt_gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
 		ip_port_bram_vals = np.zeros(1024, 'L')
 		ip_port_bram_vals[:len(dst_ports)] = [int(port) for port in dst_ports]
 		ip_port_bram_packed = struct.pack('>1024L', *ip_port_bram_vals)
-		self.fpga.write('gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
+		self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
 		return self.check_link(gbe_idx)
 	def reset(self):
-		self.fpga.write_int('rst', 0x0)
-		self.fpga.write_int('rst', 0x3)
-		self.fpga.write_int('rst', 0x0)
+		self.fpga.write_int('adc_rst', 0x0)
+		self.fpga.write_int('adc_rst', 0x3)
+		self.fpga.write_int('adc_rst', 0x0)
 		time.sleep(0.1)
 	def check_link(self, gbe_idx):
-		gbe_link = self.fpga.read_int('gbe%i_linkup' % gbe_idx)
+		gbe_link = self.fpga.read_int('pkt_gbe%i_linkup' % gbe_idx)
 		return bool(gbe_link)
-	def configure_fengine(self, gbe_idx, nsubband, subband_nchan, start_chan):
+	def configure_fengine(self, gbe_idx, nsubband, subband_nchan, start_chan,
+						  scale_factor=1.948, shift_factor=27):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
+		assert( 0 <= gbe_idx and gbe_idx < 3 )
+		assert( 0 <= start_chan and start_chan < 4096 )
 		stop_chan = start_chan + nsubband*subband_nchan
-		self.fpga.write_int('n_chan_per_sub',             subband_nchan)
-		self.fpga.write_int('gbe%i_n_subband'  % gbe_idx, nsubband)
-		self.fpga.write_int('gbe%i_start_chan' % gbe_idx, start_chan)
-		self.fpga.write_int('gbe%i_stop_chan'  % gbe_idx, stop_chan)
-	def start_data(self, gbe0=True, gbe1=True):
-		self.fpga.write_int('tx_enable', gbe0*(1<<0) + gbe1*(1<<1))
+		self.fpga.write_int('pkt_gbe%i_n_chan_per_sub' % gbe_idx, subband_nchan)
+		self.fpga.write_int('pkt_gbe%i_n_subband'      % gbe_idx, nsubband)
+		self.fpga.write_int('pkt_gbe%i_start_chan'     % gbe_idx, start_chan)
+		self.fpga.write_int('pkt_gbe%i_stop_chan'      % gbe_idx, stop_chan)
+		self.fpga.write_int('fft_f1_fft_shift', 65535)
+		self.fpga.write_int('fft_f2_fft_shift', 65535)
+		self.fpga.write_int('fft_f3_fft_shift', 65535)
+		self.fpga.write_int('fft_f4_fft_shift', 65535)
+		scaledata = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor
+		cstr = struct.pack('>4096l', *scaledata)
+		self.fpga.write('fft_f1_cg_bpass_bram', cstr)
+		self.fpga.write('fft_f2_cg_bpass_bram', cstr)
+		self.fpga.write('fft_f3_cg_bpass_bram', cstr)
+		self.fpga.write('fft_f4_cg_bpass_bram', cstr)
+	def start_data(self, gbe0=True, gbe1=True, gbe2=False):
+		self.stop_data()
+		self.fpga.write_int('pkt_tx_enable', gbe_bitset)
 	def stop_data(self):
-		self.fpga.write_int('tx_enable', 0)
+		self.fpga.write_int('pkt_tx_enable', 0)
+		self.reset()
 	def check_overflow(self):
-		fifo_pc_full = self.fpga.read_int('fifo_pc_full')
-		gbe0_oflow   = self.fpga.read_int('gbe0_oflow_cnt')
-		gbe1_oflow   = self.fpga.read_int('gbe1_oflow_cnt')
-		fifo_percent = (fifo_pc_full * 1.0 / 2**12) * 100
-		return fifo_percent, (gbe0_oflow, gbe1_oflow)
+		gbe0_oflow = self.fpga.read_int('pkt_gbe0_oflow_cnt')
+		gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
+		return (gbe0_oflow, gbe1_oflow)
+		#fifo_pc_full = self.fpga.read_int('fifo_pc_full')
+		#fifo_percent = (fifo_pc_full * 1.0 / 2**12) * 100
+		#return fifo_percent, (gbe0_oflow, gbe1_oflow)

@@ -66,9 +66,12 @@
 		"username":        "root",
 		"#password":     "130Jy/K",
 		"data_ip_base":  "192.168.40.50",
-		"firmware":     "test_packet_logic_dual_2015_Oct_23_1604.bof",
-		"adc_gain":     4,
+		"data_port_base":    4000,
+		"firmware":      "sevilleta_devel2_2015_Nov_03_1541.bof",
 		"max_program_attempts": 5,
+		"adc_gain":             4,
+		"scale_factor":     1.948,
+		"shift_factor":        27,
 		"temperatures": ["ambient", "ppc", "fpga", "inlet", "outlet"]
 	}
 }

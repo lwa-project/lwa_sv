@@ -20,6 +20,7 @@ import time
 from collections import defaultdict
 import logging
 import struct
+import subprocess
 import zmq
 import paramiko # For ssh'ing into roaches to call reboot
 
@@ -173,8 +174,10 @@ def pretty_print_bytes(bytestring):
 
 class AdpServerMonitorClient(object):
 	def __init__(self, config, log, host, timeout=0.1):
+		self.config = config
 		self.log  = log
 		self.host = host
+		self.host_ipmi = self.host + "-ipmi"
 		self.port = config['mcs']['server']['local_port']
 		self.sock = _g_zmqctx.socket(zmq.REQ)
 		addr = 'tcp://%s:%i' % (self.host,self.port)
@@ -217,9 +220,9 @@ class AdpServerMonitorClient(object):
 		username = self.config['ipmi']['username']
 		password = self.config['ipmi']['password']
 		#try:
-		return subprocess.check_output(['ipmitool', '-H', self.host,
-		                                '-U', username, '-P', password,
-		                                cmd], shell=True)
+		return subprocess.check_output(['ipmitool', '-H', self.host_ipmi,
+		                                '-U', username, '-P', password] +
+		                                cmd.split())
 		#except CalledProcessError as e:
 		#	raise RuntimeError(str(e))
 
@@ -275,7 +278,8 @@ class Roach2MonitorClient(object):
 			dst_hosts = self.config['host']['servers-tbn']
 		else:
 			raise KeyError("Invalid roach mode")
-		src_ip_base = self.config['roach']['data_ip_base']
+		src_ip_base   = self.config['roach']['data_ip_base']
+		src_port_base = self.config['roach']['data_port_base']
 		dst_ports = self.config['server']['data_ports']
 		dst_ips   = [host2ip(host) for host in dst_hosts]
 		macs = load_ethers()
@@ -283,8 +287,8 @@ class Roach2MonitorClient(object):
 		arp_table = gen_arp_table(dst_ips, dst_macs)
 		dst_ports0 = [dst_ports[0]] * len(dst_ips)
 		dst_ports1 = [dst_ports[1]] * len(dst_ips)
-		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base)
-		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base)
+		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base, src_port_base)
+		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
 	# TODO: Configure channel selection (based on FST)
@@ -355,19 +359,19 @@ class MsgProcessor(ConsumerThread):
 			self.roaches.program()
 		except RuntimeError:
 			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
-			return
+			return -1
 		#self.state['info']   = 'Calibrating ADCs'
 		#try:
 		#	self.roaches.calibrate()
 		#except RuntimeError:
 		#	self.raise_error_state('BEAMFORMER_CALIBRATION_FAILED')
-		#	return
+		#	return -1
 		self.state['info']   = 'Configuring FPGAs for DRX mode'
 		try:
 			self.roaches.configure_mode('DRX')
 		except RuntimeError:
 			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
-			return
+			return -1
 		self.state['info']   = 'Powering on servers'
 		try:
 			# Note: This does nothing if they're already on
@@ -375,12 +379,13 @@ class MsgProcessor(ConsumerThread):
 			self._wait_until_servers_power('on', 90)
 		except RuntimeError:
 			self.raise_error_state('SERVER_STARTUP_FAILED')
-			return
+			return -1
 		
 		# TODO: Need to make sure server pipelines etc. start up and respond here
 		
 		self.state['status'] = 'NORMAL'
 		self.state['activeProcess'].pop()
+		return 0
 		
 	def sht(self, arg):
 		self.state['activeProcess'].append('SHT')
@@ -396,14 +401,14 @@ class MsgProcessor(ConsumerThread):
 					self.roaches.reboot()
 				except RuntimeError:
 					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
-					return
+					return -1
 			else:
 				try:
 					self.servers.do_power('off')
 					self.roaches.reboot()
 				except RuntimeError:
 					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
-					return
+					return -1
 			self.state['status'] = 'SHUTDWN'
 			self.state['info']   = 'System has been shut down'
 			self.state['activeProcess'].pop()
@@ -435,16 +440,18 @@ class MsgProcessor(ConsumerThread):
 						self.state['info']   = 'System has been shut down'
 						self.state['activeProcess'].pop()
 				self.thread_pool.add_task(soft_power_off)
+		return 0
 		
-	def _wait_until_servers_power(self, state, max_wait=30):
+	def _wait_until_servers_power(self, target_state, max_wait=30):
 		# TODO: Need to check for ping (or even ssh connectivity) instead of 'power is on'?
 		time.sleep(6)
 		wait_time = 6
-		while not all(self.servers.get_power_state() == state):
+		while not all( (state == target_state
+		                for state in self.servers.get_power_state()) ):
 			time.sleep(2)
 			wait_time += 2
 			if wait_time >= max_wait:
-				raise RuntimeError("Timed out waiting for server(s) to turn "+state)
+				raise RuntimeError("Timed out waiting for server(s) to turn "+target_state)
 		
 	def process(self, msg):
 		if msg.cmd == 'PNG':
@@ -661,13 +668,14 @@ class MsgProcessor(ConsumerThread):
 		exec_slot  = msg.slot + exec_delay
 		accept = True
 		reply_data = ""
+		exit_status = -1
 		if msg.cmd == 'INI':
-			self.ini()
+			exit_status = self.ini()
 		elif msg.cmd == 'SHT':
-			self.sht(msg.data)
+			exit_status = self.sht(msg.data)
 		elif msg.cmd == 'STP':
 			mode = msg.data
-			
+			exit_status = -1
 		elif msg.cmd == 'DRX':
 			exit_status = self.drx.process_command(msg)
 		elif msg.cmd == 'FST':
@@ -678,6 +686,7 @@ class MsgProcessor(ConsumerThread):
 			exit_status = 0
 			accept = False
 			reply_data = 'Unknown command: %s' % msg.cmd
+		exit_code = exit_status # TODO: Is this right?
 		if exit_status != 0:
 			accept = False
 			reply_data = "0x%02X! %s" % (exit_code, self.state['lastlog'])
