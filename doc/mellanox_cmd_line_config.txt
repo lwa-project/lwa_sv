@@ -1,4 +1,26 @@
-ssh admin@mellanox
+
+The Mellanox SX1024 must be configured for ADP as follows:
+  Change MTU on all ports to 9000 bytes
+  Enable flow control for receiving on the 10g ports used by the FPGAs
+  Enable flow control for sending   on the 40g ports used by the servers
+  Manually specify the MAC->port bindings for the servers
+
+The web management interface can be accessed as follows:
+  $ ssh adp -L 8989:mellanox:443
+  Open https://localhost:8989 in a browser window
+  Log in with username: 'admin', password: 'admin'
+
+The MAC->port bindings can be set via the web interface:
+  Under the "ETH Mgmt" tab, select "MAC Table" in the menu on the left
+  Use the "Add Static Unicast MAC Address" form to add an entry for
+    each server, specifying its 40g MAC address, VLAN 1, and the
+	port number ("Interface") it's plugged into on the switch.
+
+For some settings the web interface is either too slow or incomplete. In
+  these cases, the command line console interface can be used. See below
+  for the commands to enter.
+
+$ ssh admin@mellanox
 <password=admin>
 > enable
 # configure terminal

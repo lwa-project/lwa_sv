@@ -1,4 +1,319 @@
 
+Real-time DRX tuning change procedure
+-------------------------------------
+OLD, see below for new version
+slot s-2: Receive DRX command from MCS
+slot s-1: Process DRX command
+            Send command to server pipelines:
+              Metadata includes new UTC_START and tuning parameters
+            Restart roach flow:
+              sleep 0.5
+              stop roach flow on next PPS (tx_enable(0x0))
+              sleep 1.0
+              change roach tuning registers
+              start roach flow on next PPS (tx_enable(0x3))
+slot s  : Command is applied (new settings come into effect)
+
+ACTUALLY, break into separate 'STP' and 'DRX' commands:
+  slot s-2: Receive STP-DRX command
+  slot s-1: Process STP-DRX command: sleep 0.5, tx_enable(0x0)
+            Receive DRX command
+  slot s:   (Roach flow stops)
+            Process DRX command: sleep 0.5, change registers, tx_enable(0x3)
+                                 Send command to server pipelines
+  slot s+1: (Roach flow starts again with new settings)
+
+Pipeline flow management:
+  Task receives STOP command before (or perhaps while) input.open/advance()
+  Task breaks out of processing loop and calls input.close()
+  Task receives START command plus metadata
+  Task calls input.open() and enters processing loop
+  Task receives STOP command
+  Task receives SHUTDOWN command
+  Task breaks out of main loop and its thread ends
+
+** ZMQ tcp sockets for commands?
+     Allow inter-task comms and/or remote control
+     Which socket type?
+
+Reorder task:
+  Receives START/STOP/SHUTDOWN commands from remote adp-control service
+    New UTC_START, channel info etc.
+  Passes them on to its data output
+
+Correlator task:
+  Receives updates to COR_NAVG, DRX_TUNING_MASK and COR_GAIN
+  Have accompanying 'time', 'navg' and 'gain' outputs alongside visibility snapshots
+  Updates arriving mid-integration cause it to be cancelled
+
+TBF task:
+
+FileRead:
+  while running:
+    _file.open(filename);
+	//output.push("event:start, filename:"+filename);
+	output.start(header_str);
+    while processing:
+	  auto out = output.open();
+	  _file.read(out, out.size_bytes());
+	  if( !_file ) {
+	    out.set_nframe(_file.gcount());
+	    //out.set_eod();
+		break;
+	  }
+	//output.push(
+	output.finish();
+
+Constructor sets input and output names and output spaces
+
+RingBuffer3:
+  Need separate 'queue' objects for state management (and headers etc.)
+  Treat actual ring buffer as low-level object whose state is not to be
+    used at a high level.
+	I.e., _head etc. only used indirectly
+
+Flow:
+  _start;      // Offset in underlying RingBuffer
+  //_finish;     // Offset in underlying RingBuffer
+  _head;       // Offset relative to _start and _finish
+  _tail;       // Offset relative to _start and _finish
+  Ring* _data; // Underlying data storage
+  //string _hdr; // Header metadata storage
+
+Pipe:
+  bool        shutdown = false;
+  Ring        data_ring;
+  Ring<Flow>  flow_ring;
+  //queue<Flow> flows;
+  WriteFlow start_flow();
+  ReadFlow  open_flow();
+
+Pipe.start_flow(hdr):
+  flow_ring.open_write();
+  write start = data_ring._reserve_head;
+  write head  = 0;
+  write tail  = 0;
+  write hdr   = hdr;
+  return
+
+
+PipeWriter : public RingWriter<Ring<Flow> >
+PipeReader : public RingReader<Ring<Flow> >
+FlowWriter : public RingWriter<Ring<data> >
+FlowReader : public RingReader<Ring<data> >
+
+Task:
+  PipeReader input1;
+  PipeWriter output1;
+
+FlowWriter     out_flow  = task.output1.start_flow(hdr);
+RingWriteBlock out_block = out_flow.open_block();
+
+FlowReader in_flow = task.input1.open_flow();
+in_flow.open(guaranteed);
+
+Task:
+  map<string,Pipe> _pipes;
+
+while true:
+  try:
+    in_flow1 = input1.open_flow();
+    in_flow2 = input2.open_flow();
+  catch PipeShutdown:
+    break;
+  try:
+    in_flow3 = input3.open_flow(); // Optional inputs
+  catch PipelineShutdown:
+    pass
+  // Process input headers into output headers...
+  out_flow1 = output1.start_flow(out_hdr1);
+  out_flow2 = output2.start_flow(out_hdr2);
+  in_flow1.open(guaranteed);
+  in_flow2.open(guaranteed);
+  do:
+    out_flow1.open_block();
+	out_flow2.open_block();
+	process();
+	try:
+	  input1.advance();
+	  input2.advance();
+	except EOD: // EOD with no further data available (i.e., EOD was set _before_ advancing)
+	  break;
+	out_flow1.close_block();
+	out_flow2.close_block();
+  while true;
+
+while inputs_alive:
+  in_hdrs = wait_for_inputs_start();
+  start_outputs(out_hdrs);
+  open_inputs();
+  while inputs_data_available:
+    open_output_blocks();
+	process();
+	close_output_blocks();
+    advance_inputs();
+  close_inputs();
+  finish_outputs();
+
+start(hdr)
+open_write(
+
+  States:
+    start(hdr): active = true, reset head etc.
+	open_write()
+	close_write()
+	open_read_at()
+	close_read()
+	finish(): active = false
+
+FileWrite:
+  for each input:
+    input.set_ring(...);
+  for each output:
+    output.set_ring(...);
+  while running:
+    // TODO: Is there an issue with headers being overwritten after a very short observation?
+    in_headers['input1'] = input1.wait_for_start();
+	in_headers['input2'] = input2.wait_for_start();
+	// Automatically set RingReader shapes to match 'shape' in the headers
+	input1.set_shape(in_headers['input1']['shape']);
+	input2.set_shape(in_headers['input2']['shape']);
+	out_headers = Object();
+	this->start(in_headers, out_headers);
+	  // User overrides read shape with custom value
+	  input2.set_shape(...);
+	  // Headers typically copied to output
+	  out_headers = in_headers;
+	  // User specifies output shapes (which otherwise default to 1)
+	  out_headers['output1']['shape'] = in_headers['input1']['shape'][:-1];
+	  out_headers['output2']['shape'] = ...;
+	  //output1.set_shape(in_headers['input1']['shape'][:-1];
+	  //output2.set_shape(...);
+	  _file.open(in_headers['input1']['filename']);
+	// Set output shapes to default to 1 if not specified by user
+	if 'shape' not in out_headers['output1']:
+	  out_headers['output1']['shape'] = 1
+	...
+	// Automatically set RingWriter shapes to match 'shape' in the headers
+	output1.set_shape(out_headers['output1']['shape']);
+	output2.set_shape(out_headers['output2']['shape']);
+	// Make ring memory allocation requests
+	// TODO: Allow user to call these themselves if required (in start() or separate callback?)
+	for each input:
+	  input.request_size_bytes(...);
+	for each output:
+	  output.request_size_bytes(...);
+	// Call start on all outputs
+	for each output:
+	  output.start(out_headers[output]);
+	// Open inputs for reading
+	for each input:
+	  input.open(guaranteed);
+	// TODO: End-of-data support
+	while processing:
+	  this->process();
+	    _file.write(&input[0], input.size_bytes());
+	  // Check if EOD occurred within the currently-open span
+	  if input[0].eod(): // TODO: Just primary input?
+	    break;
+	  this->advance();
+	// Call finish on all outputs
+	this->finish();
+	  _file.close();
+	for each output:
+	  output.finish();
+	for each input:
+	  input.close();
+	
+    
+    size_t header_size;
+    header_str = input.start(&header_size);
+	Object header_obj = parse_value(header_str, header_str+header_size).get<Object>();
+	this->start(header_obj);
+	  _file.open(lookup_string(header_obj, 'filename'));
+	  input.request_size 
+    input.open();
+    
+
+** TODO: Output spaces must be set before calling request_*
+           To support input dependency, must set space in the constructor
+           For now, don't allow calling get_input_ring in constructors
+		     Just have users use output.set_space(lookup_string(params(), ...));
+
+Bifrost pipeline flow ideas
+---------------------------
+Break flow up into discrete start/stop cycles
+  This is batch-like, but is also fine for long/continuous-running jobs (observations)
+  Flow begins with metadata `headers' from inputs
+    ** How to avoid deadlock with cyclic inputs?
+	** How to handle EOD signal propagating down pipeline at a specific 'time'?
+	  Writers set an EOD byte offset in RingBuffer, and when a reader reads
+	    to or past this point it is told about the EOD and given only the valid data.
+		More specifically, readers wait on open_read until data are available
+		  or EOD is set within their requested span, in which case they return
+		  the available data and indicate that EOD was reached.
+		  ** Might be able to just return an EOD frame number, which can be
+		       used by the reading task and passed on to the outputs.
+
+RecvUDP
+  payloads: {shape: payload_size_max}
+
+header:
+{
+	"__pipeline__": {...complete pipeline definition...},
+	"__history__":  [],
+	"__current__": {
+	  "__source_task__": "PacketCapture",
+	  "shape": [2,3,4],
+	  "nbit":        4,
+	  "param3": "blah",
+	  ...
+	  }
+}
+
+multiple inputs multiple outputs?
+  ** Don't worry about history for now, as it complicates things
+       E.g., 3 in + 3 out => each output's history includes all 3 inputs?
+	     => exponential growth
+       Find a way to automate it later
+
+__history__: [{__name__: "Task0", __class__: "std/RecvUDP", blah:"blah"},
+			  {task1}, ...],
+
+create_output(name) -> Pipeline::create_ring(name)
+input.init(ring)
+output.init(ring)
+
+void main() {
+	while( !this->shutdown_requested ) {
+		init();
+		  headers = input.read_header() for input in non-cyclic inputs
+		  output.write_header(new_header);
+		clear_outputs();
+		open_inputs();
+		while( !eod ) {
+			process_inputs();
+			advance_inputs();
+		}
+	}
+}
+
+
+in = open/advance_inputs
+if( in.eod ) {
+	outputs.set_eod(in.eod_frame);
+}
+
+while !shutdown:
+    clear_outputs
+    recv_input_headers
+	process_input_headers
+    send_output_headers
+    open_inputs
+    while !eod:
+      process
+      advance_inputs
+
 TBF
 ---
 Output packet format:                [12 chans, 256 stands, 2 pols, 2 cpx, 4 bits] = 6144 bytes
@@ -117,6 +432,18 @@ ledaovro1~$ dd if=/dev/zero of=/data1/one/output conv=fdatasync bs=384k count=1k
 > 104 MB/s
 ledaovro12~$ dd if=/dev/zero of=/data1/one/output conv=fdatasync bs=384k count=1k && rm -f /data1/one/output
 > 52.4 MB/s
+adp@adp1:~$ dd if=/dev/zero of=/data/write_test.bin conv=fdatasync bs=384k count=2k && rm -f /data/write_test.bin
+> 160 MB/s
+
+96 chans/subband * 0.025 MHz/chan = 2.4 MHz (= 2 MHz + 10% guard bands)
+2.4 MHz * 32 inputs * 4+4 bits    = 76.8 MB/s/subarray
+
+Proposal: Write F-domain data directly to disk and do T-engine offline?
+            Would allow writing 4+4 instead of 8+8 bits, doubling the BW
+			Would allow easy and high-quality T-engine implem in Python
+			Bifrost pipeline would just be: RecvUDP, ?Depacketize, ?FileWrite
+			Required metadata is just stand0, nstand, chan0, nchan, and time information
+			Data order on disk would be: [time, 96 chans, 16 stands, 2 pols, 2 cpx, 4 bits]
 
 No. channels per packet/stream
 ------------------------------

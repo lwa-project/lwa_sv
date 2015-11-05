@@ -216,3 +216,9 @@ And after a few mins check that there is a '*' next to a line from the command:
  golem.canonical .INIT.          16 u    -   64    0    0.000    0.000   0.000
 *chronos.cfa.har .GPS.            1 u    6   64   17    0.177   45.443   5.992
 
+Convenient SSH access from behind a gateway:
+  Add the following to your ~/.ssh/config file:
+Host adp
+	 ProxyCommand ssh cfa@198.59.133.185 -W %h:%p
+	 User adp
+	 Ciphers arcfour
