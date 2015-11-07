@@ -294,6 +294,9 @@ class Roach2MonitorClient(object):
 	# TODO: Configure channel selection (based on FST)
 	# TODO: start/stop data flow (remember to call roach.reset() before start)
 
+def exception_in(vals, error_type=Exception):
+	return any([isinstance(val, error_type) for val in vals])
+
 class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
 	             max_process_time=1.0, ncmd_save=4, dry_run=False):
@@ -340,105 +343,103 @@ class MsgProcessor(ConsumerThread):
 		                         (self.serial_number, self.version))
 		self.state['activeProcess'] = []
 		
-	def raise_error_state(self, state):
+	def raise_error_state(self, cmd, state):
 		# TODO: Need new codes? Need to document them?
-		state_map = {'BOARD_SHUTDOWN_FAILED':    (0x08,'Board-level shutdown failed'),
-					 'BOARD_PROGRAMMING_FAILED': (0x04,'Board programming failed'),
-					 'SERVER_STARTUP_FAILED':    (0x09,'Server startup failed')}
+		state_map = {'BOARD_SHUTDOWN_FAILED':      (0x08,'Board-level shutdown failed'),
+					 'BOARD_PROGRAMMING_FAILED':   (0x04,'Board programming failed'),
+		             'BOARD_CONFIGURATION_FAILED': (0x05,'Board configuration failed'),
+		             'SERVER_STARTUP_FAILED':      (0x09,'Server startup failed'),
+					 'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed')}
 		code, msg = state_map[state]
-		self.state['status'] = 'ERROR'
-		self.state['info']   = 'SUMMARY! 0x%02X! %s' % (code, msg)
+		self.state['lastlog'] = '%s: Finished with error' % cmd
+		self.state['status']  = 'ERROR'
+		self.state['info']    = 'SUMMARY! 0x%02X! %s' % (code, msg)
 		self.state['activeProcess'].pop()
+		return code
 		
 	def ini(self):
+		start_time = time.time()
+		# Note: Return value from this function is not used
 		self.state['activeProcess'].append('INI')
 		self.state['status'] = 'BOOTING'
 		self.state['info']   = 'Running INI sequence'
 		self.state['info']   = 'Programming FPGAs'
-		try:
-			self.roaches.program()
-		except RuntimeError:
-			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
-			return -1
-		#self.state['info']   = 'Calibrating ADCs'
-		#try:
-		#	self.roaches.calibrate()
-		#except RuntimeError:
-		#	self.raise_error_state('BEAMFORMER_CALIBRATION_FAILED')
-		#	return -1
+		if exception_in(self.roaches.program()):
+			return self.raise_error_state('INI', 'BOARD_PROGRAMMING_FAILED')
 		self.state['info']   = 'Configuring FPGAs for DRX mode'
-		try:
-			self.roaches.configure_mode('DRX')
-		except RuntimeError:
-			self.raise_error_state('BOARD_PROGRAMMING_FAILED')
-			return -1
+		if exception_in(self.roaches.configure_mode('DRX')):
+			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		self.state['info']   = 'Powering on servers'
+		if exception_in(self.servers.do_power('on')):
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED');
 		try:
-			# Note: This does nothing if they're already on
-			self.servers.do_power('on')
-			self._wait_until_servers_power('on', 90)
+			self._wait_until_servers_power('on', 60)
 		except RuntimeError:
-			self.raise_error_state('SERVER_STARTUP_FAILED')
-			return -1
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED');
 		
 		# TODO: Need to make sure server pipelines etc. start up and respond here
 		
-		self.state['status'] = 'NORMAL'
+		self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
+		self.state['status']  = 'NORMAL'
 		self.state['activeProcess'].pop()
 		return 0
 		
 	def sht(self, arg):
+		start_time = time.time()
 		self.state['activeProcess'].append('SHT')
 		self.state['status'] = 'SHUTDWN'
 		self.state['info']   = 'System is shutting down'
-		
-		# TODO: Check for errors and set self.state['lastLog'] = 'SHT: finished with error'
-		
 		if 'SCRAM' in arg:
 			if 'RESTART' in arg:
-				try:
-					self.servers.do_power('reset')
-					self.roaches.reboot()
-				except RuntimeError:
-					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
-					return -1
+				if exception_in(self.servers.do_power('reset')):
+					return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+				if exception_in(self.roaches.reboot()):
+					return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
 			else:
-				try:
-					self.servers.do_power('off')
-					self.roaches.reboot()
-				except RuntimeError:
-					self.raise_error_state('BOARD_SHUTDOWN_FAILED')
-					return -1
-			self.state['status'] = 'SHUTDWN'
-			self.state['info']   = 'System has been shut down'
+				if exception_in(self.servers.do_power('off')):
+					return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+				if exception_in(self.roaches.reboot()):
+					return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+			self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
+			self.state['status']  = 'SHUTDWN'
+			self.state['info']    = 'System has been shut down'
 			self.state['activeProcess'].pop()
 		else:
 			if 'RESTART' in arg:
 				def soft_reboot():
+					if exception_in(self.servers.do_power('soft')):
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					if exception_in(self.roaches.reboot()):
+						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
 					try:
-						self.servers.do_power('soft')
 						self._wait_until_servers_power('off')
-						self.servers.do_power('on')
-						self.roaches.reboot()
 					except RuntimeError:
-						self.set_error_state('BOARD_SHUTDOWN_FAILED')
-					else:
-						self.state['status'] = 'SHUTDWN'
-						self.state['info']   = 'System has been shut down'
-						self.state['activeProcess'].pop()
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					if exception_in(self.servers.do_power('on')):
+						return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+					try:
+						self._wait_until_servers_power('on')
+					except RuntimeError:
+						return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+					self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
+					self.state['status']  = 'SHUTDWN'
+					self.state['info']    = 'System has been shut down'
+					self.state['activeProcess'].pop()
 				self.thread_pool.add_task(soft_reboot)
 			else:
 				def soft_power_off():
+					if exception_in(self.servers.do_power('soft')):
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					if exception_in(self.roaches.reboot()):
+						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
 					try:
-						self.servers.do_power('soft')
 						self._wait_until_servers_power('off')
-						self.roaches.reboot()
 					except RuntimeError:
-						self.set_error_state('BOARD_SHUTDOWN_FAILED')
-					else:
-						self.state['status'] = 'SHUTDWN'
-						self.state['info']   = 'System has been shut down'
-						self.state['activeProcess'].pop()
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
+					self.state['status']  = 'SHUTDWN'
+					self.state['info']    = 'System has been shut down'
+					self.state['activeProcess'].pop()
 				self.thread_pool.add_task(soft_power_off)
 		return 0
 		
@@ -663,16 +664,31 @@ class MsgProcessor(ConsumerThread):
 		})
 		return format_function[key](value)
 	
+	def currently_processing(self, *cmds):
+		return any([cmd in self.state['activeProcess'] for cmd in cmds])
 	def process_command(self, msg):
 		exec_delay = 2
 		exec_slot  = msg.slot + exec_delay
 		accept = True
 		reply_data = ""
-		exit_status = -1
+		exit_status = 0
 		if msg.cmd == 'INI':
-			exit_status = self.ini()
+			if currently_processing('INI', 'SHT'):
+				# TODO: This stuff could be tidied up a bit
+				self.state['lastlog'] = ('INI: %s - %s is active and blocking'%
+				                         ('Blocking operation in progress',
+				                          self.state['activeProcess']))
+				exit_status = 0x0C
+			else:
+				self.thread_pool.add_task(self.ini)
 		elif msg.cmd == 'SHT':
-			exit_status = self.sht(msg.data)
+			if currently_processing('INI', 'SHT'):
+				self.state['lastlog'] = ('SHT: %s - %s is active and blocking'%
+				                         ('Blocking operation in progress',
+				                          self.state['activeProcess']))
+				exit_status = 0x0C
+			else:
+				self.thread_pool.add_task(self.sht, msg.data)
 		elif msg.cmd == 'STP':
 			mode = msg.data
 			exit_status = -1
@@ -686,9 +702,8 @@ class MsgProcessor(ConsumerThread):
 			exit_status = 0
 			accept = False
 			reply_data = 'Unknown command: %s' % msg.cmd
-		exit_code = exit_status # TODO: Is this right?
 		if exit_status != 0:
 			accept = False
-			reply_data = "0x%02X! %s" % (exit_code, self.state['lastlog'])
-		self.cmd_status[msg.slot].append( (msg.cmd, msg.ref, exit_code) )
+			reply_data = "0x%02X! %s" % (exit_status, self.state['lastlog'])
+		self.cmd_status[msg.slot].append( (msg.cmd, msg.ref, exit_status) )
 		return accept, reply_data

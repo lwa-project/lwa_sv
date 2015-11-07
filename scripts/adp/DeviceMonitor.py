@@ -7,7 +7,9 @@ TODO: `impmitool sensor list` shows there are also thermal-region and PSU temps 
 
 import os
 # TODO: Replace this with katcp (commands remain the same)
-from telnetlib import Telnet # For reading ROACH2 sensors
+#from telnetlib import Telnet # For reading ROACH2 sensors
+import corr
+import time
 import subprocess            # For calling adc16_dump_chans
 import numpy as np
 # Available at https://pypi.python.org/pypi/nvidia-ml-py/
@@ -96,6 +98,8 @@ class ROACH2Device(object):
 	def __init__(self, host, port=7147):
 		self.host = host
 		self.port = port
+		self.fpga = corr.katcp_wrapper.FpgaClient(host, port)
+		time.sleep(0.1)
 	def samples(self, stand, pol, nsamps=None):
 		if nsamps > 1024:
 			raise ValueError("Requested nsamps exceeds limit of 1024")
@@ -114,6 +118,9 @@ class ROACH2Device(object):
 		cmd    = "adc16_dump_chans.rb"
 		out = subprocess.check_output([cmd, "-l", str(nsamps), self.host])#,
 		                              #shell=True)
+		#cmd = ' '.join([cmd, "-l", str(nsamps), self.host])
+		#print cmd
+		#out = subprocess.check_output(cmd)
 		data = np.fromstring(out, sep=' ', dtype=np.int8)
 		data_shape = (nsamps, nstand, npol)
 		try:
@@ -142,7 +149,6 @@ class ROACH2Device(object):
 	def _read_raw(self, command, *args):
 		"""Connects via Telnet and reads the raw text output of a command"""
 		tel = Telnet(self.host, self.port)
-		tel.read_some()
 		command_line = command
 		argstr = ' '.join(args)
 		if len(args):
@@ -157,12 +163,17 @@ class ROACH2Device(object):
 		"""Returns a dictionary of all current sensor values
 		     along with descriptions, units, types and statuses."""
 		results = {}
+		"""
 		try:
 			response = self._read_raw('sensor-list')
 		except:
 			# HACK to avoid having to catch exceptions all the time
 			return defaultdict(lambda : {'value': float('nan')})
 		for line in response.split('\n'):
+		"""
+		status, response = self.fpga._request('sensor-list', 1)
+		response = [str(x) for x in response]
+		for line in response:
 			if line.startswith('#sensor-list'):
 				vals = line.split()
 				name = vals[1]
@@ -170,12 +181,17 @@ class ROACH2Device(object):
 				results[name]['desc']  = vals[2].replace(r'\_',' ')
 				results[name]['units'] = vals[3]
 				results[name]['type']  = vals[4]
+		"""
 		try:
 			response = self._read_raw('sensor-value')
 		except:
 			# HACK see above
 			return defaultdict(lambda : {'value': float('nan')})
 		for line in response.split('\n'):
+		"""
+		status, response = self.fpga._request('sensor-value', 1)
+		response = [str(x) for x in response]
+		for line in response:
 			if line.startswith('#sensor-value'):
 				vals = line.split()
 				name   = vals[-3]

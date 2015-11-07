@@ -28,12 +28,12 @@ class AdpRoach(object):
 		#self.fpga.progdev(boffile)
 		#time.sleep(1.0)
 		if len(adc_registers) > 0:
-			regstring = "-r "+','.join(["0x%x=0x%x" % (key,val)
-			                            for key,val in adc_registers.items()])
+			regstring = ','.join(["0x%x=0x%x" % (key,val)
+			                      for key,val in adc_registers.items()])
 		else:
 			regstring = ""
 		#cmd_line = ["adc16_init.rb", self.hostname, boffile, '-g', '%s' % gain]
-		cmd_line = ["adc16_init.rb", regstring, self.hostname, boffile]
+		cmd_line = ["adc16_init.rb", "-r", regstring, self.hostname, boffile]
 		ok = False
 		attempt = 0
 		while not ok:
@@ -41,17 +41,16 @@ class AdpRoach(object):
 				raise RuntimeError("SERDES calibration failed "
 				                   "after %i attempt(s)" % max_attempts)
 			attempt += 1
-			sp = subprocess.Popen(cmd_line, stdout=subprocess.PIPE)
-			out, err = sp.communicate()
-			if err is not None or 'error' in out:
-				print out
-				raise RuntimeError("Firmware programming failed: "+str(err))
+			try:
+				out = subprocess.check_output(cmd_line)
+			except subprocess.CalledProcessError as e:
+				raise RuntimeError("Firmware programming failed: "+str(e))
 			time.sleep(1.0) # Note: Problems arose when this was set to only 0.1s
 			try:
 				ok, _ = self.check_serdes()
 			except ValueError:
 				ok = True # Fine if non-ADC16 firmware
-		self.fpga.write_int('roach_id', self.num)
+		self.fpga.write_int('pkt_roach_id', self.num)
 		return out
 	def check_serdes(self):
 		cmd_line =["adc16_status.rb", "-c", self.hostname]
