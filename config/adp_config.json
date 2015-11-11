@@ -59,16 +59,17 @@
 		"cpu_ids":    [0, 1],
 		"gpu_ids":    [0, 1],
 		"disk_ids":   ["/"],
-		"data_ports": [4015, 4016]
+		"data_ports": [4015, 4016],
+		"startup_timeout": 60
 	},
 	"roach": {
 		"port":              7147,
 		"username":        "root",
-		"#password":     "130Jy/K",
+		"password":     "130Jy/K",
 		"data_ip_base":  "192.168.40.50",
 		"data_port_base":    4000,
 		"firmware":      "sevilleta_devel2_2015_Nov_03_1541.bof",
-		"max_program_attempts": 5,
+		"max_program_attempts": 10,
 		"adc_gain":             4,
 		"scale_factor":     1.948,
 		"shift_factor":        27,

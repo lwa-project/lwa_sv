@@ -287,8 +287,8 @@ class Roach2MonitorClient(object):
 		arp_table = gen_arp_table(dst_ips, dst_macs)
 		dst_ports0 = [dst_ports[0]] * len(dst_ips)
 		dst_ports1 = [dst_ports[1]] * len(dst_ips)
-		ret0 = roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base, src_port_base)
-		ret1 = roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
+		ret0 = self.roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base, src_port_base)
+		ret1 = self.roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
 	# TODO: Configure channel selection (based on FST)
@@ -346,36 +346,56 @@ class MsgProcessor(ConsumerThread):
 	def raise_error_state(self, cmd, state):
 		# TODO: Need new codes? Need to document them?
 		state_map = {'BOARD_SHUTDOWN_FAILED':      (0x08,'Board-level shutdown failed'),
-					 'BOARD_PROGRAMMING_FAILED':   (0x04,'Board programming failed'),
+		             'BOARD_PROGRAMMING_FAILED':   (0x04,'Board programming failed'),
 		             'BOARD_CONFIGURATION_FAILED': (0x05,'Board configuration failed'),
 		             'SERVER_STARTUP_FAILED':      (0x09,'Server startup failed'),
-					 'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed')}
+		             'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed')}
 		code, msg = state_map[state]
 		self.state['lastlog'] = '%s: Finished with error' % cmd
 		self.state['status']  = 'ERROR'
 		self.state['info']    = 'SUMMARY! 0x%02X! %s' % (code, msg)
 		self.state['activeProcess'].pop()
 		return code
-		
+
+	def check_success(self, func, description, names):
+		self.state['info'] = description
+		rets = func()
+		oks = [True for _ in rets]
+		for i, (name, ret) in enumerate(zip(names, rets)):
+			if isinstance(ret, Exception):
+				oks[i] = False
+				self.log.error("%s: %s" % (name, str(ret)))
+		all_ok = all(oks)
+		if not all_ok:
+			symbols = ''.join(['.' if ok else 'x' for ok in oks])
+			self.log.error("%s failed: %s" % (description, symbols))
+			self.state['info'] = description + " failed"
+		else:
+			self.state['info'] = description + " succeeded"
+		return all_ok
 	def ini(self):
 		start_time = time.time()
 		# Note: Return value from this function is not used
 		self.state['activeProcess'].append('INI')
 		self.state['status'] = 'BOOTING'
 		self.state['info']   = 'Running INI sequence'
-		self.state['info']   = 'Programming FPGAs'
-		if exception_in(self.roaches.program()):
+		if not self.check_success(lambda: self.roaches.program(),
+		                          'Programming FPGAs',
+		                          self.roaches.host):
 			return self.raise_error_state('INI', 'BOARD_PROGRAMMING_FAILED')
-		self.state['info']   = 'Configuring FPGAs for DRX mode'
-		if exception_in(self.roaches.configure_mode('DRX')):
+		if not self.check_success(lambda: self.roaches.configure_mode('DRX'),
+		                          'Configuring FPGAs',
+		                          self.roaches.host):
 			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-		self.state['info']   = 'Powering on servers'
-		if exception_in(self.servers.do_power('on')):
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED');
+		if not self.check_success(lambda: self.servers.do_power('on'),
+		                          'Powering on servers',
+		                          self.servers.host):
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+		startup_timeout = self.config['server']['startup_timeout']
 		try:
-			self._wait_until_servers_power('on', 60)
+			self._wait_until_servers_power('on', startup_timeout)
 		except RuntimeError:
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED');
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 		
 		# TODO: Need to make sure server pipelines etc. start up and respond here
 		
@@ -388,6 +408,7 @@ class MsgProcessor(ConsumerThread):
 		start_time = time.time()
 		self.state['activeProcess'].append('SHT')
 		self.state['status'] = 'SHUTDWN'
+		# TODO: Use self.check_success here like in ini()
 		self.state['info']   = 'System is shutting down'
 		if 'SCRAM' in arg:
 			if 'RESTART' in arg:
@@ -548,10 +569,11 @@ class MsgProcessor(ConsumerThread):
 			inp = args[1]-1
 			if not (0 <= inp < NINPUT):
 				raise ValueError("Unknown input number %i"%(inp+1))
-			stand, pol = input2standpol(inp)
-			board      = input2board(inp)
+			board,stand,pol = input2boardstandpol(inp)
 			samples = self.roaches[board].get_samples(slot, stand, pol,
 			                                          STAT_SAMP_SIZE)
+			# Convert from int8 --> float32 before reducing
+			samples = samples.astype(np.float32)
 			op = args[2]
 			return reduce_ops[op](samples)
 		# TODO: BEAM_*
@@ -673,7 +695,7 @@ class MsgProcessor(ConsumerThread):
 		reply_data = ""
 		exit_status = 0
 		if msg.cmd == 'INI':
-			if currently_processing('INI', 'SHT'):
+			if self.currently_processing('INI', 'SHT'):
 				# TODO: This stuff could be tidied up a bit
 				self.state['lastlog'] = ('INI: %s - %s is active and blocking'%
 				                         ('Blocking operation in progress',
@@ -682,7 +704,7 @@ class MsgProcessor(ConsumerThread):
 			else:
 				self.thread_pool.add_task(self.ini)
 		elif msg.cmd == 'SHT':
-			if currently_processing('INI', 'SHT'):
+			if self.currently_processing('INI', 'SHT'):
 				self.state['lastlog'] = ('SHT: %s - %s is active and blocking'%
 				                         ('Blocking operation in progress',
 				                          self.state['activeProcess']))

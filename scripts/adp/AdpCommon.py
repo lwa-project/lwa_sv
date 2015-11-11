@@ -28,11 +28,16 @@ ADC_MAXVAL       = (1<<(ADC_BITS-1))-1
 #SERVER_HOSTS     = ['adp%i' % (i+1) for i in xrange(NSERVER)]
 
 def input2standpol(i):
-	stand = i / NPOL
+	stand = i // NPOL
 	pol   = i % NPOL
 	return stand, pol
-def input2board(i):
-	return i / NINPUT_PER_BOARD
+def input2boardstandpol(i):
+	board = i // NINPUT_PER_BOARD
+	i -= board*NINPUT_PER_BOARD
+	stand = i // NPOL
+	i -= stand*NPOL
+	pol = i
+	return board, stand, pol
 
 def get_delay(nsamples):
 	return nsamples * (1./FS)
