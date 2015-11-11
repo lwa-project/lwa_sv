@@ -339,6 +339,16 @@ TBFPacketize:
 	Write size and destination to corresponding outputs
 	  (Allow one destination per packet-subband; i.e., 12 destinations)
 
+Pre-alpha TBF data capture
+  Use 1 server
+  Script to program roaches with desired center frequency
+  104 chans/subband = 2.6 MHz
+  Set UTC_START as filename in config script
+  Launch bifrost
+  Run data flow for 5 secs
+  Quit bifrost
+  Exit
+
 Reorder
 -------
 Depacketize     [time, 16 roaches, 144 chans,  16 stands, 2 pols, 2 cpx, 4 bits]
@@ -437,6 +447,9 @@ adp@adp1:~$ dd if=/dev/zero of=/data/write_test.bin conv=fdatasync bs=384k count
 
 96 chans/subband * 0.025 MHz/chan = 2.4 MHz (= 2 MHz + 10% guard bands)
 2.4 MHz * 32 inputs * 4+4 bits    = 76.8 MB/s/subarray
+
+48 chans/subband = 1.2 MHz
+x3 per server
 
 Proposal: Write F-domain data directly to disk and do T-engine offline?
             Would allow writing 4+4 instead of 8+8 bits, doubling the BW

@@ -1,7 +1,39 @@
 
 # ADP ICD
 
+## Contents
+
+* [Document history](##document-history)
+
+* [Subsystem overview](##subsystem-overview)
+
+  * [Observing modes](###observing-modes)
+
+  * [Example command sequence](###example-command-sequence)
+
+  * [Fixed parameters](###fixed-parameters)
+
+  * [Hardware](###hardware)
+
+* [MIB entries](##mib-entries)
+
+* [Control commands](##control-commands)
+
+  * [TBN](###tbn-command), [DRX](###drx-command), [TBF](###tbf-command), [BAM](###bam-command), [COR](###cor-command), [STP](###stp-command), [INI](###ini-command), [FST](###fst-command), [SHT](###sht-command)
+
+* [Output interfaces](##output-interfaces)
+
+  * [TBN](###tbn-output), [COR](###correlator-output), [TBF](###tbf-output), [BAM](###beamformer-output)
+
 ## Document history
+
+### 2015-11-11
+
+* Added table of contents
+
+* Added some TBN output interface info
+
+* Corrected float32 --> uint32 for _SAT and _PEAK requests
 
 ### 2015-10-27
 
@@ -38,13 +70,7 @@
 
 Initial mostly-complete draft.
 
-## *TODO*
-
-* *Finish RPT MIB entries*
-
-* *New TBF output packet format for channelised data*
-
-* *Update TBN and DRX packet formats with bits-per-sample info, new DRX_ID etc.*
+### *TODO*
 
 * *Empirically confirm limits on input, computation and output
  rates. Can we capture ~45.6 MHz of bandwidth? Can we support 1.6 MHz
@@ -57,34 +83,36 @@ Initial mostly-complete draft.
 
 * Add discription/diagram of ADP network configuration.
 
-## Observing modes
+## Subsystem overview
 
-### TBN
+### Observing modes
+
+#### TBN
 
 Narrow-band recording of all inputs. Supports continuous recording of
 all inputs at up to 1.6 MHz. This mode cannot be run concurrently with
 any other modes.
 
-### TBF
+#### TBF
 
 Wide-band recording of all inputs at low duty-cycle or on a
 trigger. Supports recording of frequency-domain data for all inputs
 across any subset of active DRX tunings for up to 10 seconds.
 
-### BAM
+#### BAM
 
 The beamformer. Supports up to 32 dual-pol beams, each using any
 tuning set by the DRX command, up to a maximum combined bandwidth of
 39.2 MHz dual-pol. This mode can operate concurrently with TBF and
 COR.
 
-### COR
+#### COR
 
 The correlator. Cross-correlates all 512 inputs using 25 kHz frequency
 channels across any subset of frequency tunings set by the DRX
 command. This mode can operate concurrently with TBF and BAM.
 
-## Example command sequence
+### Example command sequence
 
 1. DRX -- *Set a tuning and reconfigure FPGAs with DRX parameters*
 1. BAM 1 -- *Start a beam recording*
@@ -103,7 +131,7 @@ command. This mode can operate concurrently with TBF and BAM.
 1. BAM 1 -- *Start a beam recording*
 1. ...
 
-## Fixed parameters
+### Fixed parameters
 
 Symbol    | Value | Description
 ---       | ---   | ---
@@ -115,7 +143,7 @@ FC (<math>f<sub>c</sub></math>) | 25.0 kHz  | Width of each correlator (COR) fre
  used internally by ADP, but this definition is maintained for
  backwards compatibility with DP.
 
-## Hardware
+### Hardware
 
 - `headnode`: The ADP cluster head machine, which is named `adp` (aka
   `adp0`). This machine runs the `adp-control` service and interfaces
@@ -157,8 +185,8 @@ Index    | Label                  | Type        | Bytes | Value(s) | Description
 6        | `CLK_VAL`              | `uint32`    | 4   | [0:86401000) | Time at start of previous slot, in ms past station time midnight (MPM).
 7.n.1    | `ANTn_RMS`             | `float32`   | 4   | Full range | RMS power of `STAT_SAMP_SIZE` current samples for input `n`.
 7.n.2    | `ANTn_DCOFFSET`        | `float32`   | 4   | Full range | Mean of `STAT_SAMP_SIZE` current samples for input `n`.
-7.n.3    | `ANTn_SAT`             | `float32`   | 4   | Full range | No. saturated values (+-127) in `STAT_SAMP_SIZE` current samples for input `n`.
-7.n.4    | `ANTn_PEAK`            | `float32`   | 4   | Full range | Max of `STAT_SAMP_SIZE` current samples for input `n`.
+7.n.3    | `ANTn_SAT`             | `uint32`    | 4   | Full range | No. saturated values (+-127) in `STAT_SAMP_SIZE` current samples for input `n`.
+7.n.4    | `ANTn_PEAK`            | `uint32`    | 4   | Full range | Max of `STAT_SAMP_SIZE` current samples for input `n`.
 7.0      | `STAT_SAMP_SIZE`       | `uint32`    | 4   | Typically 1024 | No. samples used to compute statistics.
 8.n.1    | `BOARDn_STAT`          | `uint64`    | 8   | Full range | Status of FPGA board `n` voltage, temperature etc. *TODO: Spec this*.
 8.n.2\3\4 | `BOARDn_TEMP_MIN\MAX\AVG` | `float32` | 4 | >= 0 or -1 | Min\max\avg FPGA die temperature in Celcius on board `n`. Value is -1 after a temperature-induced shutdown.
@@ -454,7 +482,25 @@ Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
 `DATA`         | `string`               | Optional `"SCRAM"` and/or `"REBOOT"` | The type of shutdown to issue.
 
-## Correlator output interface
+## Output interfaces
+
+### TBN output
+
+The packet data header shall contain the following entries:
+
+Name           | Type     | Value(s)   | Description
+---            | ---      | ---        | ---
+
+*TODO*
+
+#### Data rate
+
+One 400 kHz tuning:
+
+       400 kHz * 16 stands * 2 pols * 3 roaches/server * 8+8 bits
+     = 76.8 MB/s to local disk(s)
+
+### Correlator output
 
 The packet data header shall contain the following entries:
 
@@ -497,7 +543,7 @@ MSB first. Negative weight values indicate that samples were flagged.
     IMAG---- -><----- -WEIGHT- ------->
     ======== ======== ======== ========
 
-### Data rate
+#### Data rate
 
 Each 3.6 MHz (144-chan) subband:
 
@@ -505,7 +551,7 @@ Each 3.6 MHz (144-chan) subband:
 	= 151.6 MB / COR_NAVG s
 	= 15.16 MB/s @ COR_NAVG=10s
 
-## TBF output interface
+### TBF output
 
 The packet data header shall contain the following entries:
 
@@ -529,7 +575,7 @@ size of 6144 bytes.
     Slowest-changing                             Fastest-changing
     [12 chans][256 stands][2 pols (X,Y)][2 complex (I,Q)][4 bits] = 6144 bytes
 
-### Data rate
+#### Data rate
 
 The instantaneous transfer rate for TBF data will be limited to no
 more than 100 MB/s.
@@ -540,7 +586,7 @@ Each 0.3 MHz (12-chan) subband:
     =  153.6 MB/s
 	=> 65% duty cycle (max)
 
-## BAM output interface
+### Beamformer output
 
 The packet data header shall contain the following entries:
 
@@ -565,7 +611,7 @@ an 8-bit signed value, for a total payload size of 4096 bytes.
     Slowest-changing       Fastest-changing
     [2048 samples][2 complex (I,Q)][8 bits] = 4096 bytes
 
-### `BAM_ID`
+#### `BAM_ID`
 
 Bit(s) | Name         | Value           | Description
 ---    | ---          | ---             | ---
@@ -573,7 +619,7 @@ Bit(s) | Name         | Value           | Description
  6     | ADP flag     | Always 1        | Identifies ADP-BAM packet vs. DP-DRX packet.
  7     | Polarisation | 0: X, 1: Y      | Polarisation number.
 
-### Data rate
+#### Data rate
 
 One 39.2 MHz dual-polarisation 8+8-bit beam:
 
