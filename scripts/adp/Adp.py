@@ -22,6 +22,7 @@ import logging
 import struct
 import subprocess
 import zmq
+# Note: paramiko must be pip installed (it's also included with fabric)
 import paramiko # For ssh'ing into roaches to call reboot
 
 __version__    = "0.1"
@@ -186,16 +187,16 @@ class AdpServerMonitorClient(object):
 			self.log.error("Invalid or non-existent address: %s" % addr)
 		self.sock.SNDTIMEO = int(timeout*1000)
 		self.sock.RCVTIMEO = int(timeout*1000)
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
 		return self._request('TEMP')
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_status(self, slot):
 		return self._request('STAT')
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_info(self, slot):
 		return self._request('INFO')
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_software(self, slot):
 		return self._request('SOFTWARE')
 	def _request(self, query):
@@ -235,7 +236,6 @@ class Roach2MonitorClient(object):
 		self.host   = self.roach.hostname
 		self.device = ROACH2Device(self.host)
 	def reboot(self):
-		# TODO: Use this instead (requires paramiko to be pip installed)
 		ssh = paramiko.SSHClient()
 		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 		ssh.connect(self.host, username='root',
@@ -250,11 +250,11 @@ class Roach2MonitorClient(object):
 		#	raise RuntimeError("Roach reboot command failed")
 	def get_samples(self, slot, stand, pol, nsamps=None):
 		return self.get_samples_all(nsamps)[stand,pol]
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_samples_all(self, slot, nsamps=None):
 		"""Returns an NDArray of shape (stand,pol,sample)"""
 		return self.device.samples_all(nsamps).transpose([1,2,0])
-	@lru_cache(maxsize=4)
+	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
 		return self.device.temperatures()
 	def program(self):
@@ -291,6 +291,10 @@ class Roach2MonitorClient(object):
 		ret1 = self.roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
+	def start_data(self):
+		self.roach.start_data( )
+	def stop_data(self):
+		self.roach.stop_data()
 	# TODO: Configure channel selection (based on FST)
 	# TODO: start/stop data flow (remember to call roach.reset() before start)
 
@@ -328,8 +332,9 @@ class MsgProcessor(ConsumerThread):
 		                           for host in self.config['host']['servers']])
 		#self.roaches = ObjectPool([Roach2MonitorClient(config, log, host)
 		#                           for host in self.config['host']['roaches']])
+		nroach = len(self.config['host']['roaches'])
 		self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
-		                           for num in xrange(16)])
+		                           for num in xrange(nroach)])
 		
 		#*self.fst = Fst(config, log)
 		#self.bam =
@@ -405,6 +410,7 @@ class MsgProcessor(ConsumerThread):
 		return 0
 		
 	def sht(self, arg):
+		# TODO: Consider allowing specification of 'only servers' or 'only boards'
 		start_time = time.time()
 		self.state['activeProcess'].append('SHT')
 		self.state['status'] = 'SHUTDWN'

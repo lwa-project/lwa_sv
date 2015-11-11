@@ -14,3 +14,7 @@ __status__     = "Development"
 
 import MCS2
 import Adp
+
+# Internal modules for testing, debugging etc.
+from ThreadPool import ThreadPool
+from AdpRoach   import AdpRoach

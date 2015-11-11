@@ -4,6 +4,7 @@ from threading   import RLock
 import functools
 
 # Note: Don't forget to call this decorator as a function (e.g., @lru_cache())
+# Note: This version stores one cache per class, not instance
 def lru_cache(maxsize=128):
 	"""A decorator for cacheing/memoizing calls to a function"""
 	def decorator(func):
@@ -11,6 +12,19 @@ def lru_cache(maxsize=128):
 		@functools.wraps(func)
 		def wrapper(*args, **kwargs):
 			return cached_func(*args, **kwargs)
+		return wrapper
+	return decorator
+# Note: This version stores one cache per class instance
+def lru_cache_method(maxsize=128):
+	"""A decorator for cacheing/memoizing calls to a member function"""
+	def decorator(func):
+		@functools.wraps(func)
+		def wrapper(this, *args, **kwargs):
+			if not hasattr(this, '_method_cache'):
+				this._method_cache = {}
+			if func not in this._method_cache:
+				this._method_cache[func] = lru_cache_impl(func, maxsize)
+			return this._method_cache[func](this, *args, **kwargs)
 		return wrapper
 	return decorator
 
