@@ -136,7 +136,6 @@ def main(argv):
 	log.info("Config file:  %s", args.configfile)
 	log.info("Log file:     %s", args.logfile)
 	log.info("Dry run:      %r", args.dryrun)
-	log.info('All dates and times are in UTC unless otherwise noted')
 	
 	# TODO: Change these names to something more easily understood
 	mcs_local_host  = config['mcs']['headnode']['local_host']
@@ -145,6 +144,10 @@ def main(argv):
 	mcs_remote_port = config['mcs']['headnode']['remote_port']
 	recv_addr = (mcs_local_host, mcs_local_port)
 	send_addr = (mcs_remote_host, mcs_remote_port)
+	
+	log.info("Local addr:   %s:%i", mcs_local_host,  mcs_local_port)
+	log.info("Remote addr:  %s:%i", mcs_remote_host, mcs_remote_port)
+	log.info('All dates and times are in UTC unless otherwise noted')
 	
 	try:
 		services = {
