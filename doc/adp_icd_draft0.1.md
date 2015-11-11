@@ -3,27 +3,27 @@
 
 ## Contents
 
-* [Document history](##document-history)
+* [Document history](#document-history)
 
-* [Subsystem overview](##subsystem-overview)
+* [Subsystem overview](#subsystem-overview)
 
-  * [Observing modes](###observing-modes)
+  * [Observing modes](#observing-modes)
 
-  * [Example command sequence](###example-command-sequence)
+  * [Example command sequence](#example-command-sequence)
 
-  * [Fixed parameters](###fixed-parameters)
+  * [Fixed parameters](#fixed-parameters)
 
-  * [Hardware](###hardware)
+  * [Hardware](#hardware)
 
-* [MIB entries](##mib-entries)
+* [MIB entries](#mib-entries)
 
-* [Control commands](##control-commands)
+* [Control commands](#control-commands)
 
-  * [TBN](###tbn-command), [DRX](###drx-command), [TBF](###tbf-command), [BAM](###bam-command), [COR](###cor-command), [STP](###stp-command), [INI](###ini-command), [FST](###fst-command), [SHT](###sht-command)
+  * [TBN](#tbn-command), [DRX](#drx-command), [TBF](#tbf-command), [BAM](#bam-command), [COR](#cor-command), [STP](#stp-command), [INI](#ini-command), [FST](#fst-command), [SHT](#sht-command)
 
-* [Output interfaces](##output-interfaces)
+* [Output interfaces](#output-interfaces)
 
-  * [TBN](###tbn-output), [COR](###correlator-output), [TBF](###tbf-output), [BAM](###beamformer-output)
+  * [TBN](#tbn-output), [COR](#correlator-output), [TBF](#tbf-output), [BAM](#beamformer-output)
 
 ## Document history
 
