@@ -7,4 +7,4 @@ include ../common.mk
 
 all:
 
-configure: configure_grub network resolvconf hosts ssh nfs_client ntp socket_buffers
+configure: configure_grub network resolvconf hosts ssh nfs_client ntp sysctl socket_buffers

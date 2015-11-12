@@ -1,5 +1,5 @@
 
-# TODO: python-simplejson
+# TODO: Install pythons modules: python-simplejson, paramiko, pyzmq
 
 INSTALL_BIN_DIR           ?= /usr/local/bin
 INSTALL_SHARE_DIR         ?= /usr/local/share/adp

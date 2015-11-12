@@ -16,6 +16,7 @@ LOCAL_NTP_SERVER          ?= 10.1.1.50 # Optional
 SOCK_WMEM_CONF            ?= /proc/sys/net/core/wmem_max
 SOCK_RMEM_CONF            ?= /proc/sys/net/core/rmem_max
 SOCK_BUF_LIMIT            ?= "536870912"
+SYSCTL_CONF               ?= /etc/sysctl.conf
 
 all:
 
@@ -38,6 +39,12 @@ $(NETWORK_CONF): ./interfaces
 	cp $< $@
 	ifdown --exclude=lo -a && ifup --exclude=lo -a # Restart networking
 network: $(NETWORK_CONF) iptables
+
+.PHONY: sysctl
+$(SYSCTL_CONF): ./sysctl.conf
+	cp $< $@
+	sysctl -p
+sysctl: $(SYSCTL_CONF)
 
 .PHONY: resolvconf
 $(RESOLVCONF): ./resolv.conf.d_tail
