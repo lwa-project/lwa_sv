@@ -201,10 +201,13 @@ class AdpServerMonitorClient(object):
 		return sensors
 	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
-		sensors = self.read_sensors()
-		return {key: sensors[val]
-		        for key in self.config['server']['temperatures']
-				if  key in sensors}
+		try:
+			sensors = self.read_sensors()
+			return {key: float(sensors[key])
+			        for key in self.config['server']['temperatures']
+			        if  key in sensors}
+		except:
+			return {'error': float('nan')}
 	@lru_cache_method(maxsize=4)
 	def get_status(self, slot):
 		return self._request('STAT')
@@ -273,7 +276,10 @@ class Roach2MonitorClient(object):
 		return self.device.samples_all(nsamps).transpose([1,2,0])
 	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
-		return self.device.temperatures()
+		try:
+			return self.device.temperatures()
+		except:
+			return {'error': float('nan')}
 	def program(self):
 		# Program with ADP firmware
 		# Note: ADCs must be re-calibrated after doing this
@@ -655,13 +661,13 @@ class MsgProcessor(ConsumerThread):
 		if args[0] == 'GLOBAL':
 			if args[1] == 'TEMP':
 				temps = []
-				#for roach in self.roaches:
-				#	temps += roach.get_temperatures(slot).values()
 				# Note: Actually just flattening lists, not summing
 				temps += sum(self.roaches.get_temperatures(slot).values(), [])
 				temps += sum(self.servers.get_temperatures(slot).values(), [])
-				#for server in self.servers:
-				#	temps += server.get_temperatures(slot).values()
+				# Remove error values before reducing
+				temps = [val for val in temps if not math.isnan(val)]
+				if len(temps) == 0: # If all values were nan (exceptional!)
+					temps = [float('nan')]
 				op = args[2]
 				return reduce_ops[op](temps)
 			raise KeyError
