@@ -19,6 +19,7 @@ class AdpRoach(object):
 		self.connect()
 	@property
 	def hostname(self):
+		# TODO: Should really get this from an argument to __init__
 		#return "roach%i" % self.num
 		return "rofl%i" % self.num
 	def connect(self):
@@ -96,6 +97,7 @@ class AdpRoach(object):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
 		assert( 0 <= gbe_idx and gbe_idx < 3 )
 		assert( 0 <= start_chan and start_chan < 4096 )
+		self.fpga.write_int('pkt_roach_id', self.num)
 		stop_chan = start_chan + nsubband*subband_nchan
 		self.fpga.write_int('pkt_gbe%i_n_chan_per_sub' % gbe_idx, subband_nchan)
 		self.fpga.write_int('pkt_gbe%i_n_subband'      % gbe_idx, nsubband)
@@ -113,10 +115,14 @@ class AdpRoach(object):
 		self.fpga.write('fft_f4_cg_bpass_bram', cstr)
 	def start_data(self, gbe0=True, gbe1=True, gbe2=False):
 		self.stop_data()
+		gbe_bitset = (int(gbe0)<<0) | (int(gbe1)<<1) | (int(gbe2)<<2)
 		self.fpga.write_int('pkt_tx_enable', gbe_bitset)
 	def stop_data(self):
 		self.fpga.write_int('pkt_tx_enable', 0)
 		self.reset()
+	def data_enabled(self, gbe):
+		bitmask = 1<<gbe
+		return bool(self.fpga.read_int('pkt_tx_enable') & bitmask)
 	def check_overflow(self):
 		gbe0_oflow = self.fpga.read_int('pkt_gbe0_oflow_cnt')
 		gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
