@@ -1,0 +1,6 @@
+#Configuration for the irqbalance daemon
+
+#Should irqbalance be enabled?
+ENABLED="0" # Disable in favour of manual smp_affinity config for ADP
+#Balance the IRQs only once?
+ONESHOT="0"

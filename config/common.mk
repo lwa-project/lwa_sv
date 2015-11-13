@@ -17,6 +17,8 @@ SOCK_WMEM_CONF            ?= /proc/sys/net/core/wmem_max
 SOCK_RMEM_CONF            ?= /proc/sys/net/core/rmem_max
 SOCK_BUF_LIMIT            ?= "536870912"
 SYSCTL_CONF               ?= /etc/sysctl.conf
+DATA_NETWORK_IFACE        ?= p5p1
+IRQBALANCE_CONF           ?= /etc/default/irqbalance
 
 all:
 
@@ -77,6 +79,7 @@ ssh: $(SSHD_CONF) $(SSH_CONF) ../ssh_hosts network
 	ssh-keyscan -t rsa,dsa,ecdsa -f ../ssh_hosts | sort -u - /etc/ssh/ssh_known_hosts | tee /etc/ssh/ssh_known_hosts
 	restart ssh
 
+.PHONY: nfs_server
 nfs_server: network
 	apt-get install -y nfs-kernel-server
 	mkdir -p /export/home
@@ -85,14 +88,14 @@ nfs_server: network
 	grep -q "/home"        /etc/fstab   || echo "/home           /export/home    none    bind            0       0" >> /etc/fstab
 	grep -q "/export/home" /etc/exports || printf "# Note: no_root_squash is not a great idea, but is needed to allow clients to 'emacs blah'\n    /export/home 169.254.128.0/24(rw,nohide,insecure,no_subtree_check,async,no_root_squash)" >> /etc/exports
 	service nfs-kernel-server restart
-.PHONY: nfs_server
 
+.PHONY: nfs_client
 nfs_client: network
 	apt-get install -y nfs-common
 	grep -q "adp:/export/home" /etc/fstab || echo "adp:/export/home	/home			nfs	auto	0 0" >> /etc/fstab
 	mount -a -t nfs
-.PHONY: nfs_client
 
+.PHONY: ntp
 $(NTP_CONF): ./ntp.conf network
 	/usr/sbin/ntpdate $(LOCAL_NTP_SERVER) ntp.ubuntu.com pool.ntp.org # Initial estimate
 	apt-get install -y ntp
@@ -100,16 +103,21 @@ $(NTP_CONF): ./ntp.conf network
 	restart ntp
 	ntpq -p
 ntp: $(NTP_CONF_FILE)
-.PHONY: ntp
 
+.PHONY: dev_ttyUSB0
 dev_ttyUSB0:
 	usermod -a -G dialout adp # Allow access to /dev/ttyUSB0
-.PHONY: dev_ttyUSB0
 
 # Note that setsockopt(SO_SND/RCVBUF) actually allocates double the requested amount
+.PHONY: socket_buffers
 $(SOCK_WMEM_CONF):
 	echo $(SOCK_BUF_LIMIT) | sudo tee $@
 $(SOCK_RMEM_CONF):
 	echo $(SOCK_BUF_LIMIT) | sudo tee $@
 socket_buffers: $(SOCK_WMEM_CONF) $(SOCK_RMEM_CONF)
-.PHONY: socket_buffers
+
+.PHONY: irq_affinity
+irq_affinity:
+	/etc/init.d/irqbalance stop
+	cp ../irqbalance $(IRQBALANCE_CONF)
+	../configure_irq_affinity.py $(DATA_NETWORK_IFACE)
