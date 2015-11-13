@@ -10,13 +10,14 @@ from SequenceDict import SequenceDict
 from ThreadPool import ThreadPool
 from ThreadPool import ObjectPool
 #from Cache      import threadsafe_lru_cache as lru_cache
-from Cache      import lru_cache
+from Cache      import lru_cache_method
 from AdpRoach   import AdpRoach
 from iptools    import *
 
 from Queue import Queue
 import numpy as np
 import time
+import math
 from collections import defaultdict
 import logging
 import struct
@@ -187,9 +188,23 @@ class AdpServerMonitorClient(object):
 			self.log.error("Invalid or non-existent address: %s" % addr)
 		self.sock.SNDTIMEO = int(timeout*1000)
 		self.sock.RCVTIMEO = int(timeout*1000)
+	def read_sensors(self):
+		ret = self._ipmi_command('sdr')
+		sensors = {}
+		for line in ret.split('\n'):
+			if '|' not in line:
+				continue
+			cols = [col.strip() for col in line.split('|')]
+			key = cols[0]
+			val = cols[1].split()[0]
+			sensors[key] = val
+		return sensors
 	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
-		return self._request('TEMP')
+		sensors = self.read_sensors()
+		return {key: sensors[val]
+		        for key in self.config['server']['temperatures']
+				if  key in sensors}
 	@lru_cache_method(maxsize=4)
 	def get_status(self, slot):
 		return self._request('STAT')
@@ -227,6 +242,7 @@ class AdpServerMonitorClient(object):
 		#except CalledProcessError as e:
 		#	raise RuntimeError(str(e))
 
+# TODO: Rename this (and possibly refactor)
 class Roach2MonitorClient(object):
 	def __init__(self, config, log, num):
 		# Note: num is 1-based index of the roach
@@ -235,6 +251,7 @@ class Roach2MonitorClient(object):
 		self.roach  = AdpRoach(num, config['roach']['port'])
 		self.host   = self.roach.hostname
 		self.device = ROACH2Device(self.host)
+		self.num = num
 	def reboot(self):
 		ssh = paramiko.SSHClient()
 		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -291,10 +308,31 @@ class Roach2MonitorClient(object):
 		ret1 = self.roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
 		if not ret0 or not ret1:
 			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
-	def start_data(self):
-		self.roach.start_data( )
+	def tune(self, gbe, cfreq, bw):
+		bw = round(bw, 3) # Round to mHz to avoid precision errors
+		# HACK TESTING
+		nsubband = 1
+		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
+		chan0         = int(round( cfreq / CHAN_BW)) - subband_nchan//2
+		#if self.num == 1:
+		#	print "****", bw, CHAN_BW, math.ceil(bw / CHAN_BW / nsubband)
+		#	print "chan_bw %.16f" % CHAN_BW
+		#	print "error:", CHAN_BW-25000
+		#	print "nchan, chan0", subband_nchan, chan0
+		self.roach.configure_fengine(gbe, nsubband, subband_nchan, chan0)
+		return subband_nchan, chan0
+	def start_data(self, mode='DRX'):
+		if mode == 'DRX':
+			gbe0, gbe1 = True, False
+		elif mode == 'TBN':
+			gbe0, gbe1 = True, False
+		else:
+			raise KeyError("Invalid roach mode")
+		self.roach.start_data(gbe0, gbe1)
 	def stop_data(self):
 		self.roach.stop_data()
+	def data_enabled(self, gbe):
+		return self.roach.data_enabled(gbe)
 	# TODO: Configure channel selection (based on FST)
 	# TODO: start/stop data flow (remember to call roach.reset() before start)
 
@@ -332,7 +370,8 @@ class MsgProcessor(ConsumerThread):
 		                           for host in self.config['host']['servers']])
 		#self.roaches = ObjectPool([Roach2MonitorClient(config, log, host)
 		#                           for host in self.config['host']['roaches']])
-		nroach = len(self.config['host']['roaches'])
+		#nroach = len(self.config['host']['roaches'])
+		nroach = NBOARD
 		self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
 		                           for num in xrange(nroach)])
 		
