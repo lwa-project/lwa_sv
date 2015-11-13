@@ -6,12 +6,13 @@ FS               = 196.0e6
 CLOCK            = 204.8e6
 NCHAN            = 4096
 # Note: The very last ('Nyquist') channel is discarded by the F-engine
-FREQS            = np.fft.rfftfreq(2*NCHAN, 1./CLOCK)[:-1]
+# Note: Rounded to mHz to avoid floating-point precision errors
+FREQS            = np.around(np.fft.rfftfreq(2*NCHAN, 1./CLOCK)[:-1], 3)
 CHAN_BW          = FREQS[1] - FREQS[0]
 NCHAN_GUARD      = 4
 NCHAN_SELECT_MAX = 1920 # 48 MHz ** TODO: Check what the pipeline limit is!
 NTUNING_MAX      = 32
-NSTAND           = 260 # TODO: 256?
+NSTAND           = 256
 NPOL             = 2
 NINPUT           = NSTAND*NPOL
 FIR_NFINE        = 16
