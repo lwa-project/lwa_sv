@@ -141,6 +141,8 @@ class ObjectPool(list):
 			list.__setattr__(self, 'future_pool', FuturePool(len(self)))
 	def __getattr__(self, item):
 		for obj in self:
+			if not hasattr(obj, item):
+				obj.__getattribute__(item) # Induce exception
 			self.future_pool.add_task(obj.__getattribute__, item)
 		return ObjectPool(self.future_pool.wait(), self.future_pool)
 	def __call__(self, *args, **kwargs):
