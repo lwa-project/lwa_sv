@@ -143,6 +143,9 @@ def main(argv):
 	mcs_remote_host = config['mcs']['headnode']['remote_host']
 	mcs_remote_port = config['mcs']['headnode']['remote_port']
 	recv_addr = (mcs_local_host, mcs_local_port)
+	# Note: This remote host address is no longer used; the reply address
+	#         is now obtained from the source IP of each received pkt.
+	#         The remote port is still required though.
 	send_addr = (mcs_remote_host, mcs_remote_port)
 	
 	log.info("Local addr:   %s:%i", mcs_local_host,  mcs_local_port)
@@ -153,7 +156,7 @@ def main(argv):
 		services = {
 			'msg_receiver':  MCS2.MsgReceiver(recv_addr, subsystem=Adp.SUBSYSTEM),
 			'msg_processor':  Adp.MsgProcessor(config, log, dry_run=args.dryrun),
-			'msg_sender':    MCS2.MsgSender(send_addr, subsystem=Adp.SUBSYSTEM)
+			'msg_sender':    MCS2.MsgSender(  send_addr, subsystem=Adp.SUBSYSTEM)
 		}
 	except MCS2.socket.error as e:
 		if e.errno == 98:

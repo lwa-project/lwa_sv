@@ -27,16 +27,18 @@ class UDPRecvThread(threading.Thread):
 		self.socket.shutdown(socket.SHUT_RD)
 	def run(self):
 		while True:#not self.stop_requested.is_set():
-			pkt = self.socket.recv(self._bufsize)
+			#pkt = self.socket.recv(self._bufsize)
+			pkt, src_addr = self.socket.recvfrom(self._bufsize)
 			if self.stop_requested.is_set():
 				break
 			#if pkt == UDPRecvThread.STOP:
 			#	break
-			self.process(pkt)
+			src_ip = src_addr[0]
+			self.process(pkt, src_ip)
 		self.shutdown()
-	def process(self, pkt):
+	def process(self, pkt, src_ip):
 		"""Overide this in subclass"""
-		self._msg_queue.put(pkt) # Default behaviour
+		self._msg_queue.put((pkt,src_ip)) # Default behaviour
 	def shutdown(self):
 		"""Overide this in subclass"""
 		pass
@@ -52,9 +54,9 @@ if __name__ == '__main__':
 	#rcv.daemon = True
 	rcv.start()
 	print "Waiting for packet on port", port
-	pkt = rcv.get(timeout=5.)
+	pkt,src_ip = rcv.get(timeout=5.)
 	if pkt is not None:
-		print "Received packet:", pkt
+		print "Received packet:", pkt,src_ip
 	else:
 		print "Timed out waiting for packet"
 	rcv.request_stop()

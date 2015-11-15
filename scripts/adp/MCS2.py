@@ -83,8 +83,8 @@ class Msg(object):
 	count = 0
 	# Note: MsgSender will automatically set src
 	def __init__(self, illegal_argument=None,
-	             src=None, dst=None, cmd=None, ref=None, data='',
-	             pkt=None):
+	             src=None, dst=None, cmd=None, ref=None, data='', dst_ip=None,
+	             pkt=None, src_ip=None):
 		assert(illegal_argument is None) # Ensure named args only
 		self.dst  = dst
 		self.src  = src
@@ -96,17 +96,21 @@ class Msg(object):
 		self.mjd  = None
 		self.mpm  = None
 		self.data = data
+		self.dst_ip = dst_ip
 		self.slot = None # For convenience, not part of encoded pkt
 		if pkt is not None:
 			self.decode(pkt)
+		self.src_ip = src_ip
 	def __str__(self):
 		if self.slot is None:
 			return ("<MCS Msg %i: '%s' from %s to %s, data='%s'>" %
-			        (self.ref, self.cmd, self.src, self.dst, self.data))
+			        (self.ref, self.cmd, self.src, self.dst,
+			         self.data))
 		else:
-			return (("<MCS Msg %i: '%s' from %s to %s, data='%s', "+
+			return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s', "+
 			        "rcv'd in slot %i>") %
-			        (self.ref, self.cmd, self.src, self.dst, self.data,
+			        (self.ref, self.cmd, self.src, self.src_ip,
+			         self.dst, self.data,
 			         self.slot))
 	def decode(self, pkt):
 		self.slot = get_current_slot()
@@ -127,7 +131,8 @@ class Msg(object):
 		msg = Msg(#src=self.dst,
 		          dst=self.src,
 		          cmd=self.cmd,
-		          ref=self.ref)
+		          ref=self.ref,
+		          dst_ip=self.src_ip)
 		#msg.mjd, msg.mpm = getTime()
 		response = 'A' if accept else 'R'
 		msg.data = response + str(status).rjust(7) + data
@@ -161,9 +166,9 @@ class MsgReceiver(UDPRecvThread):
 		self.subsystem = subsystem
 		self.msg_queue = Queue.Queue()
 		self.name      = 'MCS.MsgReceiver'
-	def process(self, pkt):
+	def process(self, pkt, src_ip):
 		if len(pkt):
-			msg = Msg(pkt=pkt)
+			msg = Msg(pkt=pkt, src_ip=src_ip)
 			if ( self.subsystem == 'ALL' or
 			     msg.dst        == 'ALL' or
 			     self.subsystem == msg.dst ):
@@ -178,25 +183,32 @@ class MsgReceiver(UDPRecvThread):
 			return None
 
 class MsgSender(ConsumerThread):
-	def __init__(self, address, subsystem,
+	def __init__(self, dst_addr, subsystem,
 	             max_attempts=5):
 		ConsumerThread.__init__(self)
 		self.subsystem    = subsystem
 		self.max_attempts = max_attempts
 		self.socket       = socket.socket(socket.AF_INET,
 		                                  socket.SOCK_DGRAM)
-		self.socket.connect(address)
+		#self.socket.connect(address)
+		self.dst_ip   = dst_addr[0]
+		self.dst_port = dst_addr[1]
 		self.name = 'MCS.MsgSender'
 	def process(self, msg):
-		msg.src = self.subsystem
-		pkt = msg.encode()
+		msg.src  = self.subsystem
+		pkt      = msg.encode()
+		dst_ip   = msg.dst_ip if msg.dst_ip is not None else self.dst_ip
+		dst_addr = (dst_ip, self.dst_port)
+		#print "Sending msg to", dst_addr
 		for attempt in xrange(self.max_attempts-1):
 			try:
-				self.socket.send(pkt)
+				#self.socket.send(pkt)
+				self.socket.sendto(pkt, dst_addr)
 			except socket.error:
 				time.sleep(0.001)
 			else:
 				return
-		self.socket.send(pkt)
+		#self.socket.send(pkt)
+		self.socket.sendto(pkt, dst_addr)
 	def shutdown(self):
 		print self.name, "shutdown"
