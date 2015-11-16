@@ -15,6 +15,7 @@ NTUNING_MAX      = 32
 NSTAND           = 256
 NPOL             = 2
 NINPUT           = NSTAND*NPOL
+NSUBSLOT_PER_SEC = 100
 FIR_NFINE        = 16
 FIR_NCOEF        = 32
 #NPIPELINE        = 12
