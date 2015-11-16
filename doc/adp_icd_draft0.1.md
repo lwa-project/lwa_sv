@@ -27,6 +27,20 @@
 
 ## Document history
 
+### 2015-11-15
+
+* Added GLOBAL_TEMP_MIN/MAX/AVG to MIB entries
+
+* Refined the definitions of `Frame no.` in TBF and COR packet headers
+
+* Changed 1990 --> 1970 for `secs_count` epoch in packet headers
+
+* Changed definition of `freq_chan` from 1-based to 0-based
+
+* Fixed stand number range 255 --> 256
+
+* Fixed typo specta --> spectra
+
 ### 2015-11-11
 
 * Added table of contents
@@ -203,8 +217,7 @@ Index    | Label                  | Type        | Bytes | Value(s) | Description
 12.n.2\3\4 | `SERVERn_TEMP_MIN\MAX\AVG` | `float32` | 4 | >= 0 or -1 | Min\max\avg server temperature in Celcius on server `n`. Value is -1 after a temperature-induced shutdown.
 12.n.5    | `SERVERn_SOFTWARE`    | `char[256]` | 256 | String     | Software version used on server `n`.
 12.n.6    | `SERVERn_HOSTNAME`    | `char[256]` | 256 | String     | Network hostname for communicating with server `n`.
-
-#### TODO: `GLOBAL_TEMP_MIN\MAX\AVG`?
+13.2\3\4  | `GLOBAL_TEMP_MIN\MAX\AVG`| `float32`| 4   | >= 0       | Min\max\avg temperature of all boards and all servers.
 
 ### `struct CmdStat`
 
@@ -453,7 +466,7 @@ Configures the FIR filter coefficients to be applied to an input (or
 shared by all inputs).
 
 Note that internally, ADP converts the given coefficients into
-frequency-domain weights to be applied to the complex specta of each
+frequency-domain weights to be applied to the complex spectra of each
 input.
 
 #### Arguments
@@ -508,14 +521,14 @@ Name           | Type     | Value(s)   | Description
 ---            | ---      | ---        | ---
 `sync_word`    | `uint32` | 0xDEC0DE5C | Mark 5C magic number.
 `ID`           | `uint8`  | 0x02       | Mark 5C ID field, used to identify COR packet.
-`Frame no.`    | `uint24` | Full range | Mark 5C frame number within second.
-`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
-`freq_chan`    | `sint16` | [1-`NUM_FREQ_CHANS`] | Frequency channel id of the first channel in the packet.
+`Frame no.`    | `uint24` | Full range >0 | Mark 5C frame number since the start of the obs, in units of the integration time.
+`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1970-01-01 00:00:00 UTC.
+`freq_chan`    | `sint16` | [0-(`NUM_FREQ_CHANS`-1)] | Frequency channel id of the first channel in the packet.
 `COR_GAIN`     | `sint16` | Full range >0 | Right-bitshift used for gain compensation.
 `time_tag`     | `sint64` | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
 `COR_NAVG`     | `sint32` | Full range >0 | Integration time, in units of subslots.
-`stand_i`      | `sint16` | [1-255]    | Stand number of the unconjugated stand.
-`stand_j`      | `sint16` | [1-255]    | Stand number of the conjugated stand.
+`stand_i`      | `sint16` | [1-256]    | Stand number of the unconjugated stand.
+`stand_j`      | `sint16` | [1-256]    | Stand number of the conjugated stand.
 
 Each packet payload shall contain 144 frequency channels (each channel
 spanning a bandwidth of <math>f<sub>c</sub></math>) and 4 polarisation
@@ -559,9 +572,9 @@ Name           | Type     | Value(s)   | Description
 ---            | ---      | ---        | ---
 `sync_word`    | `uint32` | 0xDEC0DE5C | Mark 5C magic number.
 `ID`           | `uint8`  | 0x01       | Mark 5C ID field, used to identify TBF packet.
-`Frame no.`    | `uint24` | Full range | Mark 5C frame number within second.
-`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
-`freq_chan`    | `sint16` | [1-`NUM_FREQ_CHANS`] | Frequency channel id of the first channel in the packet.
+`Frame no.`    | `uint24` | [1-15e6]   | Mark 5C frame number since the start of the obs, in units of <math>f<sub>c</sub></math>, wrapped at 10 mins (to fit in 24 bits).
+`secs_count`   | `uint32` | Full range | Mark 5C integer secs since 1970-01-01 00:00:00 UTC.
+`freq_chan`    | `sint16` | [0-(`NUM_FREQ_CHANS`-1)] | Frequency channel id of the first channel in the packet.
 `unassigned`   | `sint16` | 0          | Unassigned entry.
 `time_tag`     | `sint64` | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
 
@@ -595,7 +608,7 @@ Name           | Type         | Value(s)   | Description
 `sync_word`    | `uint32`     | 0xDEC0DE5C | Mark 5C magic number.
 `ID`           | `uint8`      | Full range | Mark 5C ID field; see BAM_ID table below.
 `Frame no.`    | `uint24`     | Full range | Mark 5C frame number within second.
-`secs_count`   | `uint32`     | Full range | Mark 5C integer secs since 1990-01-01 00:00:00 UTC.
+`secs_count`   | `uint32`     | Full range | Mark 5C integer secs since 1970-01-01 00:00:00 UTC.
 `decimation`   | `sint16`     | 5,10,20,40,98,196,392,784 | Sampling rate decimation factor relative to <math>f<sub>s</sub></math>.
 `time_offset`  | `sint16`     | Full range | Time offset (Tnom) in units of <math>f<sub>s</sub></math> since beginning of second.
 `time_tag`     | `sint64`     | Full range | Effective central sampling time in units of <math>f<sub>s</sub></math> since 1970-01-01 00:00:00 UTC.
