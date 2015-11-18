@@ -600,8 +600,8 @@ class MsgProcessor(ConsumerThread):
 		# TODO: TBF_STATUS
 		#       TBF_TUNING_MASK
 		if key == 'NUM_STANDS':      return NSTAND
-		if key == 'NUM_SERVERS':     return NSERVERS
-		if key == 'NUM_BOARDS':      return NBOARDS
+		if key == 'NUM_SERVERS':     return NSERVER
+		if key == 'NUM_BOARDS':      return NBOARD
 		# TODO: NUM_TBN_BITS, TBN_CONFIG_FREQ, TBN_CONFIG_FILTER, TBN_CONFIG_GAIN
 		#       NUM_DRX_TUNINGS
 		#       NUM_BEAMS
@@ -641,7 +641,7 @@ class MsgProcessor(ConsumerThread):
 				temps = self.roaches[board].get_temperatures(slot).values()
 				op = args[3]
 				return reduce_ops[op](temps)
-			if args[2] == 'FIRMWARE': pass # TODO
+			if args[2] == 'FIRMWARE': return self.config['roach']['firmware']
 			if args[2] == 'HOSTNAME': return self.roaches[board].host
 			raise KeyError
 		if args[0] == 'SERVER':
@@ -678,9 +678,9 @@ class MsgProcessor(ConsumerThread):
 			'SUMMARY':          lambda x: x[:7],
 			'INFO':             lambda x: truncate_message(x, 256),
 			'LASTLOG':          lambda x: truncate_message(x, 256),
-			'SUBSYSTEM':        lambda x: x,
-			'SERIALNO':         lambda x: x,
-			'VERSION':          lambda x: x,
+			'SUBSYSTEM':        lambda x: x[:3],
+			'SERIALNO':         lambda x: x[:5],
+			'VERSION':          lambda x: truncate_message(x, 256),
 			#'TBF_STATUS':
 			#'TBF_TUNING_MASK':
 			#'NUM_TBN_BITS':
@@ -710,14 +710,14 @@ class MsgProcessor(ConsumerThread):
 			'BOARD_TEMP_MAX':   lambda x: struct.pack('>f', x),
 			'BOARD_TEMP_MIN':   lambda x: struct.pack('>f', x),
 			'BOARD_TEMP_AVG':   lambda x: struct.pack('>f', x),
-			'BOARD_FIRWARE':    lambda x: x,
-			'BOARD_HOSTNAME':   lambda x: x,
+			'BOARD_FIRMWARE':   lambda x: truncate_message(x, 256),
+			'BOARD_HOSTNAME':   lambda x: truncate_message(x, 256),
 			# TODO: SERVER_STAT
 			'SERVER_TEMP_MAX':  lambda x: struct.pack('>f', x),
 			'SERVER_TEMP_MIN':  lambda x: struct.pack('>f', x),
 			'SERVER_TEMP_AVG':  lambda x: struct.pack('>f', x),
-			'SERVER_SOFTWARE':  lambda x: x,
-			'SERVER_HOSTNAME':  lambda x: x,
+			'SERVER_SOFTWARE':  lambda x: truncate_message(x, 256),
+			'SERVER_HOSTNAME':  lambda x: truncate_message(x, 256),
 			'GLOBAL_TEMP_MAX':  lambda x: struct.pack('>f', x),
 			'GLOBAL_TEMP_MIN':  lambda x: struct.pack('>f', x),
 			'GLOBAL_TEMP_AVG':  lambda x: struct.pack('>f', x),
