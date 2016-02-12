@@ -38,8 +38,8 @@ def main(argv):
 				#newmask = 1<<0                        # All on CPU 0 core 0 (single Hyperthread)
 				#newmask = 1<<(0 + idx / 8 * 16)       # All on CPU 0 core 0 (divided b/w two Hyperthreads)
 				#newmask = 1<<(0 + idx / 8 * 8)        # Split b/w 1st core of both CPUs
-				#newmask = [0,6,7][idx%3]              # Split b/w 3 cores
-				newmask = [6,7][idx%2]                 # Split b/w 2 cores on CPU 0
+				#newmask = 1<<([0,6,7][idx%3])         # Split b/w 3 cores
+				newmask = 1<<([6,7][idx%2])            # Split b/w 2 cores on CPU 0
 				#newmask = 1<<(idx % 8 + idx / 8 * 16) # Evenly distribute over 1st CPU
 				counts = to_int_list(cols)
 				peak_core = counts.index(max(counts))
