@@ -7,7 +7,7 @@ configure_headnode:
 .PHONY: configure_headnode
 
 configure_server:
-	$(MAKE) -C ./server/ configure
+	$(MAKE) -C ./servers/ configure
 .PHONY: configure_server
 
 # Note: Can alternatively prefix commands with @ to silence echoing
