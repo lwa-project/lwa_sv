@@ -26,6 +26,8 @@ STAT_SAMP_SIZE   = 1024 # The ADC limit is 1024 (TODO: Allow > via multiples)
 MAX_MSGS_PER_SEC = 80
 ADC_BITS         = 8
 ADC_MAXVAL       = (1<<(ADC_BITS-1))-1
+TBN_BITS         = 16
+DATE_FORMAT      = "%Y_%m_%dT%H_%M_%S"
 #PIPELINE_HOSTS   = ['adp%i' % (i/2+1) for i in xrange(NPIPELINE)]
 #SERVER_HOSTS     = ['adp%i' % (i+1) for i in xrange(NSERVER)]
 

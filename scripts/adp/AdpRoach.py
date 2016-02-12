@@ -93,7 +93,7 @@ class AdpRoach(object):
 		gbe_link = self.fpga.read_int('pkt_gbe%i_linkup' % gbe_idx)
 		return bool(gbe_link)
 	def configure_fengine(self, gbe_idx, nsubband, subband_nchan, start_chan,
-						  scale_factor=1.948, shift_factor=27):
+	                      scale_factor=1.948, shift_factor=27):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
 		assert( 0 <= gbe_idx and gbe_idx < 3 )
 		assert( 0 <= start_chan and start_chan < 4096 )
@@ -113,16 +113,59 @@ class AdpRoach(object):
 		self.fpga.write('fft_f2_cg_bpass_bram', cstr)
 		self.fpga.write('fft_f3_cg_bpass_bram', cstr)
 		self.fpga.write('fft_f4_cg_bpass_bram', cstr)
+	def _read_pkt_tx_enable(self):
+		bitset = self.fpga.read_int('pkt_tx_enable')
+		fifo_bitset =  bitset & 0b0011
+		gbe_bitset  = (bitset & 0b1100) >> 2
+		return gbe_bitset, fifo_bitset
+	def _write_pkt_tx_enable(self, gbe_bitset, fifo_bitset):
+		bitset = ((gbe_bitset & 0b11) << 2) | (fifo_bitset & 0b11)
+		self.fpga.write_int('pkt_tx_enable', bitset)
+	def start_processing(self):
+		self.stop_processing()
+		self.reset() # Must call this here to initialise things
+		fifo_bitset = 0b11
+		gbe_bitset  = 0b00
+		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+	def enable_data(self, gbe):
+		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
+		if fifo_bitset != 0b11:
+			raise RuntimeError("Enable data requested but data not started")
+		gbe_bitset |= (1<<gbe)
+		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+	def disable_data(self, gbe):
+		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
+		if fifo_bitset != 0b11:
+			raise RuntimeError("Disable data requested but data not started")
+		gbe_bitset &= ~(1<<gbe)
+		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+	def stop_processing(self):
+		fifo_bitset = 0b00
+		gbe_bitset  = 0b00
+		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+	def processing_started(self):
+		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
+		return (fifo_bitset == 0b11)
+	def data_enabled(self, gbe):
+		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
+		return bool(gbe_bitset & (1<<gbe))
+	"""
 	def start_data(self, gbe0=True, gbe1=True, gbe2=False):
-		self.stop_data()
-		gbe_bitset = (int(gbe0)<<0) | (int(gbe1)<<1) | (int(gbe2)<<2)
-		self.fpga.write_int('pkt_tx_enable', gbe_bitset)
+		#*self.stop_data()
+		gbe_bitset  = (int(gbe0)<<0) | (int(gbe1)<<1)# | (int(gbe2)<<2)
+		fifo_bitset = 0b11
+		bitset = (gbe_bitset << 2) | fifo_bitset
+		self.fpga.write_int('pkt_tx_enable', bitset)
+		#self.fpga.write_int('pkt_tx_enable', 0b11111111)
+	def pause_data(self):
+		self.fpga.write_int('pkt_tx_enable', 0b11) # 'Pause' transmit
 	def stop_data(self):
 		self.fpga.write_int('pkt_tx_enable', 0)
-		self.reset()
+		#*self.reset()
 	def data_enabled(self, gbe):
-		bitmask = 1<<gbe
+		bitmask = 1<<(2+gbe)
 		return bool(self.fpga.read_int('pkt_tx_enable') & bitmask)
+	"""
 	def check_overflow(self):
 		gbe0_oflow = self.fpga.read_int('pkt_gbe0_oflow_cnt')
 		gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
