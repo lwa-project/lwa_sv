@@ -32,6 +32,12 @@
 		"username": "admin",
 		"password": "admin"
 	},
+	"drx": {
+		"capture_bandwidth": 21.6e6
+	},
+	"tbn": {
+		"capture_bandwidth": 500e3
+	},
 	"fst": {
 		"control_ports":  [23720, 23721],
 		"default_coeffs": "default_coeffs.cf"
@@ -71,7 +77,8 @@
 		"password":     "130Jy/K",
 		"data_ip_base":  "192.168.40.50",
 		"data_port_base":    4000,
-		"firmware":      "sevilleta_devel2_2015_Nov_03_1541.bof",
+		"firmware_old":      "sevilleta_devel2_2015_Nov_13_1640.bof",
+		"firmware":          "sevilleta_devel3_2015_Dec_10_2201.bof",
 		"max_program_attempts": 15,
 		"adc_gain":             4,
 		"scale_factor":     1.948,
