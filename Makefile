@@ -32,6 +32,7 @@ $(INSTALL_SHARE_DIR)/adp_config.json: config/adp_config.json
 install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DIR)/adp-control.conf $(INSTALL_SHARE_DIR)/adp_config.json
 	initctl reload-configuration
 	start adp-control
+	tail -n 40 /var/log/upstart/adp-control.log
 .PHONY: install_adp_control_service
 
 CUDA_DOWNLOAD_PATH        ?= "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_7.0-28_amd64.deb"
