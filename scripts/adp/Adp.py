@@ -347,8 +347,6 @@ class AdpServerMonitorClient(object):
 
 # TODO: Rename this (and possibly refactor)
 class Roach2MonitorClient(object):
-	GBE_DRX = 0
-	GBE_TBN = 1
 	def __init__(self, config, log, num):
 		# Note: num is 1-based index of the roach
 		self.config = config
@@ -396,26 +394,33 @@ class Roach2MonitorClient(object):
 	#def calibrate(self):
 		# TODO: Implement this
 	def configure_dual_mode(self):
-		self.roach.stop_processing()
-		# DRX on gbe0, TNB on gbe1
-		drx_dst_hosts = self.config['host']['servers-data']
-		tbn_dst_hosts = self.config['host']['servers-tbn'][self.num-1]
-		src_ip_base   = self.config['roach']['data_ip_base']
-		src_port_base = self.config['roach']['data_port_base']
-		dst_ports     = self.config['server']['data_ports']
-		drx_dst_ips   = [host2ip(host) for host in drx_dst_hosts]
-		tbn_dst_ips   = [host2ip(host) for host in tbn_dst_hosts]
-		macs = load_ethers()
-		drx_dst_macs  = [macs[ip] for ip in drx_dst_ips]
-		tbn_dst_macs  = [macs[ip] for ip in tbn_dst_ips]
-		drx_arp_table = gen_arp_table(drx_dst_ips, drx_dst_macs)
-		tbn_arp_table = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
-		drx_dst_ports = [dst_ports[0]] * len(drx_dst_ips)
-		tbn_dst_ports = [dst_ports[1]] * len(tbn_dst_ips)
-		ret0 = self.roach.configure_10gbe(GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-		ret1 = self.roach.configure_10gbe(GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
-		if not ret0 or not ret1:
-			raise RuntimeError("Configuring Roach 10GbE ports failed")
+		try:
+			self.roach.stop_processing()
+			# DRX on gbe0, TBN on gbe1
+			GBE_DRX = 0
+			GBE_TBN = 1
+			drx_dst_hosts = self.config['host']['servers-data']
+			tbn_dst_hosts = [self.config['host']['servers-tbn'][self.num-1]]
+			src_ip_base   = self.config['roach']['data_ip_base']
+			src_port_base = self.config['roach']['data_port_base']
+			dst_ports     = self.config['server']['data_ports']
+			drx_dst_ips   = [host2ip(host) for host in drx_dst_hosts]
+			tbn_dst_ips   = [host2ip(host) for host in tbn_dst_hosts]
+			macs = load_ethers()
+			drx_dst_macs  = [macs[ip] for ip in drx_dst_ips]
+			tbn_dst_macs  = [macs[ip] for ip in tbn_dst_ips]
+			drx_arp_table = gen_arp_table(drx_dst_ips, drx_dst_macs)
+			tbn_arp_table = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
+			drx_dst_ports = [dst_ports[0]] * len(drx_dst_ips)
+			tbn_dst_ports = [dst_ports[1]] * len(tbn_dst_ips)
+			
+			ret0 = self.roach.configure_10gbe(GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+			ret1 = self.roach.configure_10gbe(GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
+			if not ret0 or not ret1:
+				raise RuntimeError("Configuring Roach 10GbE ports failed")
+		except:
+			self.log.exception("Configuring roach failed")
+			raise
 	"""
 	def configure_mode(self, mode='DRX'):
 		# Configure 10GbE ports
