@@ -472,9 +472,9 @@ class Roach2MonitorClient(object):
 		self.roach.configure_fengine(GBE_TBN, nsubband, subband_nchan, chan0)
 		return subband_nchan, chan0
 	def start_processing(self):
-		self.roach.start_processsing()
+		self.roach.start_processing()
 	def stop_processing(self):
-		self.roach.stop_processsing()
+		self.roach.stop_processing()
 	def processing_started(self):
 		return roach.processing_started()
 	def enable_drx_data(self):
