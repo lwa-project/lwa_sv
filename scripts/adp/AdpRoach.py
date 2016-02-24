@@ -117,8 +117,10 @@ class AdpRoach(object):
 		bitset = self.fpga.read_int('pkt_tx_enable')
 		fifo_bitset =  bitset & 0b0011
 		gbe_bitset  = (bitset & 0b1100) >> 2
+		#print "****_read_pkt_tx_enable:", gbe_bitset, fifo_bitset
 		return gbe_bitset, fifo_bitset
 	def _write_pkt_tx_enable(self, gbe_bitset, fifo_bitset):
+		#print "***_write_pkt_tx_enable:", gbe_bitset, fifo_bitset
 		bitset = ((gbe_bitset & 0b11) << 2) | (fifo_bitset & 0b11)
 		self.fpga.write_int('pkt_tx_enable', bitset)
 	def start_processing(self):

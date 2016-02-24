@@ -78,24 +78,34 @@ class Tbn(SlotCommandProcessor):
 		self.log     = log
 		self.roaches = roaches
 		self.cur_freq = self.cur_filt = self.cur_gain = 0
+	#def startup(self):
+	#	self.config['tbn']['capture_bandwidth']
+	def start(self, freq=50e6, filt=1, gain=1, record=True):
+		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i"
+		              % (freq,filt,gain))
+		# TODO: How/where to apply bandwidth filter?
+		#       How/where to apply gain bitshift?
+		#       Need to send command to pipelines to begin new
+		#         observation with this info.
+		#         Only do this when record==True
+		bw = self.config['tbn']['capture_bandwidth']
+		# TODO: Check whether pausing the data flow is necessary
+		#self.roaches.disable_tbn()
+		#time.sleep(1)
+		self.roaches.tune_tbn(freq, bw)
+		rets = self.roaches.enable_tbn_data()
+		self.cur_freq = freq
+		self.cur_filt = filt
+		self.cur_gain = gain
+		return rets
 	def execute(self, cmds):
 		for cmd in cmds:
-			cfreq = cmd.freq
-			# TODO: How/where to apply bandwidth filter?
-			#       How/where to apply gain bitshift?
-			#       Need to send command to pipelines to begin new
-			#         observation with this info.
-			bw = self.config['tbn']['capture_bandwidth']
-			# TODO: Check whether pausing the data flow is necessary
-			#self.roaches.disable_tbn()
-			#time.sleep(1)
-			self.roaches.tune_tbn(cfreq, bw)
-			self.roaches.enable_tbn()
-			self.cur_freq = cmd.freq
-			self.cur_filt = cmd.filt
-			self.cur_gain = cmd.gain
+			self.start(cmd.freq, cmd.filt, cmd.gain)
 	def stop(self):
-		self.roaches.disable_tbn()
+		self.log.info("Stopping TBN")
+		self.roaches.disable_tbn_data()
+		self.log.info("TBN stopped")
+		return 0
 
 class DrxCommand(object):
 	def __init__(self, msg):
@@ -130,12 +140,13 @@ class Drx(SlotCommandProcessor):
 			#self.roaches.disable_drx()
 			#time.sleep(1)
 			self.roaches.tune_drx(cfreq, bw)
-			self.roaches.enable_drx()
+			self.roaches.enable_drx_data()
 			self.cur_freq[tuning] = cmd.freq
 			self.cur_filt[tuning] = cmd.filt
 			self.cur_gain[tuning] = cmd.gain
 	def stop(self):
-		self.roaches.disable_drx()
+		self.roaches.disable_drx_data()
+		return 0
 """
 class DrxCommand(object):
 	def __init__(self, msg):
@@ -355,6 +366,8 @@ class Roach2MonitorClient(object):
 		self.host   = self.roach.hostname
 		self.device = ROACH2Device(self.host)
 		self.num = num
+		self.GBE_DRX = 0
+		self.GBE_TBN = 1
 	def reboot(self):
 		ssh = paramiko.SSHClient()
 		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -397,8 +410,6 @@ class Roach2MonitorClient(object):
 		try:
 			self.roach.stop_processing()
 			# DRX on gbe0, TBN on gbe1
-			GBE_DRX = 0
-			GBE_TBN = 1
 			drx_dst_hosts = self.config['host']['servers-data']
 			tbn_dst_hosts = [self.config['host']['servers-tbn'][self.num-1]]
 			src_ip_base   = self.config['roach']['data_ip_base']
@@ -414,8 +425,8 @@ class Roach2MonitorClient(object):
 			drx_dst_ports = [dst_ports[0]] * len(drx_dst_ips)
 			tbn_dst_ports = [dst_ports[1]] * len(tbn_dst_ips)
 			
-			ret0 = self.roach.configure_10gbe(GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-			ret1 = self.roach.configure_10gbe(GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
+			ret0 = self.roach.configure_10gbe(self.GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+			ret1 = self.roach.configure_10gbe(self.GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
 			if not ret0 or not ret1:
 				raise RuntimeError("Configuring Roach 10GbE ports failed")
 		except:
@@ -462,14 +473,14 @@ class Roach2MonitorClient(object):
 		nsubband      = len(self.config['host']['servers-data'])
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
-		self.roach.configure_fengine(GBE_DRX, nsubband, subband_nchan, chan0)
+		self.roach.configure_fengine(self.GBE_DRX, nsubband, subband_nchan, chan0)
 		return subband_nchan, chan0
 	def tune_tbn(self, cfreq, bw):
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband = 1
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
-		self.roach.configure_fengine(GBE_TBN, nsubband, subband_nchan, chan0)
+		self.roach.configure_fengine(self.GBE_TBN, nsubband, subband_nchan, chan0)
 		return subband_nchan, chan0
 	def start_processing(self):
 		self.roach.start_processing()
@@ -478,17 +489,17 @@ class Roach2MonitorClient(object):
 	def processing_started(self):
 		return roach.processing_started()
 	def enable_drx_data(self):
-		self.roach.enable_data(GBE_DRX)
+		self.roach.enable_data(self.GBE_DRX)
 	def enable_tbn_data(self):
-		self.roach.enable_data(GBE_TBN)
+		self.roach.enable_data(self.GBE_TBN)
 	def disable_drx_data(self):
-		self.roach.disable_data(GBE_DRX)
+		self.roach.disable_data(self.GBE_DRX)
 	def disable_tbn_data(self):
-		self.roach.disable_data(GBE_TBN)
-	def drx_enabled(self):
-		return roach.data_enabled(GBE_DRX)
-	def tbn_enabled(self):
-		return roach.data_enabled(GBE_TBN)
+		self.roach.disable_data(self.GBE_TBN)
+	def drx_data_enabled(self):
+		return roach.data_enabled(self.GBE_DRX)
+	def tbn_data_enabled(self):
+		return roach.data_enabled(self.GBE_TBN)
 	"""
 	def start_data(self, mode='DRX'):
 		if mode == 'DRX':
@@ -605,6 +616,17 @@ class MsgProcessor(ConsumerThread):
 		self.state['activeProcess'].append('INI')
 		self.state['status'] = 'BOOTING'
 		self.state['info']   = 'Running INI sequence'
+
+		if not self.check_success(lambda: self.servers.do_power('on'),
+		                          'Powering on servers',
+		                          self.servers.host):
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+		startup_timeout = self.config['server']['startup_timeout']
+		try:
+			self._wait_until_servers_power('on', startup_timeout)
+		except RuntimeError:
+			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+
 		# Note: This is for debugging, not in spec
 		if 'NOREPROGRAM' not in arg:
 			if not self.check_success(lambda: self.roaches.program(),
@@ -616,15 +638,6 @@ class MsgProcessor(ConsumerThread):
 		                          'Configuring FPGAs',
 		                          self.roaches.host):
 			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-		if not self.check_success(lambda: self.servers.do_power('on'),
-		                          'Powering on servers',
-		                          self.servers.host):
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-		startup_timeout = self.config['server']['startup_timeout']
-		try:
-			self._wait_until_servers_power('on', startup_timeout)
-		except RuntimeError:
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 
 		# TODO: Need to make sure server pipelines etc. start up and respond here
 
@@ -649,8 +662,14 @@ class MsgProcessor(ConsumerThread):
 		                          'Starting FPGA processing',
 		                          self.roaches.host):
 			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		if not self.check_success(lambda: self.tbn.start(record=False),
+		                          'Initializing TBN',
+		                          self.roaches.host):
+			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		time.sleep(0.1)
 		if not all(self.roaches.processing_started()):
+			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		if not all(self.roaches.tbn_data_enabled()):
 			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 
 		self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
