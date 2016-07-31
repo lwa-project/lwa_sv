@@ -41,10 +41,14 @@ if __name__ == "__main__":
 			send_rpt('INFO')
 			send_rpt('LASTLOG')
 			time.sleep(3)
+	elif len(sys.argv) > 2 and sys.argv[1] == 'RPT':
+		send_rpt(sys.argv[2])
+		sys.exit(0)
 	elif len(sys.argv) > 1:
 		# Send specific command with optional data
 		if len(sys.argv) > 2:
-			send_msg(sys.argv[1], sys.argv[2])
+			data = ' '.join(sys.argv[2:])
+			send_msg(sys.argv[1], data)
 		else:
 			send_msg(sys.argv[1])
 		for i in xrange(5):
