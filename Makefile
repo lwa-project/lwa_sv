@@ -16,8 +16,13 @@ configure_server:
 	$(MAKE) -C ./config/ configure_server
 .PHONY: configure_server
 
+configure_server_partial:
+	$(MAKE) -C ./config/ configure_server_partial
+.PHONY: configure_server_partial
+
 install_headnode: install_adp_control_service
-install_server:   cuda install_adp_pipeline
+#install_server:   cuda install_adp_pipeline
+install_server:   install_adp_pipeline
 
 $(INSTALL_BIN_DIR)/adp/: scripts/adp/
 	test -d $(INSTALL_BIN_DIR)/adp || mkdir $(INSTALL_BIN_DIR)/adp
@@ -26,14 +31,30 @@ $(INSTALL_BIN_DIR)/adp_control.py: scripts/adp_control.py $(INSTALL_BIN_DIR)/adp
 	cp $< $@
 $(SERVICE_CONF_DIR)/adp-control.conf: config/headnode/adp-control.conf
 	cp $< $@
+$(INSTALL_BIN_DIR)/adp_tbn.py: scripts/adp_tbn.py $(INSTALL_BIN_DIR)/adp/
+	cp $< $@
+$(SERVICE_CONF_DIR)/adp-tbn.conf: config/servers/adp-tbn.conf
+	cp $< $@
 $(INSTALL_SHARE_DIR)/adp_config.json: config/adp_config.json
 	test -d $(INSTALL_SHARE_DIR) || mkdir $(INSTALL_SHARE_DIR)
 	cp $< $@
-install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DIR)/adp-control.conf $(INSTALL_SHARE_DIR)/adp_config.json
+install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DIR)/adp-control.conf $(INSTALL_SHARE_DIR)/adp_config.json install_sshpass
 	initctl reload-configuration
 	start adp-control
 	tail -n 40 /var/log/upstart/adp-control.log
 .PHONY: install_adp_control_service
+
+install_adp_tbn_service: $(INSTALL_BIN_DIR)/adp_tbn.py $(SERVICE_CONF_DIR)/adp-tbn.conf $(INSTALL_SHARE_DIR)/adp_config.json
+	initctl reload-configuration
+	stop  adp-tbn ; start adp-tbn # Note: Need to stop+start to reload the conf file
+.PHONY: install_adp_tbn_service
+
+install_adp_pipeline: install_adp_tbn_service
+.PHONY: install_adp_pipeline
+
+install_sshpass:
+	pt-get install -y sshpass
+.PHONE: install_sshpass
 
 CUDA_DOWNLOAD_PATH        ?= "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_7.0-28_amd64.deb"
 CUDA_INSTALL_FILE         ?= cuda-repo-ubuntu1404_7.0-28_amd64.deb

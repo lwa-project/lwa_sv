@@ -52,6 +52,8 @@ sysctl: $(SYSCTL_CONF)
 $(RESOLVCONF): ./resolv.conf.d_tail
 	cp $< $@
 	resolvconf -u
+	restart network-manager
+	ifdown --exclude=lo -a && ifup --exclude=lo -a # Restart networking
 resolvconf: $(RESOLVCONF)
 
 .PHONY: dnsmasq
@@ -96,7 +98,7 @@ nfs_client: network
 	mount -a -t nfs
 
 .PHONY: ntp
-$(NTP_CONF): ./ntp.conf network
+$(NTP_CONF): ../ntp.conf network
 	/usr/sbin/ntpdate $(LOCAL_NTP_SERVER) ntp.ubuntu.com pool.ntp.org # Initial estimate
 	apt-get install -y ntp
 	cp $< $@
@@ -120,4 +122,6 @@ socket_buffers: $(SOCK_WMEM_CONF) $(SOCK_RMEM_CONF)
 irq_affinity:
 	/etc/init.d/irqbalance stop
 	cp ../irqbalance $(IRQBALANCE_CONF)
+	cp ../configure_irq_affinity.py /usr/local/bin/
+	grep -q configure_irq_affinity /etc/rc.local || sed -i '/^exit 0/i/usr/local/bin/configure_irq_affinity.py $(DATA_NETWORK_IFACE)' /etc/rc.local
 	../configure_irq_affinity.py $(DATA_NETWORK_IFACE)

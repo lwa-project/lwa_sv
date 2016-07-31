@@ -1,5 +1,6 @@
 {
-	"shutdown_timeout": 5.0,
+	"shutdown_timeout":  5.0,
+	"failsafe_interval": 180.0,
 	"mcs": {
 		"headnode": {
 			"local_host":   "0.0.0.0",
@@ -33,10 +34,18 @@
 		"password": "admin"
 	},
 	"drx": {
-		"capture_bandwidth": 21.6e6
+		"capture_bandwidth_todo": 21.6e6,
+		"capture_bandwidth_nope": 10.8e6,
+		"capture_bandwidth": 9.0e6,
+		"pipeline_idx":      0,
+		"recorder_idx":      0,
+		"first_cpu_core":    0
 	},
 	"tbn": {
-		"capture_bandwidth": 500e3
+		"capture_bandwidth": 200e3,
+		"pipeline_idx":      1,
+		"recorder_idx":      0,
+		"first_cpu_core":    3
 	},
 	"fst": {
 		"control_ports":  [23720, 23721],
@@ -62,14 +71,20 @@
 		}
 	},
 	"server": {
+		"username":    "root",
+		"password": "130Jy/K",
 		"cpu_ids":    [0, 1],
 		"gpu_ids":    [0, 1],
 		"disk_ids":   ["/"],
 		"data_ports": [4015, 4016],
+		"data_ifaces": ["p5p1","p5p1"],
 		"startup_timeout": 60,
 		"temperatures": ["CPU1 Temperature", "CPU2 Temperature",
 		                  "TR1 Temperature",  "TR2 Temperature",
-		                 "PSU1 Temperature", "PSU2 Temperature"]
+		                 "PSU1 Temperature", "PSU2 Temperature"],
+		"temperature_warning":  80.0,
+		"temperature_shutdown": 85.0,
+		"temperature_scram":    95.0
 	},
 	"roach": {
 		"port":              7147,
@@ -77,12 +92,22 @@
 		"password":     "130Jy/K",
 		"data_ip_base":  "192.168.40.50",
 		"data_port_base":    4000,
-		"firmware_old":      "sevilleta_devel2_2015_Nov_13_1640.bof",
-		"firmware":          "sevilleta_devel3_2015_Dec_10_2201.bof",
+		"firmware_oldest":      "sevilleta_devel2_2015_Nov_13_1640.bof",
+		"firmware_older":        "sevilleta_devel3_2015_Dec_10_2201.bof",
+		"firmware_old":             "sevietta_devel4_2016_Feb_12_1742.bof",
+		"firmware":             "sevietta_devel_2016c_2016_Mar_30_1159.bof",
 		"max_program_attempts": 15,
 		"adc_gain":             4,
 		"scale_factor":     1.948,
 		"shift_factor":        27,
-		"temperatures": ["ambient", "ppc", "fpga", "inlet", "outlet"]
+		"bypass_pfb":       false,
+		"temperatures": ["ambient", "ppc", "fpga", "inlet", "outlet"],
+		"temperature_warning":  80.0,
+		"temperature_shutdown": 85.0,
+		"temperature_scram":    100.0
+	},
+	"recorder": {
+		"port":              10000,
+		"max_bytes_per_sec": 104851000
 	}
 }
