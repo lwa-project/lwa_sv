@@ -6,6 +6,10 @@ import socket
 from ConsumerThread import ConsumerThread
 from SocketThread import UDPRecvThread
 import string
+import struct
+
+import socket
+from threading import Thread, Event
 
 # Maximum number of bytes to receive from MCS
 MCS_RCV_BYTES = 16*1024
@@ -103,14 +107,14 @@ class Msg(object):
 		self.src_ip = src_ip
 	def __str__(self):
 		if self.slot is None:
-			return ("<MCS Msg %i: '%s' from %s to %s, data='%s'>" %
+			return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
 			        (self.ref, self.cmd, self.src, self.dst,
-			         self.data))
+			         self.data, self.data.encode('hex')))
 		else:
-			return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s', "+
+			return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s' (0x%s), "+
 			        "rcv'd in slot %i>") %
 			        (self.ref, self.cmd, self.src, self.src_ip,
-			         self.dst, self.data,
+			         self.dst, self.data, self.data.encode('hex'),
 			         self.slot))
 	def decode(self, pkt):
 		self.slot = get_current_slot()
@@ -175,7 +179,7 @@ class MsgReceiver(UDPRecvThread):
 				self.msg_queue.put(msg)
 	def shutdown(self):
 		self.msg_queue.put(ConsumerThread.STOP)
-		print self.name, "shutdown"
+		#print self.name, "shutdown"
 	def get(self, timeout=None):
 		try:
 			return self.msg_queue.get(True, timeout)
@@ -211,4 +215,171 @@ class MsgSender(ConsumerThread):
 		#self.socket.send(pkt)
 		self.socket.sendto(pkt, dst_addr)
 	def shutdown(self):
-		print self.name, "shutdown"
+		#print self.name, "shutdown"
+		pass
+
+# Simple interface for communicating with adp-control service
+class Communicator(object):
+	def __init__(self, subsystem='MCS'):
+		# TODO: Load port numbers etc. from config
+		#sender   = MsgSender(("localhost",1742), subsystem=subsystem)
+		self.sender   = MsgSender(("adp",1742), subsystem=subsystem)
+		self.receiver = MsgReceiver(("0.0.0.0",1743))
+		self.sender.input_queue = Queue.Queue()
+		self.sender.daemon = True
+		self.receiver.daemon = True
+		self.sender.start()
+		self.receiver.start()
+	def __enter__(self):
+		return self
+	def __exit__(self, type, value, tb):
+		self.sender.request_stop()
+		self.receiver.request_stop()
+		self.sender.join()
+		self.receiver.join()
+	def _get_reply(self, timeout):
+		reply = self.receiver.get(timeout=timeout)
+		if reply is None:
+			raise RuntimeError("MCS request timed out")
+		data = reply.data
+		accepted, status, data = data[0]=='A', data[1:8], data[8:]
+		if not accepted:
+			raise ValueError(data)
+		return status, data
+	def _send(self, msg, timeout):
+		self.sender.put(msg)
+		self.status, data = self._get_reply(timeout)
+		return data
+	def report(self, data, fmt=None, timeout=5.):
+		msg = Msg(dst='ADP', cmd='RPT', data=data)
+		data = self._send(msg, timeout)
+		if fmt is None or fmt == 's':
+			return data
+		else:
+			return struct.unpack('>'+fmt, data)
+	def command(self, cmd, data='', timeout=5.):
+		msg = Msg(dst='ADP', cmd=cmd, data=data)
+		self._send(msg, timeout)
+
+class SafeSocket(socket.socket):
+	def __init__(self, *args, **kwargs):
+		socket.socket.__init__(self, *args, **kwargs)
+		l_onoff = 1
+		l_linger = 0
+		self.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		self.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+		                struct.pack('ii', l_onoff, l_linger))
+
+class Synchronizer(object):
+	def __init__(self, group, addr=("adp",23820)):
+		self.group  = group
+		self.addr   = addr
+		self.socket = SafeSocket(socket.AF_INET,
+		                         socket.SOCK_STREAM)
+		self.socket.connect(addr)
+		self.socket.send('GROUP:'+str(group))
+	def __call__(self, tag=None):
+		self.socket.send('TAG:'+str(tag))
+		reply = self.socket.recv(4096)
+		expected_reply = 'GROUP:'+str(self.group) + ',TAG:'+str(tag)
+		if reply != expected_reply:
+			raise ValueError("Unexpected reply '%s', expected '%s'" %
+			                 (reply, expected_reply))
+
+class SynchronizerGroup(object):
+	def __init__(self, group):
+		self.group = group
+		self.socks = []
+		self.shutdown_event = Event()
+		self.run_thread = Thread(target=self.run)
+		#self.run_thread.daemon = True
+		self.run_thread.start()
+	#def __del__(self):
+	#	self.shutdown()
+	def shutdown(self):
+		self.shutdown_event.set()
+		print "SynchronizerGroup run joining"
+		self.run_thread.join()
+		print "SynchronizerGroup run thread joined"
+	def add(self, sock, addr):
+		self.socks.append(sock)
+	def run(self):
+		while not self.shutdown_event.is_set():
+		#while len(self.socks) > 0:
+			if len(self.socks) == 0:
+				# Avoid spinning after all socks close
+				time.sleep(0.1)
+				continue
+			tag0 = None
+			i = 0
+			while i < len(self.socks) and not self.shutdown_event.is_set():
+				sock = self.socks[i]
+				try:
+					tag_msg = sock.recv(4096)
+				except socket.timeout:
+					continue
+				except socket.error as e:
+					print "WARNING: Synchronizer (a): socket.error: " + str(e)
+					self.socks[i].close()
+					del self.socks[i]
+					continue
+				if not tag_msg.startswith('TAG:'):
+					#raise ValueError("Unexpected message: "+tag_msg)
+					print "WARNING: Synchronizer: Unexpected message: "+tag_msg
+				print 'tag_msg =', tag_msg
+				tag = tag_msg[len('TAG:'):]
+				if tag0 is None:
+					print "Setting tag0 =", tag
+					tag0 = tag
+				if tag != tag0:
+					#raise KeyError("Tag mismatch")
+					print "WARNING: Synchronizer: Tag mismatch: "+tag+" != "+tag0+" from client "+str(i)
+				i += 1
+			i = 0
+			while i < len(self.socks):
+				sock = self.socks[i]
+			#for sock in self.socks:
+				try:
+					sock.send('GROUP:'+self.group+',TAG:'+tag0)
+				except socket.error as e:
+					print "WARNING: Synchronizer (b): socket.error: " + str(e)
+					print "  DELETING socket object"
+					# HACK TESTING
+					#del self.socks[i]
+					continue # TODO: Need to do something here?
+				i += 1
+			print "SYNCED", len(self.socks)
+		print "SynchronizerGroup shut down"
+
+class SynchronizerServer(object):
+	def __init__(self, addr=("0.0.0.0",23820)):
+		self.addr = addr
+		self.sock = SafeSocket(socket.AF_INET,
+		                         socket.SOCK_STREAM)
+		self.sock.settimeout(1) # Prevent accept() from blocking indefinitely
+		self.sock.bind(addr)
+		self.sock.listen(32)
+		self.groups = {}#defaultdict(SynchronizerGroup)
+		self.shutdown_event = Event()
+	def shutdown(self):
+		self.shutdown_event.set()
+	def run(self):
+		while not self.shutdown_event.is_set():
+			try:
+				sock, addr = self.sock.accept()
+				sock.settimeout(5)
+			except socket.timeout:
+				continue
+			group_msg = sock.recv(4096)
+			if not group_msg.startswith('GROUP:'):
+				#raise ValueError("Unexpected message: "+group_msg)
+				print "WARNING: Synchronizer: Unexpected message: "+group_msg
+			group = group_msg[len('GROUP:'):]
+			if group not in self.groups:
+				self.groups[group] = SynchronizerGroup(group)
+			self.groups[group].add(sock, addr)
+		for group in self.groups.values():
+			group.shutdown()
+		# Note: This seems to be necessary to avoid 'address already in use'
+		self.sock.shutdown(socket.SHUT_RDWR)
+		self.sock.close()

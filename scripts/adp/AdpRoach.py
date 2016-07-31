@@ -53,6 +53,12 @@ class AdpRoach(object):
 				ok = True # Fine if non-ADC16 firmware
 		self.fpga.write_int('pkt_roach_id', self.num)
 		return out
+	def unprogram(self):
+		try:
+			# Note: This throws an exception but still works to unload firmware
+			self.fpga.progdev("")
+		except RuntimeError:
+			pass
 	def check_serdes(self):
 		cmd_line =["adc16_status.rb", "-c", self.hostname]
 		sp = subprocess.Popen(cmd_line, stdout=subprocess.PIPE)
@@ -93,20 +99,24 @@ class AdpRoach(object):
 		gbe_link = self.fpga.read_int('pkt_gbe%i_linkup' % gbe_idx)
 		return bool(gbe_link)
 	def configure_fengine(self, gbe_idx, nsubband, subband_nchan, start_chan,
-	                      scale_factor=1.948, shift_factor=27):
+	                      scale_factor=1.948, shift_factor=27,
+	                      bypass_pfb=False):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
 		assert( 0 <= gbe_idx and gbe_idx < 3 )
 		assert( 0 <= start_chan and start_chan < 4096 )
+		assert( 0 <= subband_nchan and subband_nchan < 256 )
 		self.fpga.write_int('pkt_roach_id', self.num)
 		stop_chan = start_chan + nsubband*subband_nchan
 		self.fpga.write_int('pkt_gbe%i_n_chan_per_sub' % gbe_idx, subband_nchan)
 		self.fpga.write_int('pkt_gbe%i_n_subband'      % gbe_idx, nsubband)
 		self.fpga.write_int('pkt_gbe%i_start_chan'     % gbe_idx, start_chan)
 		self.fpga.write_int('pkt_gbe%i_stop_chan'      % gbe_idx, stop_chan)
+		#self.fpga.write_int('pkt_n_roach', nroach) # TODO: Need this per gbe?
 		self.fpga.write_int('fft_f1_fft_shift', 65535)
 		self.fpga.write_int('fft_f2_fft_shift', 65535)
 		self.fpga.write_int('fft_f3_fft_shift', 65535)
 		self.fpga.write_int('fft_f4_fft_shift', 65535)
+		self.fpga.write_int('fft_f1_bypass',    int(bypass_pfb)) # TODO: Need this per gbe?
 		scaledata = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor
 		cstr = struct.pack('>4096l', *scaledata)
 		self.fpga.write('fft_f1_cg_bpass_bram', cstr)
@@ -123,22 +133,28 @@ class AdpRoach(object):
 		#print "***_write_pkt_tx_enable:", gbe_bitset, fifo_bitset
 		bitset = ((gbe_bitset & 0b11) << 2) | (fifo_bitset & 0b11)
 		self.fpga.write_int('pkt_tx_enable', bitset)
+	# Note: Starting processing without starting data flow
+	#         means that we can't get the first 1s of data, because
+	#         the data enable takes another 1s to take effect.
 	def start_processing(self):
 		self.stop_processing()
 		self.reset() # Must call this here to initialise things
+		## Note: We restore the previous gbe states
+		#gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
 		fifo_bitset = 0b11
 		gbe_bitset  = 0b00
+		#gbe_bitset  = 0b11
 		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
 	def enable_data(self, gbe):
 		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		if fifo_bitset != 0b11:
-			raise RuntimeError("Enable data requested but data not started")
+		#if fifo_bitset != 0b11:
+		#	raise RuntimeError("Enable data requested but data not started")
 		gbe_bitset |= (1<<gbe)
 		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
 	def disable_data(self, gbe):
 		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		if fifo_bitset != 0b11:
-			raise RuntimeError("Disable data requested but data not started")
+		#if fifo_bitset != 0b11:
+		#	raise RuntimeError("Disable data requested but data not started")
 		gbe_bitset &= ~(1<<gbe)
 		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
 	def stop_processing(self):

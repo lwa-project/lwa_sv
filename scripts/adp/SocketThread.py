@@ -25,6 +25,7 @@ class UDPRecvThread(threading.Thread):
 		# WAR for "107: Transpose endpoint is not connected" in socket.shutdown
 		self.socket.connect(("0.0.0.0", 0))
 		self.socket.shutdown(socket.SHUT_RD)
+		self.socket.close()
 	def run(self):
 		while True:#not self.stop_requested.is_set():
 			#pkt = self.socket.recv(self._bufsize)

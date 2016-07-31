@@ -1,5 +1,6 @@
 
 import numpy as np
+import datetime
 
 SUBSYSTEM        = "ADP"
 FS               = 196.0e6
@@ -28,6 +29,13 @@ ADC_BITS         = 8
 ADC_MAXVAL       = (1<<(ADC_BITS-1))-1
 TBN_BITS         = 16
 DATE_FORMAT      = "%Y_%m_%dT%H_%M_%S"
+ADP_EPOCH        = datetime.datetime(1970, 1, 1)
+M5C_EPOCH        = datetime.datetime(1990, 1, 1)
+#M5C_OFFSET = int((M5C_EPOCH - ADP_EPOCH).total_seconds())
+M5C_OFFSET = 0 # LWA convention re-defines this to use the 1970 epoch too
+TBN_NSAMPLE_PER_PKT = 512
+TBF_NCHAN_PER_PKT   = 12
+NFRAME_PER_SPECTRUM = int(FS) // int(CHAN_BW) # 7840
 #PIPELINE_HOSTS   = ['adp%i' % (i/2+1) for i in xrange(NPIPELINE)]
 #SERVER_HOSTS     = ['adp%i' % (i+1) for i in xrange(NSERVER)]
 

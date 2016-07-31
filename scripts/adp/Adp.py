@@ -24,8 +24,25 @@ import struct
 import subprocess
 import datetime
 import zmq
-# Note: paramiko must be pip installed (it's also included with fabric)
-import paramiko # For ssh'ing into roaches to call reboot
+# TODO: This caused weird hangs when launching on two servers, so I
+#         moved it into the local function as a WAR.
+## Note: paramiko must be pip installed (it's also included with fabric)
+#import paramiko # For ssh'ing into roaches to call reboot
+import threading
+import socket # For socket.error
+
+#from paramiko import py3compat
+## dirty hack to fix threading import lock (issue 104) by preloading module
+#py3compat.u("dirty hack")
+#import paramiko
+##''.decode('utf-8')  # dirty fix
+
+#_hack_ssh = paramiko.SSHClient()
+#_hack_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+#try:
+#	_hack_ssh.connect("127.0.0.1", timeout=0.001)
+#except:
+#	pass
 
 __version__    = "0.2"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -80,7 +97,16 @@ class Tbn(SlotCommandProcessor):
 		self.cur_freq = self.cur_filt = self.cur_gain = 0
 	#def startup(self):
 	#	self.config['tbn']['capture_bandwidth']
-	def start(self, freq=50e6, filt=1, gain=1, record=True):
+	def tune(self, freq=59.98e6, filt=1, gain=1):
+		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i"
+		              % (freq,filt,gain))
+		bw = self.config['tbn']['capture_bandwidth']
+		rets = self.roaches.tune_tbn(freq, bw)
+		self.cur_freq = freq
+		self.cur_filt = filt
+		self.cur_gain = gain
+		return rets
+	def start(self, freq=59.98e6, filt=1, gain=1, record=True):
 		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i"
 		              % (freq,filt,gain))
 		# TODO: How/where to apply bandwidth filter?
@@ -88,15 +114,11 @@ class Tbn(SlotCommandProcessor):
 		#       Need to send command to pipelines to begin new
 		#         observation with this info.
 		#         Only do this when record==True
-		bw = self.config['tbn']['capture_bandwidth']
 		# TODO: Check whether pausing the data flow is necessary
-		#self.roaches.disable_tbn()
-		#time.sleep(1)
-		self.roaches.tune_tbn(freq, bw)
+		self.roaches.disable_tbn_data()
+		time.sleep(0.5)
+		self.tune(freq, filt, gain)
 		rets = self.roaches.enable_tbn_data()
-		self.cur_freq = freq
-		self.cur_filt = filt
-		self.cur_gain = gain
 		return rets
 	def execute(self, cmds):
 		for cmd in cmds:
@@ -126,24 +148,27 @@ class Drx(SlotCommandProcessor):
 		self.cur_freq = [0]*self.ntuning
 		self.cur_filt = [0]*self.ntuning
 		self.cur_gain = [0]*self.ntuning
+	def tune(self, freq, filt, gain, tuning):
+		self.log.info("Tuning DRX: freq=%f,filt=%i,gain=%i"
+		              % (freq,filt,gain))
+		bw = self.config['drx']['capture_bandwidth']
+		rets = self.roaches.tune_drx(freq, bw)
+		self.cur_freq[tuning] = freq
+		self.cur_filt[tuning] = filt
+		self.cur_gain[tuning] = gain
+		return rets
+	def start(self, freq=59.98e6, filt=1, gain=1, tuning=0, record=True):
+		self.log.info("Starting DRX: freq=%f,filt=%i,gain=%i"
+		              % (freq,filt,gain))
+		self.roaches.disable_drx_data()
+		time.sleep(0.5)
+		self.tune(freq, filt, gain, tuning)
+		rets = self.roaches.enable_drx_data()
+		return rets
 	def execute(self, cmds):
 		for cmd in cmds:
-			tuning = cmd.tuning-1 # Convert from 1-based to 0-based
-			cfreq  = cmd.freq
-			# TODO: How to deal with multiple smaller tunings?
-			#       How/where to apply bandwidth filter?
-			#       How/where to apply gain bitshift?
-			#       Need to send command to pipelines to begin new
-			#         observation with this info.
-			bw = self.config['drx']['capture_bandwidth']
-			# TODO: Check whether pausing the data flow is necessary
-			#self.roaches.disable_drx()
-			#time.sleep(1)
-			self.roaches.tune_drx(cfreq, bw)
-			self.roaches.enable_drx_data()
-			self.cur_freq[tuning] = cmd.freq
-			self.cur_filt[tuning] = cmd.filt
-			self.cur_gain[tuning] = cmd.gain
+			# Note: Converts from 1-based to 0-based tuning
+			self.start(cmd.freq, cmd.filt, cmd.gain, cmd.tuning-1)
 	def stop(self):
 		self.roaches.disable_drx_data()
 		return 0
@@ -285,6 +310,9 @@ def truncate_message(s, n):
 def pretty_print_bytes(bytestring):
 	return ' '.join(['%02x' % ord(i) for i in bytestring])
 
+# HACK TESTING
+#lock = threading.Lock()
+
 class AdpServerMonitorClient(object):
 	def __init__(self, config, log, host, timeout=0.1):
 		self.config = config
@@ -350,11 +378,92 @@ class AdpServerMonitorClient(object):
 		username = self.config['ipmi']['username']
 		password = self.config['ipmi']['password']
 		#try:
-		return subprocess.check_output(['ipmitool', '-H', self.host_ipmi,
+		ret = subprocess.check_output(['ipmitool', '-H', self.host_ipmi,
 		                                '-U', username, '-P', password] +
 		                                cmd.split())
+		return ret
+		#return True
 		#except CalledProcessError as e:
 		#	raise RuntimeError(str(e))
+	def stop_tbn(self):
+		try:
+			self._shell_command("stop adp-tbn")
+		except subprocess.CalledProcessError:
+			pass
+		return True
+	def restart_tbn(self):
+		self.stop_tbn()
+		#return self._shell_command("restart adp-tbn)"
+		#try:
+		#	self._shell_command("stop adp-tbn")
+		#except subprocess.CalledProcessError:
+		#	pass
+		return self._shell_command("start adp-tbn")
+	def restart_drx(self):
+		#return self._shell_command("restart adp-drx")
+		try:
+			self._shell_command("stop adp-drx")
+		except subprocess.CalledProcessError:
+			pass
+		return self._shell_command("start adp-drx")
+	def _shell_command(self, cmd, timeout=5.):
+		#return self.host
+		# HACK TESTING
+		#i = int(self.host[-1])
+		#time.sleep(i)
+		
+		#self.log.info("Executing "+cmd+" on "+self.host)
+		
+		password = self.config['server']['password']
+		#self.log.info("RUNNING SSHPASS " + cmd)
+		ret = subprocess.check_output(['sshpass', '-p', password,
+		                               'ssh', '-o', 'StrictHostKeyChecking=no',
+		                               'root@'+self.host,
+		                               cmd])
+		#self.log.info("SSHPASS DONE: " + ret)
+		#self.log.info("Command executed: "+ret)
+		return ret
+		#return True
+		#import paramiko
+		#''.decode('utf-8')  # dirty fix
+		#py3compat.u("dirty hack")
+		#ssh = paramiko.SSHClient()
+		#ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+		#ssh.connect(self.host,
+		#            username=self.config['server']['username'],
+		#            password=self.config['server']['password'],
+		#            timeout=timeout)
+		#cmd += '; exit'
+		#self.log.info("Executing "+cmd+" on "+self.host)
+		#ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
+		#self.log.info("Closing SSH")
+		#ssh_stdin.close()
+		#ssh_stdout.close()
+		#ssh_stderr.close()
+		#ssh.close()
+		#del ssh
+		password = self.config['server']['password']
+		#try:
+		self.log.info("RUNNING SSHPASS " + cmd)
+		ret = subprocess.check_output(['sshpass', '-p', password,
+		                               'ssh', '-o', 'StrictHostKeyChecking=no',
+		                               'root@'+self.host] +
+		                              cmd.split())
+		#ret = subprocess.check_output(['sshpass -p %s ssh root@%s %s' %
+			#                               (password, self.host, cmd)],
+			#                              shell=True)
+		self.log.info("SSHPASS DONE: " + ret)
+		#except subprocess.CalledProcessError:
+		#	raise RuntimeError("Server command '%s' failed" % cmd)
+	def can_ssh(self):
+		try:
+			#with lock:
+			ret = self._shell_command('hostname')
+			return True
+			#except socket.error:
+		#except RuntimeError:
+		except subprocess.CalledProcessError:
+			return False
 
 # TODO: Rename this (and possibly refactor)
 class Roach2MonitorClient(object):
@@ -368,21 +477,32 @@ class Roach2MonitorClient(object):
 		self.num = num
 		self.GBE_DRX = 0
 		self.GBE_TBN = 1
-	def reboot(self):
-		ssh = paramiko.SSHClient()
-		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-		ssh.connect(self.host, username='root',
-		            password=self.config['roach']['password'])
-		ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('reboot')
+	def unprogram(self, reboot=False):
+		if not reboot:
+			self.roach.unprogram()
+			return
+		# Note: paramiko must be pip installed (it's also included with fabric)
+		#import paramiko # For ssh'ing into roaches to call reboot
+		#ssh = paramiko.SSHClient()
+		#ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+		#ssh.connect(self.host,
+		#            username=self.config['roach']['username'],
+		#            password=self.config['roach']['password'],
+		#            timeout=5.)
+		#ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('reboot')
 		#ssh_stdout.read()
 		## Note: This requires ssh authorized_keys to have been set up
-		#try:
-		#	subprocess.check_output(['ssh', 'root@'+self.host,
-		#	                         'shutdown -r now'])
-		#except subprocess.CalledProcessError:
-		#	raise RuntimeError("Roach reboot command failed")
+		password = self.config['roach']['password']
+		try:
+			subprocess.check_output(['sshpass', '-p', password,
+			                         'ssh', '-o', 'StrictHostKeyChecking=no',
+			                         'root@'+self.host,
+			                         'shutdown -r now'])
+		except subprocess.CalledProcessError as e:
+			self.log.info("Failed to reboot roach %s: %s", self.host, str(e))
+			raise RuntimeError("Roach reboot command failed")
 	def get_samples(self, slot, stand, pol, nsamps=None):
-		return self.get_samples_all(nsamps)[stand,pol]
+		return self.get_samples_all(slot, nsamps)[stand,pol]
 	@lru_cache_method(maxsize=4)
 	def get_samples_all(self, slot, nsamps=None):
 		"""Returns an NDArray of shape (stand,pol,sample)"""
@@ -473,21 +593,27 @@ class Roach2MonitorClient(object):
 		nsubband      = len(self.config['host']['servers-data'])
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
-		self.roach.configure_fengine(self.GBE_DRX, nsubband, subband_nchan, chan0)
+		if subband_nchan > 255:
+			raise ValueError("Too many channels per subband; limit is 255")
+		self.roach.configure_fengine(self.GBE_DRX, nsubband, subband_nchan, chan0,
+		                             bypass_pfb=self.config['roach']['bypass_pfb'])
 		return subband_nchan, chan0
 	def tune_tbn(self, cfreq, bw):
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband = 1
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
-		self.roach.configure_fengine(self.GBE_TBN, nsubband, subband_nchan, chan0)
+		if subband_nchan > 255:
+			raise ValueError("Too many channels per subband; limit is 255")
+		self.roach.configure_fengine(self.GBE_TBN, nsubband, subband_nchan, chan0,
+		                             bypass_pfb=self.config['roach']['bypass_pfb'])
 		return subband_nchan, chan0
 	def start_processing(self):
 		self.roach.start_processing()
 	def stop_processing(self):
 		self.roach.stop_processing()
 	def processing_started(self):
-		return roach.processing_started()
+		return self.roach.processing_started()
 	def enable_drx_data(self):
 		self.roach.enable_data(self.GBE_DRX)
 	def enable_tbn_data(self):
@@ -497,9 +623,9 @@ class Roach2MonitorClient(object):
 	def disable_tbn_data(self):
 		self.roach.disable_data(self.GBE_TBN)
 	def drx_data_enabled(self):
-		return roach.data_enabled(self.GBE_DRX)
+		return self.roach.data_enabled(self.GBE_DRX)
 	def tbn_data_enabled(self):
-		return roach.data_enabled(self.GBE_TBN)
+		return self.roach.data_enabled(self.GBE_TBN)
 	"""
 	def start_data(self, mode='DRX'):
 		if mode == 'DRX':
@@ -526,6 +652,10 @@ class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
 	             max_process_time=1.0, ncmd_save=4, dry_run=False):
 		ConsumerThread.__init__(self)
+		
+		# HACK WAR for super nasty bug in Paramiko (threads during import)
+		#import paramiko # For ssh'ing into roaches to call reboot
+		
 		self.config           = config
 		self.log              = log
 		self.shutdown_timeout = 3.
@@ -573,6 +703,29 @@ class MsgProcessor(ConsumerThread):
 		self.state['lastlog'] = ('Welcome to ADP S/N %s, version %s' %
 		                         (self.serial_number, self.version))
 		self.state['activeProcess'] = []
+		
+		self.shutdown_event = threading.Event()
+		
+		self.run_execute_thread = threading.Thread(target=self.run_execute)
+		self.run_execute_thread.daemon = True
+		self.run_execute_thread.start()
+		
+		self.run_failsafe_thread = threading.Thread(target=self.run_failsafe)
+		self.run_failsafe_thread.daemon = True
+		self.run_failsafe_thread.start()
+		
+		self.start_synchronizer_thread()
+
+	def start_synchronizer_thread(self):
+		self.sync_server = MCS2.SynchronizerServer()
+		#self.run_synchronizer_thread = threading.Thread(target=self.run_synchronizer)
+		self.run_synchronizer_thread = threading.Thread(target=self.sync_server.run)
+		#self.run_synchronizer_thread.daemon = True
+		self.run_synchronizer_thread.start()
+	def stop_synchronizer_thread(self):
+		self.sync_server.shutdown()
+		self.run_synchronizer_thread.join()
+		del self.sync_server
 
 	def uptime(self):
 		# Returns no. secs since data processing began (during INI)
@@ -597,6 +750,7 @@ class MsgProcessor(ConsumerThread):
 	def check_success(self, func, description, names):
 		self.state['info'] = description
 		rets = func()
+		#self.log.info("check_success rets: "+' '.join([str(r) for r in rets]))
 		oks = [True for _ in rets]
 		for i, (name, ret) in enumerate(zip(names, rets)):
 			if isinstance(ret, Exception):
@@ -616,28 +770,73 @@ class MsgProcessor(ConsumerThread):
 		self.state['activeProcess'].append('INI')
 		self.state['status'] = 'BOOTING'
 		self.state['info']   = 'Running INI sequence'
-
-		if not self.check_success(lambda: self.servers.do_power('on'),
-		                          'Powering on servers',
-		                          self.servers.host):
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-		startup_timeout = self.config['server']['startup_timeout']
-		try:
-			self._wait_until_servers_power('on', startup_timeout)
-		except RuntimeError:
-			return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-
+		self.log.info("Running INI sequence")
+		
+		if all(self.servers.can_ssh()):
+			self.servers.stop_tbn()
+		time.sleep(5)
+		
+		# WAR for synchronizer getting into a bad state when clients are killed
+		self.log.info("Stopping Synchronizer thread")
+		self.stop_synchronizer_thread()
+		time.sleep(3)
+		# WAR for synchronizer getting into a bad state when clients are killed
+		self.log.info("Starting Synchronizer thread")
+		self.start_synchronizer_thread()
+		
+		# Note: Must do this to ensure pipelines wait for the new UTC_START
+		self.utc_start     = None
+		self.utc_start_str = 'NULL'
+		
+		#print 'can_ssh_status:', self.servers.can_ssh()
+		can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
+		self.log.info("Can ssh: "+can_ssh_status)
+		if all(self.servers.can_ssh()):
+			self.log.info("Servers already up, restarting pipelines")
+			if not self.check_success(lambda: self.servers.restart_tbn(),
+			                          'Restarting pipelines',
+			                          self.servers.host):
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+			# TODO: Enable this once DRX is implemented
+			#if not self.check_success(lambda: self.servers.restart_drx(),
+			#                          'Restarting pipelines',
+			#                          self.servers.host):
+			#	return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+		else:
+			self.log.info("Powering on servers")
+			if not self.check_success(lambda: self.servers.do_power('on'),
+			                          'Powering on servers',
+			                          self.servers.host):
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+			startup_timeout = self.config['server']['startup_timeout']
+			try:
+				#self._wait_until_servers_power('on', startup_timeout)
+				# **TODO: Use this instead when Paramiko issues resolved!
+				self._wait_until_servers_can_ssh(    startup_timeout)
+			except RuntimeError:
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+		
+		# WAR for synchronizer getting into a bad state when clients are killed
+		#self.log.info("Starting Synchronizer thread")
+		#self.start_synchronizer_thread()
+		
 		# Note: This is for debugging, not in spec
 		if 'NOREPROGRAM' not in arg:
+			self.log.info("Programming FPGAs")
 			if not self.check_success(lambda: self.roaches.program(),
 			                          'Programming FPGAs',
 			                          self.roaches.host):
-				return self.raise_error_state('INI', 'BOARD_PROGRAMMING_FAILED')
+				if 'FORCE' not in arg: # Note: Also not in spec
+					return self.raise_error_state('INI', 'BOARD_PROGRAMMING_FAILED')
+		self.log.info("Configuring FPGAs")
 		#if not self.check_success(lambda: self.roaches.configure_mode('DRX'),
 		if not self.check_success(lambda: self.roaches.configure_dual_mode(),
 		                          'Configuring FPGAs',
 		                          self.roaches.host):
-			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+			if 'FORCE' not in arg:
+				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+
+		self.log.info("  Finished configuring FPGAs")
 
 		# TODO: Need to make sure server pipelines etc. start up and respond here
 
@@ -650,6 +849,7 @@ class MsgProcessor(ConsumerThread):
 		self.utc_start     = utc_start
 		self.utc_start_str = utc_start_str
 		self.state['lastlog'] = "Starting processing at UTC "+utc_start_str
+		self.log.info("Starting processing at UTC "+utc_start_str)
 
 		# TODO: Tell server pipelines the value of utc_start_str and have them
 		#         await imminent data.
@@ -658,43 +858,55 @@ class MsgProcessor(ConsumerThread):
 		wait_until_utc_sec(utc_init_str)
 		time.sleep(0.5)
 		self.state['lastlog'] = "Starting processing now"
+		self.log.info("Starting processing now")
+		if not self.check_success(lambda: self.tbn.tune(),
+		                          'Initializing TBN',
+		                          self.roaches.host):
+			if 'FORCE' not in arg:
+				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		if not self.check_success(lambda: self.roaches.start_processing(),
 		                          'Starting FPGA processing',
 		                          self.roaches.host):
-			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-		if not self.check_success(lambda: self.tbn.start(record=False),
-		                          'Initializing TBN',
-		                          self.roaches.host):
-			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+			if 'FORCE' not in arg:
+				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		time.sleep(0.1)
 		if not all(self.roaches.processing_started()):
-			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-		if not all(self.roaches.tbn_data_enabled()):
-			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+			if 'FORCE' not in arg:
+				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		#if not all(self.roaches.tbn_data_enabled()):
+		#	return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 
+		self.log.info("INI finished in %.3f s", time.time() - start_time)
 		self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
 		self.state['status']  = 'NORMAL'
 		self.state['activeProcess'].pop()
 		return 0
 		
-	def sht(self, arg):
+	def sht(self, arg=''):
 		# TODO: Consider allowing specification of 'only servers' or 'only boards'
 		start_time = time.time()
 		self.state['activeProcess'].append('SHT')
 		self.state['status'] = 'SHUTDWN'
 		# TODO: Use self.check_success here like in ini()
+		self.log.info("System is shutting down")
 		self.state['info']   = 'System is shutting down'
+		do_reboot = ('HARD' in arg)
 		if 'SCRAM' in arg:
 			if 'RESTART' in arg:
 				if exception_in(self.servers.do_power('reset')):
-					return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
-				if exception_in(self.roaches.reboot()):
-					return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+					if 'FORCE' not in arg:
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+				if exception_in(self.roaches.unprogram(do_reboot)):
+					if 'FORCE' not in arg:
+						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
 			else:
 				if exception_in(self.servers.do_power('off')):
-					return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
-				if exception_in(self.roaches.reboot()):
-					return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+					if 'FORCE' not in arg:
+						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+				if exception_in(self.roaches.unprogram(do_reboot)):
+					if 'FORCE' not in arg:
+						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+			self.log.info("SHT SCRAM finished in %.3f s", time.time() - start_time)
 			self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
 			self.state['status']  = 'SHUTDWN'
 			self.state['info']    = 'System has been shut down'
@@ -702,20 +914,31 @@ class MsgProcessor(ConsumerThread):
 		else:
 			if 'RESTART' in arg:
 				def soft_reboot():
+					self.log.info('Shutting down servers')
 					if exception_in(self.servers.do_power('soft')):
-						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
-					if exception_in(self.roaches.reboot()):
-						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					self.log.info('Unprogramming roaches')
+					if exception_in(self.roaches.unprogram(do_reboot)):
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+					self.log.info('Waiting for servers to power off')
 					try:
 						self._wait_until_servers_power('off')
 					except RuntimeError:
-						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					self.log.info('Powering on servers')
 					if exception_in(self.servers.do_power('on')):
-						return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+					self.log.info('Waiting for servers to power on')
 					try:
 						self._wait_until_servers_power('on')
 					except RuntimeError:
-						return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_STARTUP_FAILED')
+					self.log.info("SHT RESTART finished in %.3f s", time.time() - start_time)
 					self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
 					self.state['status']  = 'SHUTDWN'
 					self.state['info']    = 'System has been shut down'
@@ -723,14 +946,21 @@ class MsgProcessor(ConsumerThread):
 				self.thread_pool.add_task(soft_reboot)
 			else:
 				def soft_power_off():
+					self.log.info('Shutting down servers')
 					if exception_in(self.servers.do_power('soft')):
-						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
-					if exception_in(self.roaches.reboot()):
-						return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					self.log.info('Unprogramming roaches')
+					if exception_in(self.roaches.unprogram(do_reboot)):
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'BOARD_SHUTDOWN_FAILED')
+					self.log.info('Waiting for servers to power off')
 					try:
 						self._wait_until_servers_power('off')
 					except RuntimeError:
-						return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+						if 'FORCE' not in arg:
+							return self.raise_error_state('SHT', 'SERVER_SHUTDOWN_FAILED')
+					self.log.info("SHT finished in %.3f s", time.time() - start_time)
 					self.state['lastlog'] = 'SHT finished in %.3f s' % (time.time() - start_time)
 					self.state['status']  = 'SHUTDWN'
 					self.state['info']    = 'System has been shut down'
@@ -748,6 +978,77 @@ class MsgProcessor(ConsumerThread):
 			wait_time += 2
 			if wait_time >= max_wait:
 				raise RuntimeError("Timed out waiting for server(s) to turn "+target_state)
+	def _wait_until_servers_can_ssh(self, max_wait=60):
+		wait_time = 0
+		while not all(self.servers.can_ssh()):
+			time.sleep(2)
+			wait_time += 2
+			if wait_time >= max_wait:
+				raise RuntimeError("Timed out waiting to ssh to server(s)")
+
+	def run_execute(self):
+		self.log.info("Starting slot execution thread")
+		slot = MCS2.get_current_slot()
+		while not self.shutdown_event.is_set():
+			for cmd_processor in [self.drx, self.tbn]:#, self.fst, self.bam]
+				self.thread_pool.add_task(cmd_processor.execute_commands,
+				                          slot)
+			while MCS2.get_current_slot() == slot:
+				time.sleep(0.1)
+			time.sleep(0.1)
+			slot += 1
+
+	def run_failsafe(self):
+		self.log.info("Starting failsafe thread")
+		while not self.shutdown_event.is_set():
+			slot = MCS2.get_current_slot()
+			# Note: Actually just flattening lists, not summing
+			roach_temps  = sum(self.roaches.get_temperatures(slot).values(), [])
+			server_temps = sum(self.servers.get_temperatures(slot).values(), [])
+			# Remove error values before reducing
+			roach_temps  = [val for val in roach_temps  if not math.isnan(val)]
+			server_temps = [val for val in server_temps if not math.isnan(val)]
+			if len(roach_temps) == 0: # If all values were nan (exceptional!)
+				roach_temps = [float('nan')]
+			if len(server_temps) == 0: # If all values were nan (exceptional!)
+				server_temps = [float('nan')]
+			roach_temps_max  = np.max(roach_temps)
+			server_temps_max = np.max(server_temps)
+			if roach_temps_max > self.config['roach']['temperature_shutdown']:
+				self.state['lastlog'] = 'Temperature shutdown (BOARD)' % cmd
+				self.state['status']  = 'ERROR'
+				self.state['info']    = '%s! 0x%02X! %s' % ('BOARD_TEMP_MAX', 0x01,
+				                                            'Board temperature shutdown')
+				if roach_temps_max > self.config['roach']['temperature_scram']:
+					self.sht('SCRAM')
+				else:
+					self.sht()
+			elif roach_temps_max > self.config['roach']['temperature_warning']:
+				self.state['lastlog'] = 'Temperature warning (BOARD)' % cmd
+				self.state['status']  = 'WARNING'
+				self.state['info']    = '%s! 0x%02X! %s' % ('BOARD_TEMP_MAX', 0x01,
+				                                            'Board temperature warning')
+			if server_temps_max > self.config['server']['temperature_shutdown']:
+				self.state['lastlog'] = 'Temperature shutdown (SERVER)' % cmd
+				self.state['status']  = 'ERROR'
+				self.state['info']    = '%s! 0x%02X! %s' % ('SERVER_TEMP_MAX', 0x01,
+				                                            'Server temperature shutdown')
+				if server_temps_max > self.config['server']['temperature_scram']:
+					self.sht('SCRAM')
+				else:
+					self.sht()
+			elif server_temps_max > self.config['server']['temperature_warning']:
+				self.state['lastlog'] = 'Temperature warning (SERVER)' % cmd
+				self.state['status']  = 'WARNING'
+				self.state['info']    = '%s! 0x%02X! %s' % ('SERVER_TEMP_MAX', 0x01,
+				                                            'Server temperature warning')
+			self.log.info("Failsafe OK")
+			time.sleep(self.config['failsafe_interval'])
+
+	#def run_synchronizer(self):
+	#	self.log.info("Starting Synchronizer server")
+	#	self.sync_server = MCS2.SynchronizerServer()
+	#	self.sync_server.run()
 
 	def process(self, msg):
 		if msg.cmd == 'PNG':
@@ -767,7 +1068,7 @@ class MsgProcessor(ConsumerThread):
 			self.log.info('Received command: '+str(msg))
 			if not self.dry_run:
 				self.process_msg(msg, self.process_command)
-
+		"""
 		next_slot = MCS2.get_current_slot() + 1
 		# TODO: Could defer replies until here for better error handling
 		for cmd_processor in [self.drx, self.tbn]:#, self.fst, self.bam]
@@ -776,11 +1077,17 @@ class MsgProcessor(ConsumerThread):
 		#self.drx.execute_commands(next_slot)
 		#*self.fst.execute_commands(next_slot)
 		#self.bam.execute_commands(next_slot)
+		"""
 	def shutdown(self):
+		self.shutdown_event.set()
+		self.stop_synchronizer_thread()
 		# Propagate shutdown to downstream consumers
 		self.msg_queue.put(ConsumerThread.STOP)
 		if not self.thread_pool.wait(self.shutdown_timeout):
 			self.log.warning("Active tasks still exist and will be killed")
+		self.run_execute_thread.join(self.shutdown_timeout)
+		if self.run_execute_thread.isAlive():
+			self.log.warning("run_execute thread still exists and will be killed")
 		print self.name, "shutdown"
 	def process_msg(self, msg, process_func):
 		accept, reply_data = process_func(msg)

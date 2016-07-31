@@ -19,7 +19,10 @@ class ConsumerThread(threading.Thread):
 			if task is ConsumerThread.STOP:
 				self.input_queue.task_done()
 				break
-			self.process(task)
+			try:
+				self.process(task)
+			except Exception, e:
+				print "ERROR: Uncaught exception in %s: %s" % (self, e)
 			self.input_queue.task_done()
 		self.shutdown()
 	def process(self, task):

@@ -103,12 +103,22 @@ class FuturePool(object):
 			self.name = "FuturePool-%i" % (FuturePool.count+1)
 			FuturePool.count += 1
 		self.spawn_workers(max_workers)
+	def __del__(self):
+		self.join_workers()
 	def spawn_workers(self, n):
 		if self.tasks.maxsize > 0:
 			n = min(n, self.tasks.maxsize)
 		for _ in xrange(n):
-			self.workers.append( Worker(self.tasks, self.results, daemon=True,
+			self.workers.append( Worker(self.tasks, self.results,# daemon=True,
 										pool_name=self.name) )
+	def join_workers(self):
+		#print "Stopping workers"
+		for worker in self.workers:
+			worker.request_stop()
+		#print "Joining workers"
+		for worker in self.workers:
+			worker.join()
+		#print "JOINED"
 	def add_task(self, func, *args, **kwargs):
 		"""Asynchronously call the given func and save the return value"""
 		idx = self.ntask
@@ -122,7 +132,8 @@ class FuturePool(object):
 		self.tasks.join()
 		results = [self.results.get() for _ in xrange(self.ntask)]
 		self.ntask = 0
-		return [r[1] for r in sorted(results)]
+		ret = [r[1] for r in sorted(results)]
+		return ret
 
 class ObjectPool(list):
 	"""A specialised list that provides asynchronous parallel access to members
@@ -144,11 +155,11 @@ class ObjectPool(list):
 			if not hasattr(obj, item):
 				obj.__getattribute__(item) # Induce exception
 			self.future_pool.add_task(obj.__getattribute__, item)
-		return ObjectPool(self.future_pool.wait(), self.future_pool)
+		return ObjectPool(self.future_pool.wait())#, self.future_pool)
 	def __call__(self, *args, **kwargs):
 		for obj in self:
 			self.future_pool.add_task(obj.__call__, *args, **kwargs)
-		return ObjectPool(self.future_pool.wait(), self.future_pool)
+		return ObjectPool(self.future_pool.wait())#, self.future_pool)
 	 # TODO: This works, but not sure if causing subtle issues
 	def __setattr__(self, item, values):
 		for obj,val in zip(self,values):

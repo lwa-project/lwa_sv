@@ -115,14 +115,17 @@ class ROACH2Device(object):
 		"""Returns an array of shape (nsamps, nstand, npol) dtype=np.int8"""
 		nstand = 16 # Not changeable
 		npol   = 2  # Not changeable
+		data_shape = (nsamps, nstand, npol)
 		cmd    = "adc16_dump_chans.rb"
-		out = subprocess.check_output([cmd, "-l", str(nsamps), self.host])#,
+		try:
+			out = subprocess.check_output([cmd, "-l", str(nsamps), self.host])#,
 		                              #shell=True)
+		except subprocess.CalledProcessError:
+			return np.zeros(data_shape, dtype=np.int8)
 		#cmd = ' '.join([cmd, "-l", str(nsamps), self.host])
 		#print cmd
 		#out = subprocess.check_output(cmd)
 		data = np.fromstring(out, sep=' ', dtype=np.int8)
-		data_shape = (nsamps, nstand, npol)
 		try:
 			data = data.reshape(data_shape)
 		except ValueError:
