@@ -39,9 +39,9 @@ system services using the 'upstart' approach
 (http://upstart.ubuntu.com/cookbook/). Services can be started,
 stopped and restarted via the corresponding commands:
 
-    $ start   <service-name>
-	$ stop    <service-name>
-	$ restart <service-name>
+    $ sudo start   <service-name>
+    $ sudo stop    <service-name>
+    $ sudo restart <service-name>
 
 The ADP services will start automatically when the system boots, and
 will restart automatically if they fail or are killed unexpectedly.

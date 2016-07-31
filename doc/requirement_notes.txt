@@ -451,6 +451,9 @@ adp@adp1:~$ dd if=/dev/zero of=/data/write_test.bin conv=fdatasync bs=384k count
 48 chans/subband = 1.2 MHz
 x3 per server
 
+**F-engine DRX packet sizes: 2500samps*(32inp/pkt*144chan/pkt+16hdr)*16roaches = 184960000
+**F-engine TBN packet sizes: 2500samps*(32inp/pkt*20chan/pkt+16hdr)*3roaches   = 4920000
+
 Proposal: Write F-domain data directly to disk and do T-engine offline?
             Would allow writing 4+4 instead of 8+8 bits, doubling the BW
 			Would allow easy and high-quality T-engine implem in Python
