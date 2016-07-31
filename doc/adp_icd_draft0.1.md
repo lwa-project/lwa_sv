@@ -27,6 +27,14 @@
 
 ## Document history
 
+### 2016-07-31
+
+* Added FORCE and NOREPROGRAM options to INI command
+
+* Added FORCE and HARD options to SHT command
+
+* Fixed RESET/REBOOT --> RESTART in SHT command
+
 ### 2015-11-15
 
 * Added GLOBAL_TEMP_MIN/MAX/AVG to MIB entries
@@ -455,9 +463,20 @@ part of the system fails to re-initialise or re-calibrate, the ADP
 `SUMMARY` MIB entry will be set to `"ERROR"` and the error condition
 will be set in `INFO`.
 
+The `FORCE` option causes the initialization procedure to continue
+even if errors are encountered. This is useful if one or more roaches
+is non-responsive.
+
+The `NOREPROGRAM` option causes the roach reprogramming step to be
+skipped, which is useful if they have already been programmed from
+a previous call to INI.
+
 #### Arguments
 
-None
+Name           | Type                   | Value(s)   | Description
+---            | ---                    | ---        | ---
+`DATA`         | `string`               | Optional combination of: `"FORCE"`, `"NOREPROGRAM"` | Flags for the initialization process.
+
 
 ### FST command
 #### Description
@@ -486,14 +505,22 @@ down.
 Regular (soft) shutdown gives all active ADP processes the opportunity
 to close cleanly. The `SCRAM` option instead causes issue of an
 immediate hard shutdown, killing active server processes. The optional
-`RESET` option causes all hardware to be brought back up immediately
+`RESTART` option causes all hardware to be brought back up immediately
 after soft or hard shutdown.
+
+The `FORCE` option causes the shutdown procedure to continue even if
+errors are encountered. This is useful if one or more roaches is
+non-responsive.
+
+The `HARD` option causes the roaches to be rebooted instead of just
+unprogrammed. This is useful if they get into an bad (unprogrammable)
+state, which has been known to happen on occasion.
 
 #### Arguments
 
 Name           | Type                   | Value(s)   | Description
 ---            | ---                    | ---        | ---
-`DATA`         | `string`               | Optional `"SCRAM"` and/or `"REBOOT"` | The type of shutdown to issue.
+`DATA`         | `string`               | Optional combination of: `"SCRAM"`, `"RESTART"`, `"FORCE"`, `"HARD"` | Flags for the type of shutdown to issue.
 
 ## Output interfaces
 
