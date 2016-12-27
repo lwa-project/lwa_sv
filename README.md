@@ -1,8 +1,7 @@
 # Advanced Digital Processor (ADP) at LWA-SV
 Software and firmware for the ADP subsystem at the LWA Sevilleta station.
 
-## Wiki
- * [LWA-SV (github)](https://github.com/ledatelescope/leda-sv/wiki)
+## [LWA-SV Dev. Wiki (github)](https://github.com/ledatelescope/lwa_sv/wiki)
 
 ## Installation
 
