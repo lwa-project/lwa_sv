@@ -41,9 +41,37 @@ if __name__ == "__main__":
 			send_rpt('INFO')
 			send_rpt('LASTLOG')
 			time.sleep(3)
-	elif len(sys.argv) > 2 and sys.argv[1] == 'RPT':
-		send_rpt(sys.argv[2])
-		sys.exit(0)
+	elif len(sys.argv) > 2:
+		if sys.argv[1] == 'RPT':
+			send_rpt(sys.argv[2])
+		elif sys.argv[1] == 'TBN':
+			freq, bw, gain, subslot = sys.argv[2].split(None, 3)
+			freq = float(freq)
+			bw = int(bw, 10)
+			gain = int(gain, 10)
+			subslot = int(subslot, 10)
+			data = struct.pack('>fhh', freq, bw, gain)
+			send_msg(sys.argv[1], data)
+		elif sys.argv[1] == 'DRX':
+			tune, freq, bw, gain, subslot = sys.argv[2].split(None, 4)
+			tune = int(tune, 10)
+			freq = float(freq)
+			bw = int(bw, 10)
+			gain = int(gain, 10)
+			subslot = int(subslot, 10)
+			data = struct.pack('>BfBh', tune, freq, bw, gain)
+			send_msg(sys.argv[1], data)
+		elif sys.argv[1] == 'TBF':
+			bits, tdump, nsamp, mask = sys.argv[2].split(None, 3)
+			bits = int(bits, 10)
+			tdump = int(tdump, 10)
+			nsamp = int(nsamp, 10)
+			mask = int(mask, 10)
+			data = struct.pack('>Biiq', bits, tdump, nsamp, mask)
+			send_msg(sys.argv[1], data)
+		elif sys.argv[1] == 'INI':
+			send_msg(sys.argv[1], sys.argv[2])
+		sys.exit()	
 	elif len(sys.argv) > 1:
 		# Send specific command with optional data
 		if len(sys.argv) > 2:

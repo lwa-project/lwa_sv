@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *
 from bifrost import Ring, Address, UDPSocket, CHIPSCapture, bfAffinitySetCore
+
+from adp import ISC
 
 import signal
 import logging
@@ -93,7 +96,7 @@ class TEngineOp(object):
 		self.log   = log
 		self.iring = iring
 		self.oring = oring
-		self.nchan_out = nchan_out # 4 => 100 MHz
+		self.nchan_out = nchan_out # 4 => 100 kHz
 		self.gain      = gain
 		ninput_max = nroach_max*32#*2
 		#frame_size_max = nchan_max*ninput_max
@@ -101,13 +104,41 @@ class TEngineOp(object):
 		self.core = core
 		self.iring.resize(self.ntime_gulp*nchan_max*ninput_max*2)#frame_size_max)
 		self.oring.resize(self.ntime_gulp*self.nchan_out*ninput_max*2)
+		
+		self.configMessage = ISC.TBNConfigurationClient(addr=('adp',5832))
+		self.phaseRot = 1
+		
+	@ISC.logException
+	def updateConfig(self, config, hdr):
+		if config:
+			self.log.info("TEngine: New configuration received: %s", str(config))
+			freq, filt, gain = config
+			self.rFreq = freq
+			self.filt = filt
+			self.gain = gain
+			
+			fDiff = freq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+			self.log.info("TEngine: Tuning offset is %.3f kHz to be corrected with phase rotation", fDiff)
+			
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
+			self.phaseRot.shape += (1,1)
+			
+			return True
+		else:
+			return False
+			
+	@ISC.logException
 	def main(self):
 		bfAffinitySetCore(self.core)
 		gain      = self.gain
 		nchan_out = self.nchan_out
+		
 		with self.oring.begin_writing() as oring:
 			for isequence in self.iring.read():#guarantee=False):
 				ihdr = json.loads(isequence.header.tostring())
+				
+				self.updateConfig( self.configMessage(), ihdr )
+				
 				#print 'TEngineOp', ihdr
 				self.log.info("TEngine: Start of new sequence: %s", str(ihdr))
 				nchan  = ihdr['nchan']
@@ -120,9 +151,12 @@ class TEngineOp(object):
 				ogulp_size = self.ntime_gulp*nchan_out*nstand*npol*2
 				ohdr = {}
 				ohdr['time_tag'] = ihdr['time_tag']
-				ohdr['cfreq']    = (ihdr['chan0'] + 0.5*(ihdr['nchan']-1))*CHAN_BW
+				try:
+					ohdr['cfreq']    = self.rFreq
+				except AttributeError:
+					ohdr['cfreq']    = (ihdr['chan0'] + 0.5*(ihdr['nchan']-1))*CHAN_BW
 				ohdr['bw']       = nchan_out*CHAN_BW
-				ohdr['gain']     = gain
+				ohdr['gain']     = self.gain
 				ohdr['nstand']   = nstand
 				ohdr['npol']     = npol
 				ohdr['complex']  = True
@@ -134,25 +168,30 @@ class TEngineOp(object):
 						#print "TENGINE processing"
 						if ispan.size < igulp_size:
 							continue # Ignore final gulp
+							
+						self.updateConfig( self.configMessage(), ihdr )
+						
 						with osequence.reserve(ogulp_size) as ospan:
 							data = ispan.data_view(np.int8).reshape(ishape)
 							data  = data >> 4 # Correct for 8->16bit padding
 							data  = data.astype(np.float32)
 							data  = data[...,0] + 1j*data[...,1]
 							tdata = data[:,nchan/2-nchan_out/2:nchan/2+nchan_out/2]
+							tdata = np.fft.fftshift(tdata, axes=1)
 							tdata = ifft(tdata, axis=1).astype(np.complex64)
-							tdata *= 1./(2**gain * np.sqrt(nchan_out))
+							tdata *= 1./(2**self.gain * np.sqrt(nchan_out))
 							tdata = tdata.reshape((-1,nstand,npol))
+							tdata *= self.phaseRot
 							mean, stddev = tdata.mean(), tdata.std()
 							#print "Mean, stddev: %f+%fj\t%f" % (np.round(mean.real, 3), np.round(mean.imag, 3), stddev)
 							
-							if stddev > 0.5:
-								self.log.warning("May need to increase gain to avoid excess clipping")
-								self.log.warning("Mean, stddev: %f+%fj\t%f" % (np.round(mean.real, 3), np.round(mean.imag, 3), stddev))
-							elif stddev < 0.15:
-								self.log.warning("May need to decrease gain to avoid excess quantization noise")
-								self.log.warning("Mean, stddev: %f+%fj\t%f" % (np.round(mean.real, 3), np.round(mean.imag, 3), stddev))
-							
+							#if stddev > 0.5:
+							#	self.log.warning("May need to increase gain to avoid excess clipping")
+							#	self.log.warning("Mean, stddev: %f+%fj\t%f" % (np.round(mean.real, 3), np.round(mean.imag, 3), stddev))
+							#elif stddev < 0.15:
+							#	self.log.warning("May need to decrease gain to avoid excess quantization noise")
+							#	self.log.warning("Mean, stddev: %f+%fj\t%f" % (np.round(mean.real, 3), np.round(mean.imag, 3), stddev))
+								
 							tdata = quantize_complex8b(tdata) # Note: dtype is now real
 							odata = ospan.data_view(np.int8).reshape((1,)+oshape)
 							odata[...] = tdata
@@ -282,7 +321,7 @@ def partition_packed(nitem, npart, part_idx):
 	return part_nitem, part_offset
 
 def main(argv):
-	parser = argparse.ArgumentParser(description='LWA-SV ADP control service')
+	parser = argparse.ArgumentParser(description='LWA-SV ADP TBN service')
 	parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
 	parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
 	parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
@@ -351,17 +390,11 @@ def main(argv):
 	oport  = config['recorder']['port']
 	nroach_tot = len(config['host']['roaches'])
 	nserver    = len(config['host']['servers'])
-	#nserver = 4 # HACK TESTING
-	#nroach, roach0 = partition_balanced(nroach_tot, nserver, server_idx)
-	#nroach, roach0 = partition_packed(nroach_tot, nserver, server_idx)
 	tbn_servers = config['host']['servers-tbn']
 	server_data_host = config['host']['servers-data'][server_idx]
 	nroach = len([srv for srv in tbn_servers if srv == server_data_host])
 	roach0 = [i for (i,srv) in enumerate(tbn_servers) if srv == server_data_host][0]
 	core0 = config['tbn']['first_cpu_core']
-	
-	## HACK TESTING
-	#nroach = 4
 	
 	log.info("Src address:  %s:%i", iaddr, iport)
 	log.info("Dst address:  %s:%i", oaddr, oport)

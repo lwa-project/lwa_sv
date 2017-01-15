@@ -23,7 +23,7 @@
 					"roach13","roach14","roach15","roach16"],
 		"servers-data": ["adp1-data","adp2-data","adp3-data",
 						 "adp4-data","adp5-data","adp6-data"],
-		"recorders": ["drsu1"],
+		"recorders": ["dr1","dr2"],
 		"servers-tbn": ["adp1-data", "adp1-data", "adp1-data", "adp2-data",
 						"adp2-data", "adp2-data", "adp3-data", "adp3-data",
 						"adp3-data", "adp4-data", "adp4-data", "adp4-data",
@@ -36,7 +36,7 @@
 	"drx": {
 		"capture_bandwidth_todo": 21.6e6,
 		"capture_bandwidth_nope": 10.8e6,
-		"capture_bandwidth": 9.0e6,
+		"capture_bandwidth": 5.4e6,
 		"pipeline_idx":      0,
 		"recorder_idx":      0,
 		"first_cpu_core":    0
@@ -44,8 +44,8 @@
 	"tbn": {
 		"capture_bandwidth": 200e3,
 		"pipeline_idx":      1,
-		"recorder_idx":      0,
-		"first_cpu_core":    3
+		"recorder_idx":      1,
+		"first_cpu_core":    5
 	},
 	"fst": {
 		"control_ports":  [23720, 23721],
@@ -92,10 +92,8 @@
 		"password":     "130Jy/K",
 		"data_ip_base":  "192.168.40.50",
 		"data_port_base":    4000,
-		"firmware_oldest":      "sevilleta_devel2_2015_Nov_13_1640.bof",
-		"firmware_older":        "sevilleta_devel3_2015_Dec_10_2201.bof",
-		"firmware_old":             "sevietta_devel4_2016_Feb_12_1742.bof",
-		"firmware":             "sevietta_devel_2016c_2016_Mar_30_1159.bof",
+		"firmware_old":         "sevietta_devel4_2016_Feb_12_1742.bof",
+		"firmware": 		"sevietta_devel_2016z_2016_Dec_20_2043.bof",
 		"max_program_attempts": 15,
 		"adc_gain":             4,
 		"scale_factor":     1.948,

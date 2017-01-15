@@ -44,8 +44,10 @@ if __name__ == "__main__":
 	else:
 		freq = float(sys.argv[1]) * 1e6
 		filt = 7#1#float(sys.argv[2])
-		gain = 20#1#float(sys.argv[3])
-		print "Sending TBN command with freq = %f" % freq
+		gain = 2#1#float(sys.argv[3])
+		if len(sys.argv) > 2:
+			gain = float(sys.argv[2])
+		print "Sending TBN command with freq = %f, gain = %f" % (freq,gain)
 		send_msg('TBN', struct.pack('>fhh', freq, filt, gain))
 		sys.exit(0) # HACK TESTING
 		print "Sleeping"

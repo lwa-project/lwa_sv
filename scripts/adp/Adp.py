@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 from AdpCommon  import *
 from AdpConfig  import *
@@ -13,6 +14,8 @@ from ThreadPool import ObjectPool
 from Cache      import lru_cache_method
 from AdpRoach   import AdpRoach
 from iptools    import *
+
+import ISC
 
 from Queue import Queue
 import numpy as np
@@ -69,11 +72,13 @@ class SlotCommandProcessor(object):
 		self.exec_delay   = exec_delay
 		self.cmd_code     = cmd_code
 		self.cmd_parser   = cmd_parser
+	@ISC.logException
 	def process_command(self, msg):
 		assert( msg.cmd == self.cmd_code )
 		exec_slot = msg.slot + self.exec_delay
 		self.cmd_sequence[exec_slot].append(self.cmd_parser(msg))
 		return 0
+	@ISC.logException
 	def execute_commands(self, slot):
 		try:
 			cmds = self.cmd_sequence.pop(slot)
@@ -89,19 +94,25 @@ class TbnCommand(object):
 		assert( 1 <= self.filt <= 11 )
 		assert( 0 <= self.gain <= 30 )
 class Tbn(SlotCommandProcessor):
-	def __init__(self, config, log, roaches):
+	def __init__(self, config, log, messenger, servers, roaches):
 		SlotCommandProcessor.__init__(self, 'TBN', TbnCommand)
 		self.config  = config
 		self.log     = log
+		self.messenger = messenger
+		self.servers = servers
 		self.roaches = roaches
 		self.cur_freq = self.cur_filt = self.cur_gain = 0
 	#def startup(self):
 	#	self.config['tbn']['capture_bandwidth']
-	def tune(self, freq=59.98e6, filt=1, gain=1):
+	def tune(self, freq=38.00e6, filt=1, gain=1):
 		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i"
 		              % (freq,filt,gain))
 		bw = self.config['tbn']['capture_bandwidth']
 		rets = self.roaches.tune_tbn(freq, bw)
+		#subband_nchan, chan0 = self.roaches.tune_tbn(freq, bw)
+		# TODO: What's this?
+		#afreq = (chan0 + subband_nchan//2) * CHAN_BW
+		
 		self.cur_freq = freq
 		self.cur_filt = filt
 		self.cur_gain = gain
@@ -116,10 +127,14 @@ class Tbn(SlotCommandProcessor):
 		#         Only do this when record==True
 		# TODO: Check whether pausing the data flow is necessary
 		self.roaches.disable_tbn_data()
-		time.sleep(0.5)
 		self.tune(freq, filt, gain)
+		time.sleep(1.1)
 		rets = self.roaches.enable_tbn_data()
+		
+		self.messenger.tbnConfig(freq, filt, gain)
+		
 		return rets
+		return True
 	def execute(self, cmds):
 		for cmd in cmds:
 			self.start(cmd.freq, cmd.filt, cmd.gain)
@@ -139,16 +154,18 @@ class DrxCommand(object):
 		assert( 0 <= self.filt   <= 8 )
 		assert( 0 <= self.gain   <= 15 )
 class Drx(SlotCommandProcessor):
-	def __init__(self, config, log, roaches):
+	def __init__(self, config, log, messenger, servers, roaches):
 		SlotCommandProcessor.__init__(self, 'DRX', DrxCommand)
 		self.config  = config
 		self.log     = log
+		self.messenger = messenger
+		self.servers = servers
 		self.roaches = roaches
 		self.ntuning = 1
 		self.cur_freq = [0]*self.ntuning
 		self.cur_filt = [0]*self.ntuning
 		self.cur_gain = [0]*self.ntuning
-	def tune(self, freq, filt, gain, tuning):
+	def tune(self, freq=59.98e6, filt=1, gain=1, tuning=0):
 		self.log.info("Tuning DRX: freq=%f,filt=%i,gain=%i"
 		              % (freq,filt,gain))
 		bw = self.config['drx']['capture_bandwidth']
@@ -158,45 +175,92 @@ class Drx(SlotCommandProcessor):
 		self.cur_gain[tuning] = gain
 		return rets
 	def start(self, freq=59.98e6, filt=1, gain=1, tuning=0, record=True):
-		self.log.info("Starting DRX: freq=%f,filt=%i,gain=%i"
+		self.log.info("Starting DRX data: freq=%f,filt=%i,gain=%i"
 		              % (freq,filt,gain))
 		self.roaches.disable_drx_data()
-		time.sleep(0.5)
+		#time.sleep(0.5)
 		self.tune(freq, filt, gain, tuning)
+		time.sleep(1.1)
 		rets = self.roaches.enable_drx_data()
+		
+		self.messenger.drxConfig(tuning, freq, filt, gain)
+		
 		return rets
 	def execute(self, cmds):
 		for cmd in cmds:
 			# Note: Converts from 1-based to 0-based tuning
 			self.start(cmd.freq, cmd.filt, cmd.gain, cmd.tuning-1)
 	def stop(self):
+		self.log.info("Stopping DRX data")
 		self.roaches.disable_drx_data()
 		return 0
-"""
-class DrxCommand(object):
+
+
+class TbfCommand(object):
+	@ISC.logException
 	def __init__(self, msg):
-		#self.beam = int(ord(data[0])) # Note: IGNORED PARAMETER
-		self.tuning  = int(ord(data[1]))
-		self.freq    = struct.unpack('>f', (data[2:6]))[0]
-		self.filt    = int(ord(data[6]))
-		self.gain    = struct.unpack('>h', (data[7:9]))[0]
-		self.subslot = int(ord(data[9]))
-class Drx(object):
-	def __init__(self):
-		self.exec_delay = 2
-		self.cmd_stream = defaultdict(lambda : defaultdict(list))
-	def process_command(self, msg):
-		assert( msg.cmd == 'DRX' )
-		exec_slot = msg.slot + self.exec_delay
-		self.cmd_stream[exec_slot][subslot].append(DRXCommand(msg))
-	def execute_commands(self, slot):
-		subslots = self.cmd_stream[slot]
-		for subslot in sorted(subslots.keys()):
-			cmds = subslots[subslot]
-			# TODO: Compute updated channel mask
-			#       Send channel mask to roaches
-		del self.cmd_stream[slot]
-"""
+		self.bits, self.trigger, self.samples, self.mask \
+		    = struct.unpack('>Biiq', msg.data)
+class Tbf(SlotCommandProcessor):
+	@ISC.logException
+	def __init__(self, config, log, messenger, servers, roaches):
+		SlotCommandProcessor.__init__(self, 'TBF', TbfCommand)
+		self.config  = config
+		self.log     = log
+		self.messenger = messenger
+		self.servers = servers
+		self.roaches = roaches
+		self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
+	@ISC.logException
+	def start(self, bits, trigger, samples, mask):
+		self.log.info('Starting TBF: bits=%i, trigger=%i, samples=%i, mask=%i' % (bits, trigger, samples, mask))
+		
+		self.messenger.trigger(samples)
+		
+		return True
+	@ISC.logException
+	def execute(self, cmds):
+		for cmd in cmds:
+			self.start(cmd.bits, cmd.trigger, cmd.samples, cmd.mask)
+	def stop(self):
+		return False
+		
+
+class BamCommand(object):
+	@ISC.logException
+	def __init__(self, msg):
+		self.beam = struct.unpack('>H', msg.data[0:2])[0]
+		self.delays = np.ndarray((512,), dtype='>H', buffer=msg.data[2:1026])
+		self.gains = np.ndarray((256,2,2), dtype='>H', buffer=msg.data[1026:3074])
+		self.tuning, self.slot = struct.unpack('>BB', msg.data[3074:3076])
+class Bam(SlotCommandProcessor):
+	@ISC.logException
+	def __init__(self, config, log, messenger, servers, roaches):
+		SlotCommandProcessor.__init__(self, 'BAM', BamCommand)
+		self.config  = config
+		self.log     = log
+		self.messenger = messenger
+		self.servers = servers
+		self.roaches = roaches
+		self.ntuning = 1
+		self.cur_beam = [0]*self.ntuning
+		self.cur_delays = [[0 for i in xrange(512)]]*self.ntuning
+		self.cur_gains = [[0 for i in xrange(1024)]]*self.ntuning
+		self.cur_tuning = [0]*self.ntuning
+	@ISC.logException
+	def start(self, beam, delays, gains, tuning, slot):
+		self.log.info("Setting BAM: beam=%i, tuning=%i, slot=%i" % (beam, tuning, slot))
+		
+		self.messenger.bamConfig(beam, delays, gains, tuning)
+		
+		return True
+	@ISC.logException
+	def execute(self, cmds):
+		for cmd in cmds:
+			# Note: Converts from 1-based to 0-based tuning
+			self.start(cmd.beam, cmd.delays, cmd.gains, cmd.tuning, cmd.slot)
+	def stop(self):
+		return False
 
 """
 class FstCommand(object):
@@ -398,7 +462,7 @@ class AdpServerMonitorClient(object):
 		#	self._shell_command("stop adp-tbn")
 		#except subprocess.CalledProcessError:
 		#	pass
-		return self._shell_command("start adp-tbn")
+		self._shell_command("start adp-tbn")
 	def restart_drx(self):
 		#return self._shell_command("restart adp-drx")
 		try:
@@ -499,8 +563,16 @@ class Roach2MonitorClient(object):
 			                         'root@'+self.host,
 			                         'shutdown -r now'])
 		except subprocess.CalledProcessError as e:
-			self.log.info("Failed to reboot roach %s: %s", self.host, str(e))
-			raise RuntimeError("Roach reboot command failed")
+			try:
+				# Note: The above shutdown command didn't always work,
+				#         so this does a forced reboot.
+				subprocess.check_output(['sshpass', '-p', password,
+				                         'ssh', '-o', 'StrictHostKeyChecking=no',
+				                         'root@'+self.host,
+				                         '{ sleep 1; reboot -f; } >/dev/null &'])
+			except subprocess.CalledProcessError as e:
+				self.log.info("Failed to reboot roach %s: %s", self.host, str(e))
+				raise RuntimeError("Roach reboot command failed")
 	def get_samples(self, slot, stand, pol, nsamps=None):
 		return self.get_samples_all(slot, nsamps)[stand,pol]
 	@lru_cache_method(maxsize=4)
@@ -544,7 +616,6 @@ class Roach2MonitorClient(object):
 			tbn_arp_table = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
 			drx_dst_ports = [dst_ports[0]] * len(drx_dst_ips)
 			tbn_dst_ports = [dst_ports[1]] * len(tbn_dst_ips)
-			
 			ret0 = self.roach.configure_10gbe(self.GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
 			ret1 = self.roach.configure_10gbe(self.GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
 			if not ret0 or not ret1:
@@ -588,11 +659,14 @@ class Roach2MonitorClient(object):
 		self.roach.configure_fengine(gbe, nsubband, subband_nchan, chan0)
 		return subband_nchan, chan0
 	"""
+	@ISC.logException
 	def tune_drx(self, cfreq, bw):
+		
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband      = len(self.config['host']['servers-data'])
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
-		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
+		chan0         =  int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
+		self.log.info("MILES HERE IS THE CAPTURE RATE "+ str(bw) + " END MESSAGE")
 		if subband_nchan > 255:
 			raise ValueError("Too many channels per subband; limit is 255")
 		self.roach.configure_fengine(self.GBE_DRX, nsubband, subband_nchan, chan0,
@@ -666,7 +740,9 @@ class MsgProcessor(ConsumerThread):
 		self.name = "Adp.MsgProcessor"
 		self.utc_start     = None
 		self.utc_start_str = "NULL"
-
+		
+		self.messageServer = ISC.PipelineMessageServer(addr=('adp',5832))
+		
 		mcs_local_host  = self.config['mcs']['headnode']['local_host']
 		mcs_local_port  = self.config['mcs']['headnode']['local_port']
 		mcs_remote_host = self.config['mcs']['headnode']['remote_host']
@@ -680,7 +756,7 @@ class MsgProcessor(ConsumerThread):
 		# Maps slot->[(cmd,ref,exit_code), ...]
 		self.cmd_status = SequenceDict(list, maxlen=ncmd_save)
 		#self.zmqctx = zmq.Context()
-
+		
 		self.servers = ObjectPool([AdpServerMonitorClient(config, log, host)
 		                           for host in self.config['host']['servers']])
 		#self.roaches = ObjectPool([Roach2MonitorClient(config, log, host)
@@ -689,16 +765,16 @@ class MsgProcessor(ConsumerThread):
 		nroach = NBOARD
 		self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
 		                           for num in xrange(nroach)])
-
-		#*self.fst = Fst(config, log)
-		#self.bam =
-		self.drx = Drx(config, log, self.roaches)
-		self.tbn = Tbn(config, log, self.roaches)
+		#self.fst = Fst(config, log)
+		self.drx = Drx(config, log, self.messageServer, self.servers, self.roaches)
+		self.tbf = Tbf(config, log, self.messageServer, self.servers, self.roaches)
+		self.bam = Bam(config, log, self.messageServer, self.servers, self.roaches)
+		self.tbn = Tbn(config, log, self.messageServer, self.servers, self.roaches)
 
 		self.serial_number = '1'
 		self.version = str(__version__)
 		self.state = {}
-		self.state['status']  = 'BOOTING'
+		self.state['status']  = 'SHUTDWN'
 		self.state['info']    = 'Need to INI ADP'
 		self.state['lastlog'] = ('Welcome to ADP S/N %s, version %s' %
 		                         (self.serial_number, self.version))
@@ -709,6 +785,11 @@ class MsgProcessor(ConsumerThread):
 		self.run_execute_thread = threading.Thread(target=self.run_execute)
 		self.run_execute_thread.daemon = True
 		self.run_execute_thread.start()
+		
+		# TODO: This causes INI to lock up on a call to self.roaches.host!
+		#self.run_monitor_thread = threading.Thread(target=self.run_monitor)
+		#self.run_monitor_thread.daemon = True
+		#self.run_monitor_thread.start()
 		
 		self.run_failsafe_thread = threading.Thread(target=self.run_failsafe)
 		self.run_failsafe_thread.daemon = True
@@ -794,14 +875,14 @@ class MsgProcessor(ConsumerThread):
 		if all(self.servers.can_ssh()):
 			self.log.info("Servers already up, restarting pipelines")
 			if not self.check_success(lambda: self.servers.restart_tbn(),
-			                          'Restarting pipelines',
+			                          'Restarting pipelines - TBN',
 			                          self.servers.host):
 				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 			# TODO: Enable this once DRX is implemented
-			#if not self.check_success(lambda: self.servers.restart_drx(),
-			#                          'Restarting pipelines',
-			#                          self.servers.host):
-			#	return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+			if not self.check_success(lambda: self.servers.restart_drx(),
+			                          'Restarting pipelines - DRX',
+			                          self.servers.host):
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 		else:
 			self.log.info("Powering on servers")
 			if not self.check_success(lambda: self.servers.do_power('on'),
@@ -858,18 +939,20 @@ class MsgProcessor(ConsumerThread):
 		wait_until_utc_sec(utc_init_str)
 		time.sleep(0.5)
 		self.state['lastlog'] = "Starting processing now"
-		self.log.info("Starting processing now")
+		self.log.info("Initializing TBN")
 		if not self.check_success(lambda: self.tbn.tune(),
 		                          'Initializing TBN',
 		                          self.roaches.host):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		self.log.info("Starting FPGA processing now")
 		if not self.check_success(lambda: self.roaches.start_processing(),
 		                          'Starting FPGA processing',
 		                          self.roaches.host):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		time.sleep(0.1)
+		self.log.info("Checking FPGA processing")
 		if not all(self.roaches.processing_started()):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
@@ -990,13 +1073,38 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Starting slot execution thread")
 		slot = MCS2.get_current_slot()
 		while not self.shutdown_event.is_set():
-			for cmd_processor in [self.drx, self.tbn]:#, self.fst, self.bam]
+			for cmd_processor in [self.drx, self.tbf, self.bam, self.tbn]:#, self.fst, self.bam]
 				self.thread_pool.add_task(cmd_processor.execute_commands,
 				                          slot)
 			while MCS2.get_current_slot() == slot:
 				time.sleep(0.1)
 			time.sleep(0.1)
 			slot += 1
+
+	def run_monitor(self):
+		self.log.info("Starting monitor thread")
+		while not self.shutdown_event.is_set():
+			"""
+			roach_drx_link_status = self.roaches.roach.check_link(0)
+			roach_tbn_link_status = self.roaches.roach.check_link(1)
+			drx_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_drx_link_status])
+			tbn_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_tbn_link_status])
+			if not all(roach_drx_link_status):
+				self.log.warning("DRX gbe link failure: " + drx_link_str)
+			if not all(roach_tbn_link_status):
+				self.log.warning("TBN gbe link failure: " + tbn_link_str)
+			"""
+			roach_overflow_status = self.roaches.roach.check_overflow()
+			drx_overflow = [stat[0] for stat in roach_overflow_status]
+			tbn_overflow = [stat[1] for stat in roach_overflow_status]
+			drx_overflow_str = ''.join([('.','x')[bool(stat)] for stat in drx_overflow])
+			tbn_overflow_str = ''.join([('.','x')[bool(stat)] for stat in tbn_overflow])
+			if any(drx_overflow):
+				self.log.warning("DRX fifo overflow: " + drx_overflow_str)
+			if any(tbn_overflow):
+				self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
+			
+			time.sleep(30)
 
 	def run_failsafe(self):
 		self.log.info("Starting failsafe thread")
@@ -1088,6 +1196,9 @@ class MsgProcessor(ConsumerThread):
 		self.run_execute_thread.join(self.shutdown_timeout)
 		if self.run_execute_thread.isAlive():
 			self.log.warning("run_execute thread still exists and will be killed")
+		self.run_monitor_thread.join(self.shutdown_timeout)
+		if self.run_monitor_thread.isAlive():
+			self.log.warning("run_monitor thread still exists and will be killed")
 		print self.name, "shutdown"
 	def process_msg(self, msg, process_func):
 		accept, reply_data = process_func(msg)
@@ -1329,8 +1440,8 @@ class MsgProcessor(ConsumerThread):
 				exit_status = -1
 		elif msg.cmd == 'DRX':
 			exit_status = self.drx.process_command(msg)
-		elif msg.cmd == 'FST':
-			exit_status = self.fst.process_command(msg)
+		elif msg.cmd == 'TBF':
+			exit_status = self.tbf.process_command(msg)
 		elif msg.cmd == 'BAM':
 			exit_status = self.bam.process_command(msg)
 		elif msg.cmd == 'TBN':

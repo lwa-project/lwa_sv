@@ -44,7 +44,8 @@ def init(roaches):
 def main(argv):
 	configfile = "/usr/local/share/adp/adp_config.json"
 	config     = Adp.parse_config_file(configfile)
-	
+	config['roach']['firmware'] = 'sevietta_devel_2016q_2016_Dec_03_1025.bof'
+		
 	log = logging.getLogger(__name__)
 	logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
 	                              datefmt='%Y-%m-%d %H:%M:%S')
@@ -66,10 +67,20 @@ def main(argv):
 		print "Enabling DRX data"
 		print roaches.enable_drx_data()
 	elif 'tune' in args:
+		
+		# HACK TESTING
+		#print "*** RESETTING ROACHES ***"
+		#roaches.roach.reset()
+		
 		freq = float(args[-2])*1e6
 		bw   = float(args[-1])*1e3
 		print "Setting observing bandwidth to", bw
 		print roaches.tune_drx(freq, bw)
+		
+		## HACK TESTING
+		#print "*** RESETTING ROACHES ***"
+		#roaches.roach.reset()
+		
 	elif 'stop' in args:
 		print "Disabling DRX data"
 		print roaches.disable_drx_data()

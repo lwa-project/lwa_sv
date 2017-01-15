@@ -45,28 +45,28 @@ if __name__ == "__main__":
 		tuning = 1
 		freq = float(sys.argv[1]) * 1e6
 		filt = 6#1#float(sys.argv[2])
-		gain = 0#1#float(sys.argv[3])
+		gain = 1#1#float(sys.argv[3])
 		print "Sending DRX command with freq = %f" % freq
 		send_msg('DRX', struct.pack('>BfBh', tuning, freq, filt, gain))
 		sys.exit(0) # HACK TESTING
 		print "Sleeping"
 		time.sleep(1)
-	send_rpt('SUMMARY')
-	send_rpt('INFO')
-	send_rpt('LASTLOG')
-	send_rpt('NUM_DRX_TUNINGS')
-	send_rpt('DRX_CONFIG_0_FREQ')
-	send_rpt('DRX_CONFIG_0_FILTER')
-	send_rpt('DRX_CONFIG_0_GAIN')
-	print "Sleeping"
-	time.sleep(1)
-	send_rpt('SUMMARY')
-	send_rpt('INFO')
-	send_rpt('LASTLOG')
-	send_rpt('NUM_DRX_TUNINGS')
-	send_rpt('DRX_CONFIG_0_FREQ')
-	send_rpt('DRX_CONFIG_0_FILTER')
-	send_rpt('DRX_CONFIG_0_GAIN')
+	#send_rpt('SUMMARY')
+	#send_rpt('INFO')
+	#send_rpt('LASTLOG')
+	#send_rpt('NUM_DRX_TUNINGS')
+	#send_rpt('DRX_CONFIG_0_FREQ')
+	#send_rpt('DRX_CONFIG_0_FILTER')
+	#send_rpt('DRX_CONFIG_0_GAIN')
+	#print "Sleeping"
+	#time.sleep(1)
+	#send_rpt('SUMMARY')
+	#send_rpt('INFO')
+	#send_rpt('LASTLOG')
+	#send_rpt('NUM_DRX_TUNINGS')
+	#send_rpt('DRX_CONFIG_0_FREQ')
+	#send_rpt('DRX_CONFIG_0_FILTER')
+	#send_rpt('DRX_CONFIG_0_GAIN')
 	
 	sender.request_stop()
 	receiver.request_stop()
