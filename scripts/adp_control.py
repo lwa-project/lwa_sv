@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 ADP main control service
 To be run on ADP headnode
@@ -207,10 +208,12 @@ def main(argv):
 	
 	log.info("All done, exiting")
 	return 0
-	
+
+
 if __name__ == "__main__":
 	import sys
 	print "--- Start of application ---"
 	ret = main(sys.argv)
 	print "--- End of application ---"
 	sys.exit(ret)
+	

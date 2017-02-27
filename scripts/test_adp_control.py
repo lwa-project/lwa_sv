@@ -70,7 +70,8 @@ if __name__ == "__main__":
 			data = struct.pack('>Biiq', bits, tdump, nsamp, mask)
 			send_msg(sys.argv[1], data)
 		elif sys.argv[1] == 'INI':
-			send_msg(sys.argv[1], sys.argv[2])
+			data = ' '.join(sys.argv[2:])
+			send_msg(sys.argv[1], data)
 		sys.exit()	
 	elif len(sys.argv) > 1:
 		# Send specific command with optional data

@@ -72,12 +72,14 @@ class SlotCommandProcessor(object):
 		self.exec_delay   = exec_delay
 		self.cmd_code     = cmd_code
 		self.cmd_parser   = cmd_parser
+		
 	@ISC.logException
 	def process_command(self, msg):
 		assert( msg.cmd == self.cmd_code )
 		exec_slot = msg.slot + self.exec_delay
 		self.cmd_sequence[exec_slot].append(self.cmd_parser(msg))
 		return 0
+		
 	@ISC.logException
 	def execute_commands(self, slot):
 		try:
@@ -86,6 +88,7 @@ class SlotCommandProcessor(object):
 			return
 		return self.execute(cmds)
 
+
 class TbnCommand(object):
 	def __init__(self, msg):
 		self.freq, self.filt, self.gain \
@@ -93,6 +96,8 @@ class TbnCommand(object):
 		# TODO: Check allowed range of freq
 		assert( 1 <= self.filt <= 11 )
 		assert( 0 <= self.gain <= 30 )
+
+
 class Tbn(SlotCommandProcessor):
 	def __init__(self, config, log, messenger, servers, roaches):
 		SlotCommandProcessor.__init__(self, 'TBN', TbnCommand)
@@ -102,47 +107,37 @@ class Tbn(SlotCommandProcessor):
 		self.servers = servers
 		self.roaches = roaches
 		self.cur_freq = self.cur_filt = self.cur_gain = 0
-	#def startup(self):
-	#	self.config['tbn']['capture_bandwidth']
-	def tune(self, freq=38.00e6, filt=1, gain=1):
-		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i"
-		              % (freq,filt,gain))
-		bw = self.config['tbn']['capture_bandwidth']
-		rets = self.roaches.tune_tbn(freq, bw)
-		#subband_nchan, chan0 = self.roaches.tune_tbn(freq, bw)
-		# TODO: What's this?
-		#afreq = (chan0 + subband_nchan//2) * CHAN_BW
 		
+	def tune(self, freq=38.00e6, filt=1, gain=1):
+		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+		rets = self.roaches.tune_tbn(freq)
 		self.cur_freq = freq
 		self.cur_filt = filt
 		self.cur_gain = gain
 		return rets
+		
 	def start(self, freq=59.98e6, filt=1, gain=1, record=True):
-		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i"
-		              % (freq,filt,gain))
-		# TODO: How/where to apply bandwidth filter?
-		#       How/where to apply gain bitshift?
-		#       Need to send command to pipelines to begin new
-		#         observation with this info.
-		#         Only do this when record==True
-		# TODO: Check whether pausing the data flow is necessary
+		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+		## TODO: Check whether pausing the data flow is necessary
 		self.roaches.disable_tbn_data()
-		self.tune(freq, filt, gain)
+		rets = self.tune(freq, filt, gain)
 		time.sleep(1.1)
 		rets = self.roaches.enable_tbn_data()
 		
 		self.messenger.tbnConfig(freq, filt, gain)
 		
 		return rets
-		return True
+		
 	def execute(self, cmds):
 		for cmd in cmds:
 			self.start(cmd.freq, cmd.filt, cmd.gain)
+			
 	def stop(self):
 		self.log.info("Stopping TBN")
 		self.roaches.disable_tbn_data()
 		self.log.info("TBN stopped")
 		return 0
+
 
 class DrxCommand(object):
 	def __init__(self, msg):
@@ -153,6 +148,8 @@ class DrxCommand(object):
 		# TODO: Check allowed range of freq
 		assert( 0 <= self.filt   <= 8 )
 		assert( 0 <= self.gain   <= 15 )
+
+
 class Drx(SlotCommandProcessor):
 	def __init__(self, config, log, messenger, servers, roaches):
 		SlotCommandProcessor.__init__(self, 'DRX', DrxCommand)
@@ -165,31 +162,32 @@ class Drx(SlotCommandProcessor):
 		self.cur_freq = [0]*self.ntuning
 		self.cur_filt = [0]*self.ntuning
 		self.cur_gain = [0]*self.ntuning
+		
 	def tune(self, freq=59.98e6, filt=1, gain=1, tuning=0):
-		self.log.info("Tuning DRX: freq=%f,filt=%i,gain=%i"
-		              % (freq,filt,gain))
-		bw = self.config['drx']['capture_bandwidth']
-		rets = self.roaches.tune_drx(freq, bw)
+		self.log.info("Tuning DRX: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+		rets = self.roaches.tune_drx(freq)
 		self.cur_freq[tuning] = freq
 		self.cur_filt[tuning] = filt
 		self.cur_gain[tuning] = gain
 		return rets
+		
 	def start(self, freq=59.98e6, filt=1, gain=1, tuning=0, record=True):
-		self.log.info("Starting DRX data: freq=%f,filt=%i,gain=%i"
-		              % (freq,filt,gain))
+		self.log.info("Starting DRX data: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+		## TODO: Check whether pausing the data flow is necessary
 		self.roaches.disable_drx_data()
-		#time.sleep(0.5)
-		self.tune(freq, filt, gain, tuning)
+		rets = self.tune(freq, filt, gain, tuning)
 		time.sleep(1.1)
 		rets = self.roaches.enable_drx_data()
 		
 		self.messenger.drxConfig(tuning, freq, filt, gain)
 		
 		return rets
+		
 	def execute(self, cmds):
 		for cmd in cmds:
 			# Note: Converts from 1-based to 0-based tuning
 			self.start(cmd.freq, cmd.filt, cmd.gain, cmd.tuning-1)
+			
 	def stop(self):
 		self.log.info("Stopping DRX data")
 		self.roaches.disable_drx_data()
@@ -201,6 +199,8 @@ class TbfCommand(object):
 	def __init__(self, msg):
 		self.bits, self.trigger, self.samples, self.mask \
 		    = struct.unpack('>Biiq', msg.data)
+
+
 class Tbf(SlotCommandProcessor):
 	@ISC.logException
 	def __init__(self, config, log, messenger, servers, roaches):
@@ -211,20 +211,23 @@ class Tbf(SlotCommandProcessor):
 		self.servers = servers
 		self.roaches = roaches
 		self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
+		
 	@ISC.logException
 	def start(self, bits, trigger, samples, mask):
 		self.log.info('Starting TBF: bits=%i, trigger=%i, samples=%i, mask=%i' % (bits, trigger, samples, mask))
 		
-		self.messenger.trigger(samples)
+		self.messenger.trigger(trigger, samples, mask)
 		
 		return True
+		
 	@ISC.logException
 	def execute(self, cmds):
 		for cmd in cmds:
 			self.start(cmd.bits, cmd.trigger, cmd.samples, cmd.mask)
+			
 	def stop(self):
 		return False
-		
+
 
 class BamCommand(object):
 	@ISC.logException
@@ -233,6 +236,8 @@ class BamCommand(object):
 		self.delays = np.ndarray((512,), dtype='>H', buffer=msg.data[2:1026])
 		self.gains = np.ndarray((256,2,2), dtype='>H', buffer=msg.data[1026:3074])
 		self.tuning, self.slot = struct.unpack('>BB', msg.data[3074:3076])
+
+
 class Bam(SlotCommandProcessor):
 	@ISC.logException
 	def __init__(self, config, log, messenger, servers, roaches):
@@ -247,6 +252,7 @@ class Bam(SlotCommandProcessor):
 		self.cur_delays = [[0 for i in xrange(512)]]*self.ntuning
 		self.cur_gains = [[0 for i in xrange(1024)]]*self.ntuning
 		self.cur_tuning = [0]*self.ntuning
+		
 	@ISC.logException
 	def start(self, beam, delays, gains, tuning, slot):
 		self.log.info("Setting BAM: beam=%i, tuning=%i, slot=%i" % (beam, tuning, slot))
@@ -254,13 +260,16 @@ class Bam(SlotCommandProcessor):
 		self.messenger.bamConfig(beam, delays, gains, tuning)
 		
 		return True
+		
 	@ISC.logException
 	def execute(self, cmds):
 		for cmd in cmds:
 			# Note: Converts from 1-based to 0-based tuning
 			self.start(cmd.beam, cmd.delays, cmd.gains, cmd.tuning, cmd.slot)
+			
 	def stop(self):
 		return False
+
 
 """
 class FstCommand(object):
@@ -360,6 +369,8 @@ class Fst(object):
 				               "for address %s: (%i) %s" %
 				               addr, reply['status'], reply['info'])
 """
+
+
 # Special response packing functions
 def pack_reply_CMD_STAT(slot, cmds):
 	ncmd_max = 606
@@ -369,13 +380,19 @@ def pack_reply_CMD_STAT(slot, cmds):
 	responseParts.extend( [cmd[1] for cmd in cmds] )
 	responseParts.extend( [cmd[2] for cmd in cmds] )
 	return struct.pack(fmt, *responseParts)
+
+
 def truncate_message(s, n):
 		return s if len(s) <= n else s[:n-3] + '...'
+
+
 def pretty_print_bytes(bytestring):
 	return ' '.join(['%02x' % ord(i) for i in bytestring])
 
+
 # HACK TESTING
 #lock = threading.Lock()
+
 
 class AdpServerMonitorClient(object):
 	def __init__(self, config, log, host, timeout=0.1):
@@ -391,6 +408,7 @@ class AdpServerMonitorClient(object):
 			self.log.error("Invalid or non-existent address: %s" % addr)
 		self.sock.SNDTIMEO = int(timeout*1000)
 		self.sock.RCVTIMEO = int(timeout*1000)
+		
 	def read_sensors(self):
 		ret = self._ipmi_command('sdr')
 		sensors = {}
@@ -402,6 +420,7 @@ class AdpServerMonitorClient(object):
 			val = cols[1].split()[0]
 			sensors[key] = val
 		return sensors
+		
 	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
 		try:
@@ -411,15 +430,19 @@ class AdpServerMonitorClient(object):
 			        if  key in sensors}
 		except:
 			return {'error': float('nan')}
+			
 	@lru_cache_method(maxsize=4)
 	def get_status(self, slot):
 		return self._request('STAT')
+		
 	@lru_cache_method(maxsize=4)
 	def get_info(self, slot):
 		return self._request('INFO')
+		
 	@lru_cache_method(maxsize=4)
 	def get_software(self, slot):
 		return self._request('SOFTWARE')
+		
 	def _request(self, query):
 		try:
 			self.sock.send(query)
@@ -433,11 +456,14 @@ class AdpServerMonitorClient(object):
 			raise RuntimeError(response['info'])
 		else:
 			return response['data']
+			
 	def get_power_state(self):
 		"""Returns 'on' or 'off'"""
 		return self._ipmi_command("power status").split()[-1]
+		
 	def do_power(self, op='status'):
 		return self._ipmi_command("power "+op)
+		
 	def _ipmi_command(self, cmd):
 		username = self.config['ipmi']['username']
 		password = self.config['ipmi']['password']
@@ -449,12 +475,14 @@ class AdpServerMonitorClient(object):
 		#return True
 		#except CalledProcessError as e:
 		#	raise RuntimeError(str(e))
+		
 	def stop_tbn(self):
 		try:
 			self._shell_command("stop adp-tbn")
 		except subprocess.CalledProcessError:
 			pass
 		return True
+		
 	def restart_tbn(self):
 		self.stop_tbn()
 		#return self._shell_command("restart adp-tbn)"
@@ -463,6 +491,29 @@ class AdpServerMonitorClient(object):
 		#except subprocess.CalledProcessError:
 		#	pass
 		self._shell_command("start adp-tbn")
+		
+	def stop_tengine(self):
+		try:
+			self._shell_command("stop adp-tengine")
+		except subprocess.CalledProcessError:
+			pass
+		return True
+		
+	def restart_tengine(self):
+		#return self._shell_command("restart adp-tengine")
+		try:
+			self._shell_command("stop adp-tengine")
+		except subprocess.CalledProcessError:
+			pass
+		return self._shell_command("start adp-tengine")
+		
+	def stop_drx(self):
+		try:
+			self._shell_command("stop adp-drx")
+		except subprocess.CalledProcessError:
+			pass
+		return True
+		
 	def restart_drx(self):
 		#return self._shell_command("restart adp-drx")
 		try:
@@ -470,6 +521,7 @@ class AdpServerMonitorClient(object):
 		except subprocess.CalledProcessError:
 			pass
 		return self._shell_command("start adp-drx")
+		
 	def _shell_command(self, cmd, timeout=5.):
 		#return self.host
 		# HACK TESTING
@@ -519,6 +571,7 @@ class AdpServerMonitorClient(object):
 		self.log.info("SSHPASS DONE: " + ret)
 		#except subprocess.CalledProcessError:
 		#	raise RuntimeError("Server command '%s' failed" % cmd)
+		
 	def can_ssh(self):
 		try:
 			#with lock:
@@ -529,9 +582,10 @@ class AdpServerMonitorClient(object):
 		except subprocess.CalledProcessError:
 			return False
 
+
 # TODO: Rename this (and possibly refactor)
 class Roach2MonitorClient(object):
-	def __init__(self, config, log, num):
+	def __init__(self, config, log, num, syncFunction=None):
 		# Note: num is 1-based index of the roach
 		self.config = config
 		self.log    = log
@@ -539,8 +593,10 @@ class Roach2MonitorClient(object):
 		self.host   = self.roach.hostname
 		self.device = ROACH2Device(self.host)
 		self.num = num
+		self.syncFunction = syncFunction
 		self.GBE_DRX = 0
 		self.GBE_TBN = 1
+		
 	def unprogram(self, reboot=False):
 		if not reboot:
 			self.roach.unprogram()
@@ -573,31 +629,47 @@ class Roach2MonitorClient(object):
 			except subprocess.CalledProcessError as e:
 				self.log.info("Failed to reboot roach %s: %s", self.host, str(e))
 				raise RuntimeError("Roach reboot command failed")
+				
 	def get_samples(self, slot, stand, pol, nsamps=None):
 		return self.get_samples_all(slot, nsamps)[stand,pol]
+		
 	@lru_cache_method(maxsize=4)
 	def get_samples_all(self, slot, nsamps=None):
 		"""Returns an NDArray of shape (stand,pol,sample)"""
 		return self.device.samples_all(nsamps).transpose([1,2,0])
+		
 	@lru_cache_method(maxsize=4)
 	def get_temperatures(self, slot):
 		try:
 			return self.device.temperatures()
 		except:
 			return {'error': float('nan')}
+			
 	def program(self):
 		# Program with ADP firmware
 		# Note: ADCs must be re-calibrated after doing this
-		boffile      = self.config['roach']['firmware']
-		max_attempts = self.config['roach']['max_program_attempts']
-		adc_gain     = self.config['roach']['adc_gain']
-		adc_gain_bits   = ( adc_gain       | (adc_gain <<  4) |
-		                   (adc_gain << 8) | (adc_gain << 12) )
-		adc_gain_reg    = 0x2a
-		adc_registers = {adc_gain_reg: adc_gain_bits}
-		self.roach.program(boffile, adc_registers, max_attempts)
-	#def calibrate(self):
-		# TODO: Implement this
+		
+		## Firmware
+		boffile        = self.config['roach']['firmware']
+		## Channel setup for each GbE interfaces
+		nsubband0      = len(self.config['host']['servers-data'])
+		subband_nchan0 = int(math.ceil(self.config['drx']['capture_bandwidth'] / CHAN_BW / nsubband0))
+		nsubband1      = 1
+		subband_nchan1 = int(math.ceil(self.config['tbn']['capture_bandwidth'] / CHAN_BW / nsubband1))
+		## ADC digital gain
+		adc_gain       = self.config['roach']['adc_gain']
+		adc_gain_bits  = ( adc_gain       | (adc_gain <<  4) |
+		                  (adc_gain << 8) | (adc_gain << 12) )
+		adc_gain_reg   = 0x2a
+		adc_registers  = {adc_gain_reg: adc_gain_bits}
+		## Maximum number of attempts to try and program
+		max_attempts   = self.config['roach']['max_program_attempts']
+		## Whether or not to bypass the PFB on the FFT
+		bypass_pfb     =  self.config['roach']['bypass_pfb']
+		
+		self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, 
+					    adc_registers=adc_registers, max_attempts=max_attempts, bypass_pfb=bypass_pfb)
+					    
 	def configure_dual_mode(self):
 		try:
 			self.roach.stop_processing()
@@ -623,104 +695,63 @@ class Roach2MonitorClient(object):
 		except:
 			self.log.exception("Configuring roach failed")
 			raise
-	"""
-	def configure_mode(self, mode='DRX'):
-		# Configure 10GbE ports
-		if mode == 'DRX':
-			dst_hosts = self.config['host']['servers-data']
-		elif mode == 'TBN':
-			dst_hosts = self.config['host']['servers-tbn']
-		else:
-			raise KeyError("Invalid roach mode")
-		src_ip_base   = self.config['roach']['data_ip_base']
-		src_port_base = self.config['roach']['data_port_base']
-		dst_ports = self.config['server']['data_ports']
-		dst_ips   = [host2ip(host) for host in dst_hosts]
-		macs = load_ethers()
-		dst_macs  = [macs[ip] for ip in dst_ips]
-		arp_table = gen_arp_table(dst_ips, dst_macs)
-		dst_ports0 = [dst_ports[0]] * len(dst_ips)
-		dst_ports1 = [dst_ports[1]] * len(dst_ips)
-		ret0 = self.roach.configure_10gbe(0, dst_ips, dst_ports0, arp_table, src_ip_base, src_port_base)
-		ret1 = self.roach.configure_10gbe(1, dst_ips, dst_ports1, arp_table, src_ip_base, src_port_base)
-		if not ret0 or not ret1:
-			raise RuntimeError("Configuring Roach 10GbE port(s) failed")
-	def tune(self, gbe, cfreq, bw):
-		bw = round(bw, 3) # Round to mHz to avoid precision errors
-		#nsubband = 1 # HACK TESTING
-		nsubband = len(self.config['host']['servers-data'])
-		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
-		chan0         = int(round( cfreq / CHAN_BW)) - subband_nchan//2
-		#if self.num == 1:
-		#	print "****", bw, CHAN_BW, math.ceil(bw / CHAN_BW / nsubband)
-		#	print "chan_bw %.16f" % CHAN_BW
-		#	print "error:", CHAN_BW-25000
-		#	print "nchan, chan0", subband_nchan, chan0
-		self.roach.configure_fengine(gbe, nsubband, subband_nchan, chan0)
-		return subband_nchan, chan0
-	"""
+			
 	@ISC.logException
-	def tune_drx(self, cfreq, bw):
-		
+	def tune_drx(self, cfreq, shift_factor=27):
+		bw = self.config['drx']['capture_bandwidth']
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband      = len(self.config['host']['servers-data'])
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
-		self.log.info("MILES HERE IS THE CAPTURE RATE "+ str(bw) + " END MESSAGE")
-		if subband_nchan > 255:
-			raise ValueError("Too many channels per subband; limit is 255")
-		self.roach.configure_fengine(self.GBE_DRX, nsubband, subband_nchan, chan0,
-		                             bypass_pfb=self.config['roach']['bypass_pfb'])
-		return subband_nchan, chan0
-	def tune_tbn(self, cfreq, bw):
+		
+		self.roach.configure_fengine(self.GBE_DRX, chan0, shift_factor=shift_factor)
+		return chan0
+		
+	@ISC.logException
+	def tune_tbn(self, cfreq, shift_factor=27):
+		bw = self.config['tbn']['capture_bandwidth']
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband = 1
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - subband_nchan//2
-		if subband_nchan > 255:
-			raise ValueError("Too many channels per subband; limit is 255")
-		self.roach.configure_fengine(self.GBE_TBN, nsubband, subband_nchan, chan0,
-		                             bypass_pfb=self.config['roach']['bypass_pfb'])
-		return subband_nchan, chan0
+		
+		self.roach.configure_fengine(self.GBE_TBN, chan0, shift_factor=shift_factor)
+		return chan0
+		
 	def start_processing(self):
-		self.roach.start_processing()
+		self.roach.start_processing(syncFunction=self.syncFunction)
+		
 	def stop_processing(self):
 		self.roach.stop_processing()
+		
 	def processing_started(self):
 		return self.roach.processing_started()
+		
 	def enable_drx_data(self):
 		self.roach.enable_data(self.GBE_DRX)
+		
 	def enable_tbn_data(self):
 		self.roach.enable_data(self.GBE_TBN)
+		
 	def disable_drx_data(self):
 		self.roach.disable_data(self.GBE_DRX)
+		
 	def disable_tbn_data(self):
 		self.roach.disable_data(self.GBE_TBN)
+		
 	def drx_data_enabled(self):
 		return self.roach.data_enabled(self.GBE_DRX)
+		
 	def tbn_data_enabled(self):
 		return self.roach.data_enabled(self.GBE_TBN)
-	"""
-	def start_data(self, mode='DRX'):
-		if mode == 'DRX':
-			gbe0, gbe1 = True, False
-		elif mode == 'TBN':
-			gbe0, gbe1 = True, False
-		else:
-			raise KeyError("Invalid roach mode")
-		self.roach.start_data(gbe0, gbe1)
-	def pause_data(self):
-		self.roach.pause_data()
-	def stop_data(self):
-		self.roach.stop_data()
-	def data_enabled(self, gbe):
-		return self.roach.data_enabled(gbe)
-	"""
+		
 	# TODO: Configure channel selection (based on FST)
 	# TODO: start/stop data flow (remember to call roach.reset() before start)
 
+
 def exception_in(vals, error_type=Exception):
 	return any([isinstance(val, error_type) for val in vals])
+
 
 class MsgProcessor(ConsumerThread):
 	def __init__(self, config, log,
@@ -757,6 +788,7 @@ class MsgProcessor(ConsumerThread):
 		self.cmd_status = SequenceDict(list, maxlen=ncmd_save)
 		#self.zmqctx = zmq.Context()
 		
+		self.headnode = ObjectPool([AdpServerMonitorClient(config, log, 'adp'),])
 		self.servers = ObjectPool([AdpServerMonitorClient(config, log, host)
 		                           for host in self.config['host']['servers']])
 		#self.roaches = ObjectPool([Roach2MonitorClient(config, log, host)
@@ -765,6 +797,9 @@ class MsgProcessor(ConsumerThread):
 		nroach = NBOARD
 		self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
 		                           for num in xrange(nroach)])
+		for arc in self.roaches:
+			arc.syncFunction = self.roaches[0].roach.wait_for_pps
+			
 		#self.fst = Fst(config, log)
 		self.drx = Drx(config, log, self.messageServer, self.servers, self.roaches)
 		self.tbf = Tbf(config, log, self.messageServer, self.servers, self.roaches)
@@ -796,24 +831,26 @@ class MsgProcessor(ConsumerThread):
 		self.run_failsafe_thread.start()
 		
 		self.start_synchronizer_thread()
-
+		
 	def start_synchronizer_thread(self):
 		self.sync_server = MCS2.SynchronizerServer()
 		#self.run_synchronizer_thread = threading.Thread(target=self.run_synchronizer)
 		self.run_synchronizer_thread = threading.Thread(target=self.sync_server.run)
 		#self.run_synchronizer_thread.daemon = True
 		self.run_synchronizer_thread.start()
+		
 	def stop_synchronizer_thread(self):
 		self.sync_server.shutdown()
 		self.run_synchronizer_thread.join()
 		del self.sync_server
-
+		
 	def uptime(self):
 		# Returns no. secs since data processing began (during INI)
 		if self.utc_start is None:
 			return 0
 		secs = (datetime.datetime.utcnow() - self.utc_start).total_seconds()
 		return secs
+		
 	def raise_error_state(self, cmd, state):
 		# TODO: Need new codes? Need to document them?
 		state_map = {'BOARD_SHUTDOWN_FAILED':      (0x08,'Board-level shutdown failed'),
@@ -827,7 +864,7 @@ class MsgProcessor(ConsumerThread):
 		self.state['info']    = 'SUMMARY! 0x%02X! %s' % (code, msg)
 		self.state['activeProcess'].pop()
 		return code
-
+		
 	def check_success(self, func, description, names):
 		self.state['info'] = description
 		rets = func()
@@ -845,6 +882,7 @@ class MsgProcessor(ConsumerThread):
 		else:
 			self.state['info'] = description + " succeeded"
 		return all_ok
+		
 	def ini(self, arg=None):
 		start_time = time.time()
 		# Note: Return value from this function is not used
@@ -855,6 +893,8 @@ class MsgProcessor(ConsumerThread):
 		
 		if all(self.servers.can_ssh()):
 			self.servers.stop_tbn()
+			self.servers.stop_drx()
+			self.headnode.stop_tengine()
 		time.sleep(5)
 		
 		# WAR for synchronizer getting into a bad state when clients are killed
@@ -878,7 +918,10 @@ class MsgProcessor(ConsumerThread):
 			                          'Restarting pipelines - TBN',
 			                          self.servers.host):
 				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-			# TODO: Enable this once DRX is implemented
+			if not self.check_success(lambda: self.headnode.restart_tengine(),
+			                          'Restarting pipelines - DRX/T-engine',
+			                          self.headnode.host):
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 			if not self.check_success(lambda: self.servers.restart_drx(),
 			                          'Restarting pipelines - DRX',
 			                          self.servers.host):
@@ -939,12 +982,12 @@ class MsgProcessor(ConsumerThread):
 		wait_until_utc_sec(utc_init_str)
 		time.sleep(0.5)
 		self.state['lastlog'] = "Starting processing now"
-		self.log.info("Initializing TBN")
-		if not self.check_success(lambda: self.tbn.tune(),
-		                          'Initializing TBN',
-		                          self.roaches.host):
-			if 'FORCE' not in arg:
-				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		#self.log.info("Initializing TBN")
+		#if not self.check_success(lambda: self.tbn.tune(),
+		#                          'Initializing TBN',
+		#                          self.roaches.host):
+		#	if 'FORCE' not in arg:
+		#		return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		self.log.info("Starting FPGA processing now")
 		if not self.check_success(lambda: self.roaches.start_processing(),
 		                          'Starting FPGA processing',
@@ -958,12 +1001,213 @@ class MsgProcessor(ConsumerThread):
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		#if not all(self.roaches.tbn_data_enabled()):
 		#	return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-
+		time.sleep(0.1)
+		
+		## Calibration
+		#if not self.adc_cal(arg):
+		#	return self.raise_error_state('INI', 'ADC_CALIBRATION_FAILED')
+			
 		self.log.info("INI finished in %.3f s", time.time() - start_time)
 		self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
 		self.state['status']  = 'NORMAL'
 		self.state['activeProcess'].pop()
 		return 0
+		
+	def adc_cal(self, arg=None):
+		"""
+		ADC offset calibration routine.
+		"""
+		
+		status = True
+		self.log.info("Starting ADC offset calibration")
+		
+		# Helper function - download files
+		def _downloadFiles(tTrigger, ageLimit=10.0, deleteAfterCopy=False):
+			filenames = []
+			for s in (1,2,3,4,5,6):
+				cmd = "ssh adp%i 'ls -l --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | tail -n1 " % s
+				latestTBF = subprocess.check_output(cmd, shell=True)
+				try:
+					fields = latestTBF.split()
+					mtime, filename = float(fields[5]), fields[6]
+					print '!!', tTrigger, mtime, tTrigger - mtime
+					if abs(tTrigger - mtime) < ageLimit:
+						outname = '/data1/adc_cal_%i' % s
+						subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
+						filenames.append( outname )
+						
+						if deleteAfterCopy:
+							subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
+							
+				except Exception as e:
+					self.log.info("ERROR: %s", str(e))
+			return filenames
+			
+		# Helper function - delete files
+		def _deleteFiles(filenames):
+			status = True
+			for filename in filenames:
+				try:
+					os.unlink(filename)
+				except OSError:
+					status = False
+			return True
+		
+		# Tune to 60 MHz
+		freq = 60.1e6
+		shift_factor = 21
+		self.roaches.disable_drx_data()
+		self.check_success(lambda: self.roaches.tune_drx(freq, shift_factor=shift_factor),
+		                   'Tuning DRX to the calibration tone',
+		                    self.roaches.host)
+		self.roaches.enable_drx_data()
+		time.sleep(10.0)
+		
+		# Run a TBF capture and save to disk
+		self.log.info("Triggering local TBF dump")
+		self.messageServer.trigger(0, int(0.01*FS), 1, local=True)
+		tTrigger = time.time()
+		time.sleep(5.0)
+		
+		# Analyze
+		self.log.info("Analyzing TBF capture")
+		filenames = _downloadFiles(tTrigger)
+				
+		if len(filenames) == 6:
+			# Solve for the delays
+			output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
+			self.log.info('calibrateADCDelays.py - initial - %s', output)
+			
+			# Load in the delays
+			output = output.split('\n')
+			delays = []
+			for line in output:
+				if line.startswith('roach'):
+					_, delay = line.split(None, 1)
+					delays.append( int(delay, 10) )
+			maxDelay = max(delays)
+			
+			# Update the roach delay FIFOs
+			self.log.info("Setting roach FIFO delays")
+			for arc,delay in zip(self.roaches, delays):
+				try:
+					arc.roach.configure_adc_delay(32, maxDelay - delay + 10)	# needed because of block design
+				except:
+					pass
+			time.sleep(1.0)
+			
+			## Cleanup
+			#_deleteFiles(filenames)
+			
+			# Check by running another TBF capture
+			self.log.info("Triggering local TBF dump")
+			self.messageServer.trigger(0, int(0.01*FS), 1, local=True)
+			tTrigger = time.time()
+			time.sleep(5.0)
+			
+			# Analyze
+			self.log.info("Verifying TBF capture")
+			filenames = _downloadFiles(tTrigger)
+			if len(filenames) == 6:
+				# Verify the delays
+				output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
+				self.log.info('calibrateADCDelays.py - final - %s', output)
+				output = output.split('\n')
+				
+				# Load in the delays
+				delays = []
+				for line in output:
+					if line.startswith('roach'):
+						_, delay = line.split(None, 1)
+						delays.append( delay )
+				maxDelay = max(delays)
+				
+				# Check
+				for delay in delays:
+					status &= (delay == 0)
+					
+			else:
+				status = False
+		else:
+			status = False
+			
+		## Cleanup
+		#_deleteFiles(filenames)
+		
+		# Reset the FFT shift factor
+		shift_factor = 27
+		self.check_success(lambda: self.roaches.tune_drx(freq, shift_factor=shift_factor),
+		                   'Resetting FFT shift factor',
+		                    self.roaches.host)
+		time.sleep(1.0)
+		
+		# Done
+		return status
+		
+	def health_chk(self, arg=None):
+		status = True
+		self.log.info("Starting health check")
+		
+		# Helper function - download files
+		def _downloadFiles(tTrigger, count=0, ageLimit=10.0, deleteAfterCopy=False):
+			filenames = []
+			for s in (1,2,3,4,5,6):
+				cmd = "ssh adp%i 'ls -l --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | tail -n1 " % s
+				latestTBF = subprocess.check_output(cmd, shell=True)
+				try:
+					fields = latestTBF.split()
+					mtime, filename = float(fields[5]), fields[6]
+					print '!!', tTrigger, mtime, tTrigger - mtime
+					if abs(tTrigger - mtime) < ageLimit:
+						outname = '/data1/health_%i_%i' % (count, s)
+						subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
+						filenames.append( outname )
+						
+						if deleteAfterCopy:
+							subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
+							
+				except Exception as e:
+					self.log.info("ERROR: %s", str(e))
+			return filenames
+			
+		# Helper function - delete files
+		def _deleteFiles(filenames):
+			status = True
+			for filename in filenames:
+				try:
+					os.unlink(filename)
+				except OSError:
+					status = False
+			return True
+			
+		filenames = []
+		for i,freq in enumerate((10e6, 20e6, 30e6, 40e6, 50e6, 60e6, 70e6, 80e6, 90e6)):
+			self.check_success(lambda: self.roaches.tune_drx(freq),
+						    'Tuning DRX to health check frequency - %.3f MHz' % (freq/1e6,),
+						    self.roaches.host)
+			self.roaches.enable_drx_data()
+			time.sleep(10.0)
+			
+			# Run a TBF capture and save to disk
+			self.log.info("Triggering local TBF dump - %.3f MHz", freq/1e6)
+			self.messageServer.trigger(0, int(0.061*FS), 1, local=True)
+			tTrigger = time.time()
+			time.sleep(5.0)
+			
+			# Download
+			self.log.info("Downloading data - %.3f MHz", freq/1e6)
+			filenames.extend( _downloadFiles(tTrigger, count=i) )
+			
+		# Analyze
+		try:
+			output = subprocess.check_output("/home/adp/lwa_sv/scripts/runLatestCheck.sh", shell=True)
+		except subprocess.CalledProcessError:
+			self.log.error("Call to 'runLatestCheck.sh' failed")
+			
+		# Done
+		_deleteFiles(filenames)
+		
+		return True
 		
 	def sht(self, arg=''):
 		# TODO: Consider allowing specification of 'only servers' or 'only boards'
@@ -1050,7 +1294,7 @@ class MsgProcessor(ConsumerThread):
 					self.state['activeProcess'].pop()
 				self.thread_pool.add_task(soft_power_off)
 		return 0
-
+		
 	def _wait_until_servers_power(self, target_state, max_wait=30):
 		# TODO: Need to check for ping (or even ssh connectivity) instead of 'power is on'?
 		time.sleep(6)
@@ -1061,6 +1305,7 @@ class MsgProcessor(ConsumerThread):
 			wait_time += 2
 			if wait_time >= max_wait:
 				raise RuntimeError("Timed out waiting for server(s) to turn "+target_state)
+				
 	def _wait_until_servers_can_ssh(self, max_wait=60):
 		wait_time = 0
 		while not all(self.servers.can_ssh()):
@@ -1068,7 +1313,7 @@ class MsgProcessor(ConsumerThread):
 			wait_time += 2
 			if wait_time >= max_wait:
 				raise RuntimeError("Timed out waiting to ssh to server(s)")
-
+				
 	def run_execute(self):
 		self.log.info("Starting slot execution thread")
 		slot = MCS2.get_current_slot()
@@ -1080,7 +1325,7 @@ class MsgProcessor(ConsumerThread):
 				time.sleep(0.1)
 			time.sleep(0.1)
 			slot += 1
-
+			
 	def run_monitor(self):
 		self.log.info("Starting monitor thread")
 		while not self.shutdown_event.is_set():
@@ -1105,7 +1350,7 @@ class MsgProcessor(ConsumerThread):
 				self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
 			
 			time.sleep(30)
-
+			
 	def run_failsafe(self):
 		self.log.info("Starting failsafe thread")
 		while not self.shutdown_event.is_set():
@@ -1152,12 +1397,12 @@ class MsgProcessor(ConsumerThread):
 				                                            'Server temperature warning')
 			self.log.info("Failsafe OK")
 			time.sleep(self.config['failsafe_interval'])
-
+			
 	#def run_synchronizer(self):
 	#	self.log.info("Starting Synchronizer server")
 	#	self.sync_server = MCS2.SynchronizerServer()
 	#	self.sync_server.run()
-
+		
 	def process(self, msg):
 		if msg.cmd == 'PNG':
 			self.log.info('Received PNG: '+str(msg))
@@ -1186,6 +1431,7 @@ class MsgProcessor(ConsumerThread):
 		#*self.fst.execute_commands(next_slot)
 		#self.bam.execute_commands(next_slot)
 		"""
+		
 	def shutdown(self):
 		self.shutdown_event.set()
 		self.stop_synchronizer_thread()
@@ -1196,15 +1442,17 @@ class MsgProcessor(ConsumerThread):
 		self.run_execute_thread.join(self.shutdown_timeout)
 		if self.run_execute_thread.isAlive():
 			self.log.warning("run_execute thread still exists and will be killed")
-		self.run_monitor_thread.join(self.shutdown_timeout)
-		if self.run_monitor_thread.isAlive():
-			self.log.warning("run_monitor thread still exists and will be killed")
+		#self.run_monitor_thread.join(self.shutdown_timeout)
+		#if self.run_monitor_thread.isAlive():
+		#	self.log.warning("run_monitor thread still exists and will be killed")
 		print self.name, "shutdown"
+		
 	def process_msg(self, msg, process_func):
 		accept, reply_data = process_func(msg)
 		status = self.state['status']
 		reply_msg = msg.create_reply(accept, status, reply_data)
 		self.msg_queue.put(reply_msg)
+		
 	def process_report(self, msg):
 		key, args = MCS2.mib_parse_label(msg.data)
 		try: value = self._get_report_result(key, args, msg.slot)
@@ -1222,11 +1470,13 @@ class MsgProcessor(ConsumerThread):
 		log_data   = self._format_report_result(key, value)
 		self.log.debug('%s = %s' % (msg.data, log_data))
 		return True, reply_data
+		
 	def _get_next_fir_index(self):
 		idx = self.fir_idx
 		self.fir_idx += 1
 		self.fir_idx %= NINPUT
 		return idx
+		
 	def _get_report_result(self, key, args, slot):
 		reduce_ops = {'MAX':      np.max,
 		              'MIN':      np.min,
@@ -1327,6 +1577,7 @@ class MsgProcessor(ConsumerThread):
 			raise KeyError
 		if key == 'CMD_STAT': return (slot,self.cmd_status[slot-1])
 		raise KeyError
+		
 	def _pack_report_result(self, key, value):
 		return {
 			'SUMMARY':          lambda x: x[:7],
@@ -1386,6 +1637,7 @@ class MsgProcessor(ConsumerThread):
 			'DRX_CONFIG_FILTER':lambda x: struct.pack('>H', x),
 			'DRX_CONFIG_GAIN':  lambda x: struct.pack('>H', x)
 		}[key](value)
+		
 	def _format_report_result(self, key, value):
 		format_function = defaultdict(lambda : str)
 		format_function.update({
@@ -1396,6 +1648,7 @@ class MsgProcessor(ConsumerThread):
 	
 	def currently_processing(self, *cmds):
 		return any([cmd in self.state['activeProcess'] for cmd in cmds])
+		
 	def process_command(self, msg):
 		exec_delay = 2
 		exec_slot  = msg.slot + exec_delay
@@ -1411,6 +1664,24 @@ class MsgProcessor(ConsumerThread):
 				exit_status = 0x0C
 			else:
 				self.thread_pool.add_task(self.ini, msg.data)
+		elif msg.cmd == 'CAL':
+			if self.currently_processing('INI', 'SHT'):
+				# TODO: This stuff could be tidied up a bit
+				self.state['lastlog'] = ('CAL: %s - %s is active and blocking'%
+				                         ('Blocking operation in progress',
+				                          self.state['activeProcess']))
+				exit_status = 0x0C
+			else:
+				self.thread_pool.add_task(self.adc_cal, msg.data)
+		elif msg.cmd == 'CHK':
+			if self.currently_processing('INI', 'SHT'):
+				# TODO: This stuff could be tidied up a bit
+				self.state['lastlog'] = ('CHK: %s - %s is active and blocking'%
+				                         ('Blocking operation in progress',
+				                          self.state['activeProcess']))
+				exit_status = 0x0C
+			else:
+				self.thread_pool.add_task(self.health_chk, msg.data)
 		elif msg.cmd == 'SHT':
 			if self.currently_processing('INI', 'SHT'):
 				self.state['lastlog'] = ('SHT: %s - %s is active and blocking'%

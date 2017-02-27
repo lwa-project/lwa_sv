@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 import numpy as np
 import datetime
@@ -33,6 +34,7 @@ ADP_EPOCH        = datetime.datetime(1970, 1, 1)
 M5C_EPOCH        = datetime.datetime(1990, 1, 1)
 #M5C_OFFSET = int((M5C_EPOCH - ADP_EPOCH).total_seconds())
 M5C_OFFSET = 0 # LWA convention re-defines this to use the 1970 epoch too
+DRX_NSAMPLE_PER_PKT = 4096
 TBN_NSAMPLE_PER_PKT = 512
 TBF_NCHAN_PER_PKT   = 12
 NFRAME_PER_SPECTRUM = int(FS) // int(CHAN_BW) # 7840

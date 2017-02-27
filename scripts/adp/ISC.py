@@ -130,13 +130,16 @@ class PipelineMessageServer(object):
 		bGains = binascii.hexlify( gains.tostring() )
 		self.socket.send('BAM %i %s %s %i' % (beam, bDelays, bGains, tuning))
 		
-	def trigger(self, samples):
+	def trigger(self, trigger, samples, mask, local=False):
 		"""
 		Send a trigger to start dumping TBF data.  This includes:
+		  * the trigger time
 		  * the number of samples to dump
+		  * the DRX tuning mask to use
+		  * whether or not to dump to disk
 		"""
 		
-		self.socket.send('TRIGGER %s %i' % (time.time(), samples))
+		self.socket.send('TRIGGER %i %i %i %i' % (trigger, samples, mask, local))
 		
 	def close(self):
 		self.socket.close()
@@ -221,17 +224,19 @@ class TriggerClient(PipelineMessageClient):
 	def __init__(self, addr=('adp', 5832), context=None):
 		super(TriggerClient, self).__init__('TRIGGER', addr=addr, context=context)
 		
-	def __call__(self):
-		msg = super(TriggerClient, self).__call__(block=True)
+	def __call__(self, block=False):
+		msg = super(TriggerClient, self).__call__(block=block)
 		if not msg:
 			# Nothing to report
 			return False
 		else:
 			# Unpack
-			fields = msg.split(None, 2)
-			tTrigger = float(fields[1])
+			fields  = msg.split(None, 4)
+			trigger = int(fields[1], 10)
 			samples = int(fields[2], 10)
-			return tTrigger, samples
+			mask    = int(fields[3], 10)
+			local   = bool(fields[4])
+			return trigger, samples, mask, local
 
 
 class TBNConfigurationClient(PipelineMessageClient):
@@ -250,10 +255,10 @@ class TBNConfigurationClient(PipelineMessageClient):
 			return False
 		else:
 			# Unpack
-			fields = msg.split(None, 3)
+			fields    = msg.split(None, 3)
 			frequency = float(fields[1])
-			filter = int(fields[2], 10)
-			gain = int(fields[3], 10)
+			filter    = int(fields[2], 10)
+			gain      = int(fields[3], 10)
 			return frequency, filter, gain
 
 
@@ -273,11 +278,11 @@ class DRXConfigurationClient(PipelineMessageClient):
 			return False
 		else:
 			# Unpack
-			fields = msg.split(None, 4)
-			tuning = int(fields[1], 10)
+			fields    = msg.split(None, 4)
+			tuning    = int(fields[1], 10)
 			frequency = float(fields[2])
-			filter = int(fields[3], 10)
-			gain = int(fields[4], 10)
+			filter    = int(fields[3], 10)
+			gain      = int(fields[4], 10)
 			return tuning, frequency, filter, gain
 
 

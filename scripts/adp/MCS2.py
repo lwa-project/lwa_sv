@@ -327,10 +327,10 @@ class SynchronizerGroup(object):
 				if not tag_msg.startswith('TAG:'):
 					#raise ValueError("Unexpected message: "+tag_msg)
 					print "WARNING: Synchronizer: Unexpected message: "+tag_msg
-				print 'tag_msg =', tag_msg
+				#####print 'tag_msg =', tag_msg
 				tag = tag_msg[len('TAG:'):]
 				if tag0 is None:
-					print "Setting tag0 =", tag
+					#####print "Setting tag0 =", tag
 					tag0 = tag
 				if tag != tag0:
 					#raise KeyError("Tag mismatch")
@@ -349,7 +349,7 @@ class SynchronizerGroup(object):
 					#del self.socks[i]
 					continue # TODO: Need to do something here?
 				i += 1
-			print "SYNCED", len(self.socks)
+			#####print "SYNCED", len(self.socks)
 		print "SynchronizerGroup shut down"
 
 class SynchronizerServer(object):

@@ -8,8 +8,10 @@ import subprocess
 import time
 import numpy as np
 import struct
+import logging
 
 from iptools import *
+
 
 # TODO: Consider refactoring into generic ADC16Roach base class and AdpRoach specialisation
 class AdpRoach(object):
@@ -29,10 +31,14 @@ class AdpRoach(object):
 		return "rofl%i" % self.num
 		
 	def connect(self):
-		self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port)
+		self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
 		time.sleep(0.1)
 		
-	def program(self, boffile, adc_registers={}, max_attempts=5):
+	def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, adc_registers={}, max_attempts=5, bypass_pfb=False):
+		# Validate
+		assert( 0 <= subband_nchan0 and subband_nchan0 < 256 )
+		assert( 0 <= subband_nchan1 and subband_nchan1 < 256 )
+		
 		if len(adc_registers) > 0:
 			regstring = ','.join(["0x%x=0x%x" % (key,val)
 			                      for key,val in adc_registers.items()])
@@ -56,11 +62,42 @@ class AdpRoach(object):
 				ok = True # Fine if non-ADC16 firmware
 			print out
 			
+		###
+		### NOTE:  These next several parameters are only active after adc_rst
+		### is called, i.e., after start_processing()
+		###
+		
+		# Reset the FPGA state
+		self._fpgaState = {}
+		
 		# Configure the F-engine with basic parameters
 		self.fpga.write_int('pkt_roach_id', self.num)
 		self.fpga.write_int('pkt_n_roach', 16)
 		self.fpga.write_int('fft_use_fengine', 1)		#### Used for test firmware ###
-		self._update_pkt_registers()
+		
+		# Configure the PFB
+		if bypass_pfb:
+			self.disable_pfb()
+		else:
+			self.enable_pfb()
+			
+		# Update the FFT shift
+		self.fpga.write_int('fft_f1_fft_shift', 65535)
+		self.fpga.write_int('fft_f2_fft_shift', 65535)
+		self.fpga.write_int('fft_f3_fft_shift', 65535)
+		self.fpga.write_int('fft_f4_fft_shift', 65535)
+		
+		# Configure the allowed bandwidth...
+		self.fpga.write_int('pkt_gbe0_n_chan_per_sub', subband_nchan0)
+		self.fpga.write_int('pkt_gbe0_n_subband', nsubband0)
+		self.fpga.write_int('pkt_gbe1_n_chan_per_sub', subband_nchan1)
+		self.fpga.write_int('pkt_gbe1_n_subband', nsubband1)
+		
+		# ... and save these to the internal state so that we can use them later
+		self._fpgaState['pkt_gbe0_n_chan_per_sub'] = subband_nchan0
+		self._fpgaState['pkt_gbe0_n_subband'] = nsubband0
+		self._fpgaState['pkt_gbe1_n_chan_per_sub'] = subband_nchan1
+		self._fpgaState['pkt_gbe1_n_subband'] = nsubband1
 		
 		return out
 		
@@ -70,6 +107,8 @@ class AdpRoach(object):
 			self.fpga.progdev("")
 		except RuntimeError:
 			pass
+			
+		# Reset the FPGA state
 		self._fpgaState = {}
 		
 	def check_serdes(self):
@@ -103,7 +142,10 @@ class AdpRoach(object):
 		self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
 		return self.check_link(gbe_idx)
 		
-	def reset(self):
+	def reset(self, syncFunction=None):
+		if syncFunction is not None:
+			syncFunction()
+			
 		self.fpga.write_int('adc_rst', 0)
 		self.fpga.write_int('adc_rst', 1)
 		self.fpga.write_int('adc_rst', 0)
@@ -112,19 +154,45 @@ class AdpRoach(object):
 		gbe_link = self.fpga.read_int('pkt_gbe%i_linkup' % gbe_idx)
 		return bool(gbe_link)
 		
-	def configure_fengine(self, gbe_idx, nsubband, subband_nchan, start_chan, scale_factor=1.948, shift_factor=27, bypass_pfb=False):
+	def configure_adc_delay(self, adc_idx, delay_clocks):
+		# Note: adc_idx is 0-based and a value of "32" sets all signal paths on the roach
+		
+		# Validate the inputs
+		assert( 0 <= adc_idx <= 32 )
+		assert( 0 <= delay_clocks < 1024 )
+		
+		# Go
+		if adc_idx == 32:
+			adc_idx = range(32)
+		else:
+			adc_idx = [adc_idx,]
+			
+		updated = False
+		for adc in adc_idx:
+			register = 'adc_delay%i' % adc
+			try:
+				currDelay = self._fpgaState[register]
+			except KeyError:
+				currDelay = -1
+			if currDelay != delay_clocks:
+				self.fpga.write_int(register, delay_clocks)
+				self._fpgaState[register] = delay_clocks
+				updated |= True
+				
+		return updated
+		
+	def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
 		
 		# Validate the inputs
 		assert( 0 <= gbe_idx and gbe_idx < 3 )
 		assert( 0 <= start_chan and start_chan < 4096 )
-		assert( 0 <= subband_nchan and subband_nchan < 256 )
 		
 		# Compute the stop channel and updated packetizer registries as needed
-		stop_chan = start_chan + nsubband*subband_nchan
+		stop_chan = start_chan + self._fpgaState['pkt_gbe%i_n_chan_per_sub' % gbe_idx] * \
+							self._fpgaState['pkt_gbe%i_n_subband' % gbe_idx]
 		updated = False
-		for baseReg,value in zip(('n_chan_per_sub', 'n_subband', 'start_chan', 'stop_chan'), 
-							(subband_nchan, nsubband, start_chan, stop_chan)):
+		for baseReg,value in zip(('start_chan', 'stop_chan'), (start_chan, stop_chan)):
 			register = 'pkt_gbe%i_%s' % (gbe_idx, baseReg)
 			
 			try:
@@ -135,27 +203,8 @@ class AdpRoach(object):
 			if value != currValue:
 				self.fpga.write_int(register, value)
 				self._fpgaState[register] = value
-				updated = True
+				updated |= True
 				
-		# Update the PFB setting as needed
-		if bypass_pfb:
-			updated |= self.disable_pfb()
-		else:
-			updated |= self.enable_pfb()
-			
-		# Update the FFT shift as needed
-		try:
-			currShift = self._fpgaState['fft_shift']
-		except KeyError:
-			currShift = -1
-		if currShift != 65535:
-			self.fpga.write_int('fft_f1_fft_shift', 65535)
-			self.fpga.write_int('fft_f2_fft_shift', 65535)
-			self.fpga.write_int('fft_f3_fft_shift', 65535)
-			self.fpga.write_int('fft_f4_fft_shift', 65535)
-			self._fpgaState['fft_shift'] = 65535
-			updated = True
-			
 		# Update the FFT scale as needed
 		try:
 			currScale = self._fpgaState['scale_factor']
@@ -171,84 +220,62 @@ class AdpRoach(object):
 			self.fpga.write('fft_f4_cg_bpass_bram', cstr)
 			self._fpgaState['scale_factor'] = scale_factor
 			self._fpgaState['shift_factor'] = shift_factor
-			updated = True
+			updated |= True
 			
-		# Flush any changes to the system
-		if updated:
-			self._update_pkt_registers()
-			
-	def _update_pkt_registers(self):
-		self.fpga.write_int('pkt_update_reg', 0)
-		self.fpga.write_int('pkt_update_reg', 1)
-		self.fpga.write_int('pkt_update_reg', 0)
+		return updated
 		
 	def _read_pkt_tx_enable(self):
 		bitset = self.fpga.read_int('pkt_tx_enable')
-		#fifo_bitset =  bitset & 0b0011
-		#gbe_bitset  = (bitset & 0b1100) >> 2
-		fifo_bitset = 0 # TODO: Remove this
 		gbe_bitset  = bitset & 0b11
-		return gbe_bitset, fifo_bitset
-	def _write_pkt_tx_enable(self, gbe_bitset, fifo_bitset):
-		#bitset = ((gbe_bitset & 0b11) << 2) | (fifo_bitset & 0b11)
+		return gbe_bitset
+		
+	def _write_pkt_tx_enable(self, gbe_bitset):
 		bitset = gbe_bitset & 0b11
 		try:
-			fifoEnabled = self._fpgaState['fifo_enabled']
+			txReady = self._fpgaState['tx_ready']
 		except KeyError:
-			fifoEnabled = False
-		if not fifoEnabled:
-			self.fpga.write_int('pkt_fifo_enable', 0b11)
+			txReady = False
+		if not txReady:
 			self.fpga.write_int('pkt_tx_rst', 0b00)
 			self.fpga.write_int('pkt_tx_rst', 0b11)
 			self.fpga.write_int('pkt_tx_rst', 0b00)
 			
-			self._fpgaState['fifo_enabled'] = True
+			self._fpgaState['tx_ready'] = True
 			
 		self.fpga.write_int('pkt_tx_enable', bitset)
 		
 	# Note: Starting processing without starting data flow
 	#         means that we can't get the first 1s of data, because
 	#         the data enable takes another 1s to take effect.
-	def start_processing(self):
+	def start_processing(self, syncFunction=None):
 		self.stop_processing()
-		self.reset_sequence_number() # TODO: Check that this is the right place to do this
-		self.reset() # Must call this here to initialise things
-		self._update_pkt_registers()
 		
-		## Note: We restore the previous gbe states
-		#gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		fifo_bitset = 0b11
-		gbe_bitset  = 0b00
-		#gbe_bitset  = 0b11
-		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+		self.reset(syncFunction=syncFunction)
+		
+		# Ready the packetizer
+		gbe_bitset  = 0b11
+		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def enable_data(self, gbe):
-		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		#if fifo_bitset != 0b11:
-		#	raise RuntimeError("Enable data requested but data not started")
+		gbe_bitset = self._read_pkt_tx_enable()
 		gbe_bitset |= (1<<gbe)
-		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def disable_data(self, gbe):
-		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		#if fifo_bitset != 0b11:
-		#	raise RuntimeError("Disable data requested but data not started")
+		gbe_bitset = self._read_pkt_tx_enable()
 		gbe_bitset &= ~(1<<gbe)
-		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def stop_processing(self):
-		fifo_bitset = 0b00
 		gbe_bitset  = 0b00
-		self._write_pkt_tx_enable(gbe_bitset, fifo_bitset)
+		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def processing_started(self):
-		#gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
-		#return (fifo_bitset == 0b11)
-		ret = (self.fpga.read_int('pkt_fifo_enable') == 0b11)
+		ret = (self.fpga.read_int('pkt_tx_enable') == 0b11)
 		return ret
 		
 	def data_enabled(self, gbe):
-		gbe_bitset, fifo_bitset = self._read_pkt_tx_enable()
+		gbe_bitset = self._read_pkt_tx_enable()
 		return bool(gbe_bitset & (1<<gbe))
 		
 	def check_overflow(self):
@@ -256,53 +283,41 @@ class AdpRoach(object):
 		gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
 		return (gbe0_oflow, gbe1_oflow)
 		
-	def reset_sequence_number(self):
-		self.fpga.write_int('pkt_rst_seq_num', 0)
-		self.fpga.write_int('pkt_rst_seq_num', 1)
-		self.fpga.write_int('pkt_rst_seq_num', 0)
-		
 	def disable_pfb(self):
 		"""
-		Turn off the PFB frontend.  Returns True if the PFB is turned off, 
-		False if it is already off.
+		Turn off the PFB frontend.  Returns True.
 		"""
 		
-		try:
-			pfbOn = self._fpgaState['pfb']
-		except KeyError:
-			# Default state is on
-			pfbOn = True
-			
-		if pfbOn:
-			self.fpga.write_int('fft_f1_bypass', 1)
-			self.fpga.write_int('fft_f2_bypass', 1)
-			self.fpga.write_int('fft_f3_bypass', 1)
-			self.fpga.write_int('fft_f4_bypass', 1)
-			
-			self._fpgaState['pfb'] = False
-			return True
-		else:
-			return False
-			
+		self.fpga.write_int('fft_f1_bypass', 1)
+		self.fpga.write_int('fft_f2_bypass', 1)
+		self.fpga.write_int('fft_f3_bypass', 1)
+		self.fpga.write_int('fft_f4_bypass', 1)
+		
+		return True
+		
 	def enable_pfb(self):
 		"""
-		Turn on the PFB frontend.  Returns True if the PFB is turned on, 
-		False if it is already on.
+		Turn on the PFB frontend.  Returns True.
 		"""
 		
-		try:
-			pfbOn = self._fpgaState['pfb']
-		except KeyError:
-			# Default state is on
-			pfbOn = True
+		self.fpga.write_int('fft_f1_bypass', 0)
+		self.fpga.write_int('fft_f2_bypass', 0)
+		self.fpga.write_int('fft_f3_bypass', 0)
+		self.fpga.write_int('fft_f4_bypass', 0)
+		
+		return True
+		
+	def wait_for_pps(self):
+		"""
+		Function to wait until the PPS hits the roach board.  It blocks until
+		the PPS increments 'adc_sync_count' and then returns True.
+		"""
+		
+		p0 = self.fpga.read_int('adc_sync_count')
+		p1 = self.fpga.read_int('adc_sync_count')
+		
+		while p1 <= p0:
+			time.sleep(1e-6)
+			p1 = self.fpga.read_int('adc_sync_count')
 			
-		if not pfbOn:
-			self.fpga.write_int('fft_f1_bypass', 0)
-			self.fpga.write_int('fft_f2_bypass', 0)
-			self.fpga.write_int('fft_f3_bypass', 0)
-			self.fpga.write_int('fft_f4_bypass', 0)
-			
-			self._fpgaState['pfb'] = True
-			return True
-		else:
-			return False
+		return True
