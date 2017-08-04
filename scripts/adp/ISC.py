@@ -14,14 +14,14 @@ import time
 import numpy
 import binascii
 import threading
+from uuid import uuid4
 
 
-__version__ = '0.1'
+__version__ = '0.2'
 __revision__ = '$Rev$'
 __all__ = ['PipelineMessageServer', 'StartTimeClient', 'TriggerClient', 'TBNConfigurationClient',
-		 'DRXConfigurationClient', 'BAMConfigurationClient', 'PipelineSynchronizationServer',
-		 'PipelineSynchronizationClient', 
-		 '__version__', '__revision__', '__all__']
+		 'DRXConfigurationClient', 'BAMConfigurationClient', 'CORConfigurationClient', 
+		 'PipelineSynchronizationServer',  'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient', '__version__', '__revision__', '__all__']
 
 
 import sys
@@ -103,7 +103,7 @@ class PipelineMessageServer(object):
 		  * gain setting
 		"""
 		
-		self.socket.send('TBN %.3f %i %i' % (frequency, filter, gain))
+		self.socket.send('TBN %.6f %i %i' % (frequency, filter, gain))
 		
 	def drxConfig(self, tuning, frequency, filter, gain):
 		"""
@@ -115,20 +115,32 @@ class PipelineMessageServer(object):
 		  * gain setting
 		"""
 		
-		self.socket.send('DRX %i %.3f %i %i' % (tuning, frequency, filter, gain))
+		self.socket.send('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
 		
-	def bamConfig(self, beam, delays, gains, tuning):
+	def bamConfig(self, beam, delays, gains, tuning, subslot):
 		"""
 		Send BAM configuration information out to the clients.  This includes:
 		  * the beam number this update applies to
 		  * the delays as a 1-D numpy array
 		  * the gains as a 3-D numpy array
 		  * the tuning number this update applied to
+		  * the subslot in which the configuation is the implemented
 		"""
 		
 		bDelays = binascii.hexlify( delays.tostring() )
 		bGains = binascii.hexlify( gains.tostring() )
-		self.socket.send('BAM %i %s %s %i' % (beam, bDelays, bGains, tuning))
+		self.socket.send('BAM %i %s %s %i %i' % (beam, bDelays, bGains, tuning, subslot))
+		
+	def corConfig(self, navg, tuning, gain, subslot):
+		"""
+		Send COR configuration information out the clients.  This includes:
+		  * the integration time in units of subslots
+		  * the tuning number the update applies to
+		  * the gain
+		  * the subslot in which the configuation is the implemented
+		"""
+		
+		self.socket.send('COR %i %i %i %i' % (navg, tuning, gain, subslot))
 		
 	def trigger(self, trigger, samples, mask, local=False):
 		"""
@@ -235,7 +247,7 @@ class TriggerClient(PipelineMessageClient):
 			trigger = int(fields[1], 10)
 			samples = int(fields[2], 10)
 			mask    = int(fields[3], 10)
-			local   = bool(fields[4])
+			local   = bool(int(fields[4], 10))
 			return trigger, samples, mask, local
 
 
@@ -302,14 +314,39 @@ class BAMConfigurationClient(PipelineMessageClient):
 			return False
 		else:
 			# Unpack
-			fields = msg.split(None, 4)
+			fields = msg.split(None, 5)
 			beam = int(fields[1], 10)
 			delays = numpy.fromstring( binascii.unhexlify(fields[2]), dtype='>H' )
 			delays.shape = (512,)
 			gains = numpy.fromstring( binascii.unhexlify(fields[3]), dtype='>H' )
 			gains.shape = (256,2,2)
 			tuning = int(fields[4], 10)
-			return beam, delays, gains, tuning
+			subslot = int(fields[5], 10)
+			return beam, delays, gains, tuning, subslot
+
+
+class CORConfigurationClient(PipelineMessageClient):
+	"""
+	Sub-class of PipelineMessageClient that is specifically for COR 
+	configuration information.
+	"""
+	
+	def __init__(self, addr=('adp', 5832), context=None):
+		super(CORConfigurationClient, self).__init__('COR', addr=addr, context=context)
+		
+	def __call__(self):
+		msg = super(CORConfigurationClient, self).__call__(block=False)
+		if not msg:
+			# Nothing to report
+			return False
+		else:
+			# Unpack
+			fields = msg.split(None, 3)
+			navg = int(fields[0], 10)
+			tuning = int(fields[1], 10)
+			gain = int(fields[2], 10)
+			subslot = int(fields[3], 10)
+			return navg, tuning, gain, subslot
 
 
 class PipelineSynchronizationServer(object):
@@ -366,23 +403,29 @@ class PipelineSynchronizationServer(object):
 			
 	def _sync(self):
 		clients = []
+		nAct = 0
+		nRecv = 0
 		
 		while self.alive.isSet():
 			client, msg = self.socket.recv_multipart()
 			if msg == 'JOIN':
 				if client not in clients:
 					clients.append( client )
+					nAct += 1
 					print "FOUND '%s'" % client
 					
 			elif msg == 'LEAVE':
 				try:
 					del clients[clients.index(client)]
+					nAct -= 1
 					print "LOST '%s'" % client
 				except ValueError:
 					pass
 					
 			elif msg[:3] == 'TAG':
-				if len(clients) == self.nClients:
+				nRecv += 1
+				
+				if nRecv == nAct:
 					for client in clients:
 						self.socket.send_multipart([client, msg])
 						
@@ -439,3 +482,196 @@ class PipelineSynchronizationClient(object):
 		self.socket.close()
 		if self.newContext:
 			self.context.destroy()
+
+
+class PipelineEventServer(object):
+	"""
+	Class to provide a distributed event across the pipelines.  This uses 
+	0MQ in a REQUEST/REPLY setup to make sure clients can lock/unlock each
+	other to control data flow.
+	"""
+	
+	def __init__(self, addr=('adp', 5834), context=None, timeout=None):
+		# Create the context
+		if context is not None:
+			self.context = context
+			self.newContext = False
+		else:
+			self.context = zmq.Context()
+			self.newContext = True
+			
+		# Create the socket and configure it
+		self.socket = self.context.socket(zmq.REP)
+		self.socket.setsockopt(zmq.LINGER, 0)
+		self.socket.bind('tcp://*:%i' % addr[1])
+		
+		# Setup the poller
+		self.poller = zmq.Poller()
+		self.poller.register(self.socket, zmq.POLLIN)
+		
+		# Setup the event
+		self.timeout = timeout
+		self._state = {}
+		
+		# Setup the threading
+		self.thread = None
+		self.alive = threading.Event()
+		
+	def _set(self, id):
+		self._state[id] = time.time()
+		return True
+		
+	def _is_set(self, id):
+		if len(self._state):
+			if self.timeout is None:
+				return True
+				
+			else:
+				for id in sorted(self._state):
+					age = time.time() - self._state[id]
+					if age <= self.timeout:
+						return True
+					else:
+						self._clear(id)
+						
+		return False
+		
+	def _clear(self, id):
+		try:
+			del self._state[id]
+			return True
+			
+		except KeyError:
+			return False
+			
+	@logException
+	def start(self):
+		"""
+		Start the event pool.
+		"""
+		
+		if self.thread is not None:
+			self.stop()
+			
+		self._state = {}
+		
+		self.thread = threading.Thread(target=self._event, name='event')
+		self.thread.setDaemon(1)
+		self.alive.set()
+		self.thread.start()
+		
+	@logException
+	def stop(self):
+		"""
+		Stop the event pool.
+		"""
+		
+		if self.thread is not None:
+			self.alive.clear()
+			self.thread.join()
+			
+			self.thread = None
+			
+	@logException
+	def _event(self):
+		while self.alive.isSet():
+			msg = dict(self.poller.poll(1000))
+			if msg:
+				if msg.get(self.socket) == zmq.POLLIN:
+					msg = self.socket.recv(zmq.NOBLOCK)
+					id, msg = msg.split(None, 1)
+					
+					if msg == 'SET':
+						status = self._set(id)
+					elif msg == 'CLEAR':
+						status = self._clear(id)
+					elif msg == 'IS_SET':
+						status = self._is_set(id)
+					elif msg == 'LEAVE':
+						status = self._clear(id)
+					else:
+						status = False
+					self.socket.send(str(status))
+					
+	def close(self):
+		"""
+		Stop the locking pool and close out the server.
+		"""
+		
+		self.stop()
+		
+		self.socket.close()
+		if self.newContext:
+			self.context.destroy()
+
+
+class PipelineEventClient(object):
+	"""
+	Client class for PipelineEventClient.
+	"""
+	
+	@logException
+	def __init__(self, id=None, addr=('adp', 5834), context=None):
+		# Create the context
+		if context is not None:
+			self.context = context
+			self.newContext = False
+		else:
+			self.context = zmq.Context()
+			self.newContext = True
+			
+		# Create the socket and configure it
+		self.socket = self.context.socket(zmq.REQ)
+		if id is None:
+			id = uuid4()
+		self.socket.setsockopt(zmq.IDENTITY, str(id))
+		self.socket.setsockopt(zmq.LINGER, 100)
+		self.socket.connect('tcp://%s:%i' % addr)
+		
+		# Save the ID
+		self.id = self.socket.getsockopt(zmq.IDENTITY)
+		
+	@logException
+	def is_set(self):
+		self.socket.send('%s %s' % (self.id, 'IS_SET'))
+		return True if self.socket.recv() == 'True' else False
+		
+	@logException
+	def isSet(self):
+		return self.is_set()
+		
+	@logException
+	def set(self):
+		self.socket.send('%s %s' % (self.id, 'SET'))
+		return True if self.socket.recv() == 'True' else False
+		
+	@logException
+	def clear(self):
+		self.socket.send('%s %s' % (self.id, 'CLEAR'))
+		return True if self.socket.recv() == 'True' else False
+		
+	@logException
+	def wait(self, timeout=None):
+		t0 = time.time()
+		while not self.is_set():
+			time.sleep(0.01)
+			t1 = time.time()
+			if timeout is not None:
+				if t1-t0 > timeout:
+					return False
+		return True
+		
+	@logException
+	def close(self):
+		"""
+		Leave the synchronization pool and close out the client.
+		"""
+		
+		self.socket.send('%s %s' % (self.id, 'LEAVE'))
+		status = True if self.socket.recv() == 'True' else False
+		
+		self.socket.close()
+		if self.newContext:
+			self.context.destroy()
+			
+		return status

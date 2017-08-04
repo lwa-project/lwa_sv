@@ -34,10 +34,11 @@ class AdpRoach(object):
 		self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
 		time.sleep(0.1)
 		
-	def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, adc_registers={}, max_attempts=5, bypass_pfb=False):
+	def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, adc_registers={}, max_attempts=5, bypass_pfb=False):
 		# Validate
 		assert( 0 <= subband_nchan0 and subband_nchan0 < 256 )
 		assert( 0 <= subband_nchan1 and subband_nchan1 < 256 )
+		assert( 0 <= subband_nchan2 and subband_nchan2 < 256 )
 		
 		if len(adc_registers) > 0:
 			regstring = ','.join(["0x%x=0x%x" % (key,val)
@@ -70,6 +71,11 @@ class AdpRoach(object):
 		# Reset the FPGA state
 		self._fpgaState = {}
 		
+		# Zero out the ADC delays (or 512 them out, as it were)
+		for i in xrange(32):
+			self.fpga.write_int('adc_delay%i' % i, 512)
+			#self._fpgaState['adc_delay%i' % i] = 512
+			
 		# Configure the F-engine with basic parameters
 		self.fpga.write_int('pkt_roach_id', self.num)
 		self.fpga.write_int('pkt_n_roach', 16)
@@ -92,12 +98,16 @@ class AdpRoach(object):
 		self.fpga.write_int('pkt_gbe0_n_subband', nsubband0)
 		self.fpga.write_int('pkt_gbe1_n_chan_per_sub', subband_nchan1)
 		self.fpga.write_int('pkt_gbe1_n_subband', nsubband1)
+		self.fpga.write_int('pkt_gbe2_n_chan_per_sub', subband_nchan2)
+		self.fpga.write_int('pkt_gbe2_n_subband', nsubband2)
 		
 		# ... and save these to the internal state so that we can use them later
 		self._fpgaState['pkt_gbe0_n_chan_per_sub'] = subband_nchan0
 		self._fpgaState['pkt_gbe0_n_subband'] = nsubband0
 		self._fpgaState['pkt_gbe1_n_chan_per_sub'] = subband_nchan1
 		self._fpgaState['pkt_gbe1_n_subband'] = nsubband1
+		self._fpgaState['pkt_gbe2_n_chan_per_sub'] = subband_nchan2
+		self._fpgaState['pkt_gbe2_n_subband'] = nsubband2
 		
 		return out
 		
@@ -135,11 +145,25 @@ class AdpRoach(object):
 		ip_addr_bram_vals = np.zeros(1024, 'L')
 		ip_addr_bram_vals[:len(dst_ips)] = [ip2int(ip) for ip in dst_ips]
 		ip_addr_bram_packed = struct.pack('>1024L', *ip_addr_bram_vals)
-		self.fpga.write('pkt_gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
+		if gbe_idx < 2:
+			self.fpga.write('pkt_gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
+		elif gbe_idx == 2:
+			# HACK
+			self.fpga.write('pkt_gbe1_ip_addr_bram1', ip_addr_bram_packed)
+		else:
+			# HACK
+			self.fpga.write('pkt_gbe1_ip_addr_bram2', ip_addr_bram_packed)
 		ip_port_bram_vals = np.zeros(1024, 'L')
 		ip_port_bram_vals[:len(dst_ports)] = [int(port) for port in dst_ports]
 		ip_port_bram_packed = struct.pack('>1024L', *ip_port_bram_vals)
-		self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
+		if gbe_idx < 2:
+			self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
+		elif gbe_idx == 2:
+			# HACK
+			self.fpga.write('pkt_gbe1_ip_port_bram1', ip_port_bram_packed)
+		else:
+			# HACK
+			self.fpga.write('pkt_gbe1_ip_port_bram2', ip_port_bram_packed)
 		return self.check_link(gbe_idx)
 		
 	def reset(self, syncFunction=None):
@@ -181,6 +205,27 @@ class AdpRoach(object):
 				
 		return updated
 		
+	def read_adc_delay(self, adc_idx):
+		# Note: adc_idx is 0-based and a value of "32" sets all signal paths on the roach
+		
+		# Validate the inputs
+		assert( 0 <= adc_idx <= 32 )
+		
+		# Go
+		if adc_idx == 32:
+			adc_idx = range(32)
+		else:
+			adc_idx = [adc_idx,]
+			
+		delays = []
+		for adc in adc_idx:
+			register = 'adc_delay%i' % adc
+			delays.append( self.fpga.read_int(register) )
+		if len(adc_idx) == 1:
+			delays = delays[0]
+			
+		return delays
+		
 	def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27):
 		# Note: gbe_idx is the 0-based index of the gigabit ethernet core
 		
@@ -195,11 +240,12 @@ class AdpRoach(object):
 		for baseReg,value in zip(('start_chan', 'stop_chan'), (start_chan, stop_chan)):
 			register = 'pkt_gbe%i_%s' % (gbe_idx, baseReg)
 			
-			try:
-				currValue = self._fpgaState[register]
-			except KeyError:
-				currValue = -1
-				
+			## Do no cache the start and stop channels
+			#try:
+			#	currValue = self._fpgaState[register]
+			#except KeyError:
+			currValue = -1
+			
 			if value != currValue:
 				self.fpga.write_int(register, value)
 				self._fpgaState[register] = value
@@ -226,19 +272,19 @@ class AdpRoach(object):
 		
 	def _read_pkt_tx_enable(self):
 		bitset = self.fpga.read_int('pkt_tx_enable')
-		gbe_bitset  = bitset & 0b11
+		gbe_bitset  = bitset & 0b111
 		return gbe_bitset
 		
 	def _write_pkt_tx_enable(self, gbe_bitset):
-		bitset = gbe_bitset & 0b11
+		bitset = gbe_bitset & 0b111
 		try:
 			txReady = self._fpgaState['tx_ready']
 		except KeyError:
 			txReady = False
 		if not txReady:
-			self.fpga.write_int('pkt_tx_rst', 0b00)
-			self.fpga.write_int('pkt_tx_rst', 0b11)
-			self.fpga.write_int('pkt_tx_rst', 0b00)
+			self.fpga.write_int('pkt_tx_rst', 0b000)
+			self.fpga.write_int('pkt_tx_rst', 0b111)
+			self.fpga.write_int('pkt_tx_rst', 0b000)
 			
 			self._fpgaState['tx_ready'] = True
 			
@@ -253,7 +299,7 @@ class AdpRoach(object):
 		self.reset(syncFunction=syncFunction)
 		
 		# Ready the packetizer
-		gbe_bitset  = 0b11
+		gbe_bitset  = 0b111
 		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def enable_data(self, gbe):
@@ -267,11 +313,11 @@ class AdpRoach(object):
 		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def stop_processing(self):
-		gbe_bitset  = 0b00
+		gbe_bitset  = 0b000
 		self._write_pkt_tx_enable(gbe_bitset)
 		
 	def processing_started(self):
-		ret = (self.fpga.read_int('pkt_tx_enable') == 0b11)
+		ret = (self.fpga.read_int('pkt_tx_enable') == 0b111)
 		return ret
 		
 	def data_enabled(self, gbe):
@@ -281,7 +327,8 @@ class AdpRoach(object):
 	def check_overflow(self):
 		gbe0_oflow = self.fpga.read_int('pkt_gbe0_oflow_cnt')
 		gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
-		return (gbe0_oflow, gbe1_oflow)
+		gbe2_oflow = self.fpga.read_int('pkt_gbe2_oflow_cnt')
+		return (gbe0_oflow, gbe1_oflow, gbe2_oflow)
 		
 	def disable_pfb(self):
 		"""

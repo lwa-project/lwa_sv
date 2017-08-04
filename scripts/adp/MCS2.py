@@ -10,7 +10,7 @@ import string
 import struct
 
 import socket
-from threading import Thread, Event
+from threading import Thread, Event, Semaphore
 
 # Maximum number of bytes to receive from MCS
 MCS_RCV_BYTES = 16*1024
@@ -278,6 +278,7 @@ class Synchronizer(object):
 		self.socket = SafeSocket(socket.AF_INET,
 		                         socket.SOCK_STREAM)
 		self.socket.connect(addr)
+		self.socket.settimeout(10) # Prevent recv() from blocking indefinitely
 		self.socket.send('GROUP:'+str(group))
 	def __call__(self, tag=None):
 		self.socket.send('TAG:'+str(tag))
@@ -291,73 +292,150 @@ class SynchronizerGroup(object):
 	def __init__(self, group):
 		self.group = group
 		self.socks = []
+		self.pending_lock = Semaphore()
 		self.shutdown_event = Event()
 		self.run_thread = Thread(target=self.run)
 		#self.run_thread.daemon = True
+		self.tStart = time.time()
 		self.run_thread.start()
 	#def __del__(self):
 	#	self.shutdown()
+	def log(self, value):
+		print "[%.3f] %s" % (time.time()-self.tStart, value)
 	def shutdown(self):
 		self.shutdown_event.set()
-		print "SynchronizerGroup run joining"
+		self.log("SynchronizerGroup "+self.group+": run joining")
 		self.run_thread.join()
-		print "SynchronizerGroup run thread joined"
+		self.log("SynchronizerGroup "+self.group+": run thread joined")
 	def add(self, sock, addr):
-		self.socks.append(sock)
+		try:
+			self.pending_lock.acquire()
+			self.pending.append(sock)
+		except AttributeError:
+			self.pending = [sock,]
+		finally:
+			self.pending_lock.release()
 	def run(self):
 		while not self.shutdown_event.is_set():
-		#while len(self.socks) > 0:
+			try:
+				self.pending_lock.acquire()
+				self.socks.extend(self.pending)
+				self.log("SynchronizerGroup "+self.group+": added "+str(len(self.pending))+" clients")
+				del self.pending
+			except AttributeError:
+				pass
+			finally:
+				self.pending_lock.release()
+				
 			if len(self.socks) == 0:
 				# Avoid spinning after all socks close
 				time.sleep(0.1)
 				continue
-			tag0 = None
+				
+			# Find out where everyone is
+			tags = []
 			i = 0
 			while i < len(self.socks) and not self.shutdown_event.is_set():
 				sock = self.socks[i]
 				try:
 					tag_msg = sock.recv(4096)
-				except socket.timeout:
-					continue
-				except socket.error as e:
-					print "WARNING: Synchronizer (a): socket.error: " + str(e)
+				except socket.timeout as e:
+					self.log("WARNING: Synchronizer (1a): socket.timeout %s client %i: %s" % (self.group, i, e))
 					self.socks[i].close()
 					del self.socks[i]
 					continue
-				if not tag_msg.startswith('TAG:'):
-					#raise ValueError("Unexpected message: "+tag_msg)
-					print "WARNING: Synchronizer: Unexpected message: "+tag_msg
-				#####print 'tag_msg =', tag_msg
-				tag = tag_msg[len('TAG:'):]
-				if tag0 is None:
-					#####print "Setting tag0 =", tag
-					tag0 = tag
-				if tag != tag0:
-					#raise KeyError("Tag mismatch")
-					print "WARNING: Synchronizer: Tag mismatch: "+tag+" != "+tag0+" from client "+str(i)
+				except socket.error as e:
+					self.log("WARNING: Synchronizer (1b): socket.error %s client %i: %s" % (self.group, i, e))
+					self.socks[i].close()
+					del self.socks[i]
+					continue
+				if tag_msg[:4] != 'TAG:':
+					e = tag_msg
+					self.log("WARNING: Synchronizer (1c): Unexpected message %s client %i: %s" % (self.group, i, e))
+					self.socks[i].close()
+					del self.socks[i]
+					continue
+				tags.append( int(tag_msg[len('TAG:'):], 10) )
 				i += 1
+				
+			# Elect tag0, the reference time tag
+			try:
+				tag0 = max(tags)
+				#print "ELECTED %i as tag0 for %s" % (tag0, self.group)
+			except ValueError:
+				continue
+				
+			# Speed up the slow ones a little bit
+			slow = [i for i,tag in enumerate(tags) if tag < tag0]
+			if len(slow) > 0:
+				j = 0
+				#slowFactors = {}
+				while slow and j < 5 and not self.shutdown_event.is_set():
+					## Deal with each slow client in turn
+					for i in slow:
+						### Send - ignoring errors
+						sock, tag = self.socks[i], tags[i]
+						try:
+							sock.send('GROUP:'+self.group+',TAG:'+str(tag0))
+							#try:
+							#	slowFactors[i] += 1
+							#except KeyError:
+							#	slowFactors[i] = 1
+						except socket.error as e:
+							self.log("WARNING: Synchronizer (2a): socket.error %s client %i: %s" % (self.group, i, e))
+							
+						### Receive - ignoring errors
+						try:
+							tag_msg = sock.recv(4096)
+						except socket.timeout as e:
+							self.log("WARNING: Synchronizer (2b): socket.timeout %s client %i: %s" % (self.group, i, e))
+						except socket.error as e:
+							self.log("WARNING: Synchronizer (2c): socket.error %s client %i: %s" % (self.group, i, e))
+						if not tag_msg.startswith('TAG:'):
+							e = tag_msg
+							self.log("WARNING: Synchronizer (2d): Unexpected message %s client %i: %s" % (self.group, i, e))
+							continue
+						tags[i] = int(tag_msg[4:], 10)
+						#print "Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0)
+						
+					## Evaluate the latest batch of timetags
+					slow = [i for i,tag in enumerate(tags) if tag < tag0]
+					
+					## Update the iteration variable
+					j += 1
+					
+				### Report on what we've done
+				#for i,v in slowFactors.iteritems():
+				#	print "WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v)
+					
+			# Send to everyone regardless to make sure the fast ones don't falter
 			i = 0
 			while i < len(self.socks):
-				sock = self.socks[i]
-			#for sock in self.socks:
+				sock, tag = self.socks[i], tags[i]
+				if tag != tag0:
+					self.log("WARNING: Synchronizer (3a): Tag mismatch: "+str(tag)+" != "+str(tag0)+" from "+self.group+" client "+str(i)+" (delta is "+str((tag-tag0)/196e6*1000)+" ms)")
+					
 				try:
-					sock.send('GROUP:'+self.group+',TAG:'+tag0)
+					sock.send('GROUP:'+self.group+',TAG:'+str(tag0))
 				except socket.error as e:
-					print "WARNING: Synchronizer (b): socket.error: " + str(e)
-					print "  DELETING socket object"
-					# HACK TESTING
-					#del self.socks[i]
-					continue # TODO: Need to do something here?
+					self.log("WARNING: Synchronizer (3b): socket.error: %s client %i: %s" % (self.group, i, e))
+					self.socks[i].close()
+					del self.socks[i]
+					del tags[i]
+					continue
 				i += 1
-			#####print "SYNCED", len(self.socks)
-		print "SynchronizerGroup shut down"
+				
+			# Done with the iteration
+			##print "SYNCED "+str(len(self.socks))+" clients in "+self.group
+			
+		self.log("SynchronizerGroup "+self.group+": shut down")
 
 class SynchronizerServer(object):
 	def __init__(self, addr=("0.0.0.0",23820)):
 		self.addr = addr
 		self.sock = SafeSocket(socket.AF_INET,
 		                         socket.SOCK_STREAM)
-		self.sock.settimeout(1) # Prevent accept() from blocking indefinitely
+		self.sock.settimeout(5) # Prevent accept() from blocking indefinitely
 		self.sock.bind(addr)
 		self.sock.listen(32)
 		self.groups = {}#defaultdict(SynchronizerGroup)
@@ -368,7 +446,7 @@ class SynchronizerServer(object):
 		while not self.shutdown_event.is_set():
 			try:
 				sock, addr = self.sock.accept()
-				sock.settimeout(5)
+				sock.settimeout(10)
 			except socket.timeout:
 				continue
 			group_msg = sock.recv(4096)

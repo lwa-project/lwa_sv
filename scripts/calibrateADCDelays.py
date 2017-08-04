@@ -9,6 +9,15 @@ import numpy
 from lsl.reader import tbf, errors
 from lsl.correlator._core import XEngine2
 from lsl.astro import unix_to_utcjd, DJD_OFFSET
+from lsl.common.constants import c as speedOfLight
+
+
+TONE_FREQ_HZ = 30e6
+
+
+ARX_PATH_IN_CM  = [17, 15, 11,    8,  6,  3,  1,  1,  3,  5,  8, 11, 15, 17, 19, 21]
+ARX_PATH_OUT_CM = [44, 42, 38.5, 36, 38, 35, 32, 30, 29, 26, 24, 22, 22, 19, 17, 14]
+ARX_PATH_VF     = 0.5
 
 
 def main(args):
@@ -17,7 +26,10 @@ def main(args):
 	for filename in filenames:
 		fh = open(filename, 'rb')
 		nFrames = os.path.getsize(filename) / tbf.FrameSize
-		
+		if nFrames < 3:
+			fh.close()
+			continue
+			
 		# Read in the first frame and get the date/time of the first sample 
 		# of the frame.  This is needed to get the list of stands.
 		junkFrame = tbf.readFrame(fh)
@@ -50,7 +62,7 @@ def main(args):
 		freq *= 25e3
 		
 		# Validate and skip over files that don't contain the tone
-		if freq.min() > 60e6 or freq.max() < 60e6:
+		if freq.min() > TONE_FREQ_HZ or freq.max() < TONE_FREQ_HZ:
 			fh.close()
 			continue
 			
@@ -65,6 +77,7 @@ def main(args):
 		print "==="
 		
 		data = numpy.zeros((256*2,nChannels,nChunks), dtype=numpy.complex64)
+		clipping = 0
 		for i in xrange(nChunks):
 			# Inner loop that actually reads the frames into the data array
 			for j in xrange(nFramesPerObs):
@@ -96,47 +109,72 @@ def main(args):
 				subData.shape = (12,512)
 				subData = subData.T
 				
+				clipping += len( numpy.where( subData**2 >= 98 )[0] )
+				
 				data[:,aStand*12:aStand*12+12,count] = subData
+				
+		fh.close()
+		
+		# Cross-correlate the data (although we only use a small fraction of this)
 		valid = numpy.ones((data.shape[0],data.shape[2]), dtype=numpy.uint8)
 		data[numpy.where(numpy.abs(data)==0)] = 1+1j
 		bls = [(i,j) for i in xrange(512) for j in xrange(i,512)]
 		cross = XEngine2(data, data, valid, valid)
 		
+		# Find the peak power, aka the tone, and report on clipping
 		spec = numpy.abs(cross[cross.shape[0]/2,:])**2
 		peak = numpy.where(spec == spec.max())[0][0]
 		print "Peak Power: %.3f MHz (channel %i)" % (freq[peak]/1e6, peak)
+		print "Clipping: %i samples (%.1f%%)" % (clipping, 100.0*clipping/data.size)
 		print "==="
 		
+		# Solve
 		ds = {}
 		for i,(a0,a1) in enumerate(bls):
-			r0, r1 = a0/32, a1/32
-			i0, i1 = a0%32, a1%32
+			## Only work with the first 512 inputs, i.e., baselines that are 
+			## with the first input on the first roach board
+			if i >= 512:
+				continue
+				
+			## Input -> ??? mappings
+			r0, r1 = a0/32, a1/32		# input -> roach
+			c0, c1 = a0%16, a1%16		# input -> ARX channel
+			s0, s1 = a0/ 2, a1 /2		# input -> stand
+			l0, l1 = a0/ 4, a1/ 4		# input -> ADC lane
+			i0, i1 = a0% 4, a1% 4		# input -> ADC lane input
 			if r0 != 0:
 				continue
-			if a0 == a1:
-				continue
-			if (a0 % 32) != (a1 % 32):
-				continue
 				
-			#print a0,r0,i0, a1,r1,i1
+			## Differential ARX calibration path delay correction
+			cd0 = (ARX_PATH_IN_CM[c0] + ARX_PATH_OUT_CM[c0]) / 100.0 / speedOfLight / ARX_PATH_VF
+			cd1 = (ARX_PATH_IN_CM[c1] + ARX_PATH_OUT_CM[c1]) / 100.0 / speedOfLight / ARX_PATH_VF
+			rcd = cd0 - cd1
+			
+			## Compute the delay and convert to samples @ 204.8 MHz
 			a = numpy.angle(cross[i,peak])
-			d = a / 2.0 / numpy.pi / 60e6
+			d = a / 2.0 / numpy.pi / TONE_FREQ_HZ + rcd
 			d /= (1/204.8e6)
+			
+			## Save
 			try:
-				ds[r1].append( d )
+				ds[s1].append( d )
 			except KeyError:
-				ds[r1] = [d,]
+				ds[s1] = [d,]
 				
-		for r in xrange(16):
+		# Report on each measurement group
+		nMeasuresPerDelay = 512 / len(ds.keys())
+		j = 0
+		for i in sorted(ds.keys()):
 			try:
-				d = numpy.array(ds[r], dtype=numpy.float32)
+				d = numpy.array(ds[i], dtype=numpy.float32)
 				print "# %s +/- %s, %s" % (d.mean(), d.std(), numpy.median(d))
 				d = numpy.round(d.mean())
 			except KeyError:
 				d = 0.0
-			print "roach%i %i" % (r, d)
-			
-		fh.close()
+			for i in xrange(nMeasuresPerDelay):
+				print 'roach%i input%i  %i' % (j/32+1, j%32+1, d)
+				j += 1
+				
 		break
 
 

@@ -109,6 +109,9 @@ class Tbn(SlotCommandProcessor):
 		self.cur_freq = self.cur_filt = self.cur_gain = 0
 		
 	def tune(self, freq=38.00e6, filt=1, gain=1):
+		## Convert to the DP frequency scale
+		freq = round(freq/FS*2**32)/2**32 * FS
+		
 		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
 		rets = self.roaches.tune_tbn(freq)
 		self.cur_freq = freq
@@ -116,13 +119,16 @@ class Tbn(SlotCommandProcessor):
 		self.cur_gain = gain
 		return rets
 		
-	def start(self, freq=59.98e6, filt=1, gain=1, record=True):
+	def start(self, freq=59.98e6, filt=1, gain=1):
+		## Convert to the DP frequency scale
+		freq = round(freq/FS*2**32)/2**32 * FS
+		
 		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
 		## TODO: Check whether pausing the data flow is necessary
-		self.roaches.disable_tbn_data()
+		#self.roaches.disable_tbn_data()
 		rets = self.tune(freq, filt, gain)
-		time.sleep(1.1)
-		rets = self.roaches.enable_tbn_data()
+		#time.sleep(1.1)
+		#rets = self.roaches.enable_tbn_data()
 		
 		self.messenger.tbnConfig(freq, filt, gain)
 		
@@ -143,8 +149,7 @@ class DrxCommand(object):
 	def __init__(self, msg):
 		self.tuning, self.freq, self.filt, self.gain \
 		    = struct.unpack('>BfBh', msg.data)
-		#assert( 1 <= self.tuning <= 2 ) # TODO: Check upper limit
-		assert( 1 <= self.tuning <= 1 ) # TODO: Check upper limit
+		assert( 1 <= self.tuning <= 2 )
 		# TODO: Check allowed range of freq
 		assert( 0 <= self.filt   <= 8 )
 		assert( 0 <= self.gain   <= 15 )
@@ -158,26 +163,34 @@ class Drx(SlotCommandProcessor):
 		self.messenger = messenger
 		self.servers = servers
 		self.roaches = roaches
-		self.ntuning = 1
+		self.ntuning = 2
 		self.cur_freq = [0]*self.ntuning
 		self.cur_filt = [0]*self.ntuning
 		self.cur_gain = [0]*self.ntuning
 		
-	def tune(self, freq=59.98e6, filt=1, gain=1, tuning=0):
-		self.log.info("Tuning DRX: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
-		rets = self.roaches.tune_drx(freq)
+	def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1):
+		## Convert to the DP frequency scale
+		freq = round(freq/FS*2**32)/2**32 * FS
+		
+		self.log.info("Tuning DRX %i: freq=%f,filt=%i,gain=%i" % (tuning,freq,filt,gain))
+		rets = self.roaches.tune_drx(tuning, freq)
+		
 		self.cur_freq[tuning] = freq
 		self.cur_filt[tuning] = filt
 		self.cur_gain[tuning] = gain
+		
 		return rets
 		
-	def start(self, freq=59.98e6, filt=1, gain=1, tuning=0, record=True):
-		self.log.info("Starting DRX data: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
-		## TODO: Check whether pausing the data flow is necessary
-		self.roaches.disable_drx_data()
-		rets = self.tune(freq, filt, gain, tuning)
-		time.sleep(1.1)
-		rets = self.roaches.enable_drx_data()
+	def start(self, tuning=0, freq=59.98e6, filt=1, gain=1):
+		## Convert to the DP frequency scale
+		freq = round(freq/FS*2**32)/2**32 * FS
+		
+		self.log.info("Starting DRX %i data: freq=%f,filt=%i,gain=%i" % (tuning, freq,filt,gain))
+		### TODO: Check whether pausing the data flow is necessary
+		#self.roaches.disable_drx_data(tuning)
+		rets = self.tune(tuning, freq, filt, gain)
+		#time.sleep(1.1)
+		#rets = self.roaches.enable_drx_data(tuning)
 		
 		self.messenger.drxConfig(tuning, freq, filt, gain)
 		
@@ -186,11 +199,12 @@ class Drx(SlotCommandProcessor):
 	def execute(self, cmds):
 		for cmd in cmds:
 			# Note: Converts from 1-based to 0-based tuning
-			self.start(cmd.freq, cmd.filt, cmd.gain, cmd.tuning-1)
+			self.start(cmd.tuning-1, cmd.freq, cmd.filt, cmd.gain)
 			
 	def stop(self):
 		self.log.info("Stopping DRX data")
-		self.roaches.disable_drx_data()
+		self.roaches.disable_drx_data(0)
+		self.roaches.disable_drx_data(1)
 		return 0
 
 
@@ -235,7 +249,7 @@ class BamCommand(object):
 		self.beam = struct.unpack('>H', msg.data[0:2])[0]
 		self.delays = np.ndarray((512,), dtype='>H', buffer=msg.data[2:1026])
 		self.gains = np.ndarray((256,2,2), dtype='>H', buffer=msg.data[1026:3074])
-		self.tuning, self.slot = struct.unpack('>BB', msg.data[3074:3076])
+		self.tuning, self.subslot = struct.unpack('>BB', msg.data[3074:3076])
 
 
 class Bam(SlotCommandProcessor):
@@ -247,17 +261,17 @@ class Bam(SlotCommandProcessor):
 		self.messenger = messenger
 		self.servers = servers
 		self.roaches = roaches
-		self.ntuning = 1
+		self.ntuning = 2
 		self.cur_beam = [0]*self.ntuning
 		self.cur_delays = [[0 for i in xrange(512)]]*self.ntuning
 		self.cur_gains = [[0 for i in xrange(1024)]]*self.ntuning
 		self.cur_tuning = [0]*self.ntuning
 		
 	@ISC.logException
-	def start(self, beam, delays, gains, tuning, slot):
-		self.log.info("Setting BAM: beam=%i, tuning=%i, slot=%i" % (beam, tuning, slot))
+	def start(self, beam, delays, gains, tuning, subslot):
+		self.log.info("Setting BAM: beam=%i, tuning=%i, subslot=%i" % (beam, tuning, subslot))
 		
-		self.messenger.bamConfig(beam, delays, gains, tuning)
+		self.messenger.bamConfig(beam, delays, gains, tuning, subslot)
 		
 		return True
 		
@@ -265,7 +279,46 @@ class Bam(SlotCommandProcessor):
 	def execute(self, cmds):
 		for cmd in cmds:
 			# Note: Converts from 1-based to 0-based tuning
-			self.start(cmd.beam, cmd.delays, cmd.gains, cmd.tuning, cmd.slot)
+			self.start(cmd.beam, cmd.delays, cmd.gains, cmd.tuning-1, cmd.subslot)
+			
+	def stop(self):
+		return False
+
+
+class CorCommand(object):
+	@ISC.logException
+	def __init__(self, msg):
+		self.navg, self.tuning, self.gain, self.subslot \
+		    = struct.unpack('>iQhB', msg)
+
+
+class Cor(SlotCommandProcessor):
+	@ISC.logException
+	def __init__(self, config, log, messenger, servers, roaches):
+		SlotCommandProcessor.__init__(self, 'COR', CorCommand)
+		self.config  = config
+		self.log     = log
+		self.messenger = messenger
+		self.servers = servers
+		self.roaches = roaches
+		self.ntuning = 2
+		self.cur_navg = [0]*self.ntuning
+		self.cur_tuning = [0]*self.ntuning
+		self.cur_gain = [0]*self.ntuning
+		
+	@ISC.logException
+	def start(self, navg, tuning, gain, subslot):
+		self.log.info("Setting COR: navg=%i, tuning=%i, gain=%i, subslot=%i" % (navg, tuning, gain, subslot))
+		
+		self.messenger.corConfig(navg, tuning, gain, subslot)
+		
+		return True
+		
+	@ISC.logException
+	def execute(self, cmds):
+		for cmd in cmds:
+			# Note: Converts from 1-based to 0-based tuning
+			self.start(cmd.navg, cmd.tuning-1, cmd.gain, cmd.subslot)
 			
 	def stop(self):
 		return False
@@ -479,49 +532,121 @@ class AdpServerMonitorClient(object):
 	def stop_tbn(self):
 		try:
 			self._shell_command("stop adp-tbn")
+			return True
 		except subprocess.CalledProcessError:
-			pass
-		return True
-		
+			return False
+			
+	def start_tbn(self):
+		try:
+			self._shell_command("start adp-tbn")
+			return True
+		except subprocess.CalledProcessError:
+			return False
+			
 	def restart_tbn(self):
 		self.stop_tbn()
-		#return self._shell_command("restart adp-tbn)"
-		#try:
-		#	self._shell_command("stop adp-tbn")
-		#except subprocess.CalledProcessError:
-		#	pass
-		self._shell_command("start adp-tbn")
+		return self.start_tbn()
 		
-	def stop_tengine(self):
+	def status_tbn(self):
 		try:
-			self._shell_command("stop adp-tengine")
+			return self._shell_command("status adp-tbn")
 		except subprocess.CalledProcessError:
-			pass
-		return True
-		
-	def restart_tengine(self):
-		#return self._shell_command("restart adp-tengine")
+			return "unknown"
+			
+	def pid_tbn(self):
 		try:
-			self._shell_command("stop adp-tengine")
+			pids = self._shell_command("ps aux | grep adp_tbn | grep -v grep | awk '{print $2}'")
+			pids = pids.split('\n')[:-1]
+			pids = [int(pid, 10) for pid in pids]
+			if len(pids) == 0:
+				pids = [-1,]
+			return pids 
 		except subprocess.CalledProcessError:
-			pass
-		return self._shell_command("start adp-tengine")
-		
-	def stop_drx(self):
+			return [-1,]
+		except ValueError:
+			return [-1,]
+			
+	def stop_tengine(self, tuning=0):
 		try:
-			self._shell_command("stop adp-drx")
+			self._shell_command("stop adp-tengine-%i" % tuning)
+			return True
 		except subprocess.CalledProcessError:
-			pass
-		return True
-		
-	def restart_drx(self):
-		#return self._shell_command("restart adp-drx")
+			return False
+			
+	def start_tengine(self, tuning=0):
 		try:
-			self._shell_command("stop adp-drx")
+			self._shell_command("start adp-tengine-%i" % tuning)
+			return True
 		except subprocess.CalledProcessError:
-			pass
-		return self._shell_command("start adp-drx")
+			return False
+			
+	def restart_tengine(self, tuning=0):
+		self.stop_tengine(tuning=tuning)
+		return self.start_tengine(tuning=tuning)
 		
+	def status_tengine(self, tuning=0):
+		try:
+			return self._shell_command("status adp-tengine-%i" % tuning)
+		except subprocess.CalledProcessError:
+			return "unknown"
+			
+	def pid_tengine(self, tuning=0):
+		try:
+			pids = self._shell_command("ps aux | grep adp_tengine | grep -- --tuning[=\ ]%i | grep -v grep | awk '{print $2}'" % tuning)
+			pids = pids.split('\n')[:-1]
+			pids = [int(pid, 10) for pid in pids]
+			if len(pids) == 0:
+				pids = [-1,]
+			return pids 
+		except subprocess.CalledProcessError:
+			return [-1,]
+		except ValueError:
+			return [-1,]
+			
+	def stop_drx(self, tuning=0):
+		try:
+			self._shell_command("stop adp-drx-%i" % tuning)
+			return True
+		except subprocess.CalledProcessError:
+			return False
+		
+	def start_drx(self, tuning=0):
+		try:
+			self._shell_command("start adp-drx-%i" % tuning)
+			return True
+		except subprocess.CalledProcessError:
+			return False
+			
+	def restart_drx(self, tuning=0):
+		self.stop_drx(tuning=tuning)
+		return self.start_drx(tuning=tuning)
+		
+	def status_drx(self, tuning=0):
+		try:
+			return self._shell_command("status adp-drx-%i" % tuning)
+		except subprocess.CalledProcessError:
+			return "unknown"
+			
+	def pid_drx(self, tuning=0):
+		try:
+			pids = self._shell_command("ps aux | grep adp_drx | grep -- --tuning[=\ ]%i | grep -v grep | awk '{print $2}'"  % tuning)
+			pids = pids.split('\n')[:-1]
+			pids = [int(pid, 10) for pid in pids]
+			if len(pids) == 0:
+				pids = [-1,]
+			return pids 
+		except subprocess.CalledProcessError:
+			return [-1,]
+		except ValueError:
+			return [-1,]
+			
+	def kill_pid(self, pid):
+		try:
+			self._shell_command("kill -9 %i" % pid)
+			return True
+		except subprocess.CalledProcessError:
+			return False
+			
 	def _shell_command(self, cmd, timeout=5.):
 		#return self.host
 		# HACK TESTING
@@ -594,8 +719,9 @@ class Roach2MonitorClient(object):
 		self.device = ROACH2Device(self.host)
 		self.num = num
 		self.syncFunction = syncFunction
-		self.GBE_DRX = 0
-		self.GBE_TBN = 1
+		self.GBE_DRX_0 = 0
+		self.GBE_DRX_1 = 1
+		self.GBE_TBN = 2
 		
 	def unprogram(self, reboot=False):
 		if not reboot:
@@ -653,9 +779,11 @@ class Roach2MonitorClient(object):
 		boffile        = self.config['roach']['firmware']
 		## Channel setup for each GbE interfaces
 		nsubband0      = len(self.config['host']['servers-data'])
-		subband_nchan0 = int(math.ceil(self.config['drx']['capture_bandwidth'] / CHAN_BW / nsubband0))
-		nsubband1      = 1
-		subband_nchan1 = int(math.ceil(self.config['tbn']['capture_bandwidth'] / CHAN_BW / nsubband1))
+		subband_nchan0 = int(math.ceil(self.config['drx'][0]['capture_bandwidth'] / CHAN_BW / nsubband0))
+		nsubband1      = len(self.config['host']['servers-data'])
+		subband_nchan1 = int(math.ceil(self.config['drx'][1]['capture_bandwidth'] / CHAN_BW / nsubband1))
+		nsubband2      = 1
+		subband_nchan2 = int(math.ceil(self.config['tbn']['capture_bandwidth'] / CHAN_BW / nsubband2))
 		## ADC digital gain
 		adc_gain       = self.config['roach']['adc_gain']
 		adc_gain_bits  = ( adc_gain       | (adc_gain <<  4) |
@@ -667,44 +795,54 @@ class Roach2MonitorClient(object):
 		## Whether or not to bypass the PFB on the FFT
 		bypass_pfb     =  self.config['roach']['bypass_pfb']
 		
-		self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, 
+		self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, 
 					    adc_registers=adc_registers, max_attempts=max_attempts, bypass_pfb=bypass_pfb)
 					    
 	def configure_dual_mode(self):
 		try:
 			self.roach.stop_processing()
-			# DRX on gbe0, TBN on gbe1
-			drx_dst_hosts = self.config['host']['servers-data']
-			tbn_dst_hosts = [self.config['host']['servers-tbn'][self.num-1]]
-			src_ip_base   = self.config['roach']['data_ip_base']
-			src_port_base = self.config['roach']['data_port_base']
-			dst_ports     = self.config['server']['data_ports']
-			drx_dst_ips   = [host2ip(host) for host in drx_dst_hosts]
-			tbn_dst_ips   = [host2ip(host) for host in tbn_dst_hosts]
+			# DRX, tuning 0 on gbe0, DRX, tuning 1 on gbe1, TBN on gbe2
+			drx_dst_hosts   = self.config['host']['servers-data']
+			tbn_dst_hosts   = [self.config['host']['servers-tbn'][self.num-1]]
+			src_ip_base     = self.config['roach']['data_ip_base']
+			src_port_base   = self.config['roach']['data_port_base']
+			dst_ports       = self.config['server']['data_ports']
+			drx_dst_ips     = [host2ip(host) for host in drx_dst_hosts]
+			tbn_dst_ips     = [host2ip(host) for host in tbn_dst_hosts]
 			macs = load_ethers()
-			drx_dst_macs  = [macs[ip] for ip in drx_dst_ips]
-			tbn_dst_macs  = [macs[ip] for ip in tbn_dst_ips]
-			drx_arp_table = gen_arp_table(drx_dst_ips, drx_dst_macs)
-			tbn_arp_table = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
-			drx_dst_ports = [dst_ports[0]] * len(drx_dst_ips)
-			tbn_dst_ports = [dst_ports[1]] * len(tbn_dst_ips)
-			ret0 = self.roach.configure_10gbe(self.GBE_DRX, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-			ret1 = self.roach.configure_10gbe(self.GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
-			if not ret0 or not ret1:
+			drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
+			tbn_dst_macs    = [macs[ip] for ip in tbn_dst_ips]
+			drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
+			tbn_arp_table   = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
+			drx_0_dst_ports = [dst_ports[0] for i in xrange(len(drx_dst_ips))]
+			drx_1_dst_ports = [dst_ports[1] for i in xrange(len(drx_dst_ips))]
+			tbn_dst_ports   = [dst_ports[2]] * len(tbn_dst_ips)
+			ret0 = self.roach.configure_10gbe(self.GBE_DRX_0, drx_dst_ips, drx_0_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+			ret1 = self.roach.configure_10gbe(self.GBE_DRX_1, drx_dst_ips, drx_1_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+			ret2 = self.roach.configure_10gbe(self.GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
+			if not ret0 or not ret1 or not ret2:
 				raise RuntimeError("Configuring Roach 10GbE ports failed")
 		except:
 			self.log.exception("Configuring roach failed")
 			raise
 			
 	@ISC.logException
-	def tune_drx(self, cfreq, shift_factor=27):
-		bw = self.config['drx']['capture_bandwidth']
+	def configure_adc_delay(self, index, delay, relative=False):
+		if relative:
+			currDelay = self.roach.read_adc_delay(index)
+			delay += currDelay
+		self.roach.configure_adc_delay(index, delay)
+		
+	@ISC.logException
+	def tune_drx(self, tuning, cfreq, shift_factor=27):
+		bw = self.config['drx'][tuning]['capture_bandwidth']
 		bw = round(bw, 3) # Round to mHz to avoid precision errors
 		nsubband      = len(self.config['host']['servers-data'])
 		subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
 		chan0         =  int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
 		
-		self.roach.configure_fengine(self.GBE_DRX, chan0, shift_factor=shift_factor)
+		gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+		self.roach.configure_fengine(gbe, chan0, shift_factor=shift_factor)
 		return chan0
 		
 	@ISC.logException
@@ -727,20 +865,23 @@ class Roach2MonitorClient(object):
 	def processing_started(self):
 		return self.roach.processing_started()
 		
-	def enable_drx_data(self):
-		self.roach.enable_data(self.GBE_DRX)
+	def enable_drx_data(self, tuning):
+		gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+		self.roach.enable_data(gbe)
 		
 	def enable_tbn_data(self):
 		self.roach.enable_data(self.GBE_TBN)
 		
-	def disable_drx_data(self):
-		self.roach.disable_data(self.GBE_DRX)
+	def disable_drx_data(self, tuning):
+		gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+		self.roach.disable_data(gbe)
 		
 	def disable_tbn_data(self):
 		self.roach.disable_data(self.GBE_TBN)
 		
-	def drx_data_enabled(self):
-		return self.roach.data_enabled(self.GBE_DRX)
+	def drx_data_enabled(self, tuning):
+		gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+		return self.roach.data_enabled(gbe)
 		
 	def tbn_data_enabled(self):
 		return self.roach.data_enabled(self.GBE_TBN)
@@ -804,6 +945,7 @@ class MsgProcessor(ConsumerThread):
 		self.drx = Drx(config, log, self.messageServer, self.servers, self.roaches)
 		self.tbf = Tbf(config, log, self.messageServer, self.servers, self.roaches)
 		self.bam = Bam(config, log, self.messageServer, self.servers, self.roaches)
+		self.cor = Cor(config, log, self.messageServer, self.servers, self.roaches)
 		self.tbn = Tbn(config, log, self.messageServer, self.servers, self.roaches)
 
 		self.serial_number = '1'
@@ -831,19 +973,31 @@ class MsgProcessor(ConsumerThread):
 		self.run_failsafe_thread.start()
 		
 		self.start_synchronizer_thread()
+		self.start_lock_thread()
 		
 	def start_synchronizer_thread(self):
-		self.sync_server = MCS2.SynchronizerServer()
-		#self.run_synchronizer_thread = threading.Thread(target=self.run_synchronizer)
-		self.run_synchronizer_thread = threading.Thread(target=self.sync_server.run)
-		#self.run_synchronizer_thread.daemon = True
+		self.tbn_sync_server = MCS2.SynchronizerServer()
+		self.run_synchronizer_thread = threading.Thread(target=self.tbn_sync_server.run)
 		self.run_synchronizer_thread.start()
 		
 	def stop_synchronizer_thread(self):
-		self.sync_server.shutdown()
+		self.tbn_sync_server.shutdown()
 		self.run_synchronizer_thread.join()
-		del self.sync_server
+		del self.tbn_sync_server
 		
+	@ISC.logException
+	def start_lock_thread(self):
+		self.lock_server = ISC.PipelineEventServer(addr=('adp',5834), timeout=300)
+		self.lock_server.start()
+		
+	@ISC.logException
+	def stop_lock_thread(self):
+		try:
+			self.lock_server.stop()
+			del self.lock_server
+		except AttributeError:
+			pass
+			
 	def uptime(self):
 		# Returns no. secs since data processing began (during INI)
 		if self.utc_start is None:
@@ -857,7 +1011,9 @@ class MsgProcessor(ConsumerThread):
 		             'BOARD_PROGRAMMING_FAILED':   (0x04,'Board programming failed'),
 		             'BOARD_CONFIGURATION_FAILED': (0x05,'Board configuration failed'),
 		             'SERVER_STARTUP_FAILED':      (0x09,'Server startup failed'),
-		             'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed')}
+		             'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed'), 
+		             'PIPELINE_STARTUP_FAILED':    (0x0B,'Pipeline startup failed'),
+		             'ADC_CALIBRATION_FAILED':     (0x0C,'ADC offset calibration failed')}
 		code, msg = state_map[state]
 		self.state['lastlog'] = '%s: Finished with error' % cmd
 		self.state['status']  = 'ERROR'
@@ -891,42 +1047,9 @@ class MsgProcessor(ConsumerThread):
 		self.state['info']   = 'Running INI sequence'
 		self.log.info("Running INI sequence")
 		
-		if all(self.servers.can_ssh()):
-			self.servers.stop_tbn()
-			self.servers.stop_drx()
-			self.headnode.stop_tengine()
-		time.sleep(5)
-		
-		# WAR for synchronizer getting into a bad state when clients are killed
-		self.log.info("Stopping Synchronizer thread")
-		self.stop_synchronizer_thread()
-		time.sleep(3)
-		# WAR for synchronizer getting into a bad state when clients are killed
-		self.log.info("Starting Synchronizer thread")
-		self.start_synchronizer_thread()
-		
-		# Note: Must do this to ensure pipelines wait for the new UTC_START
-		self.utc_start     = None
-		self.utc_start_str = 'NULL'
-		
-		#print 'can_ssh_status:', self.servers.can_ssh()
-		can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
-		self.log.info("Can ssh: "+can_ssh_status)
-		if all(self.servers.can_ssh()):
-			self.log.info("Servers already up, restarting pipelines")
-			if not self.check_success(lambda: self.servers.restart_tbn(),
-			                          'Restarting pipelines - TBN',
-			                          self.servers.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-			if not self.check_success(lambda: self.headnode.restart_tengine(),
-			                          'Restarting pipelines - DRX/T-engine',
-			                          self.headnode.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-			if not self.check_success(lambda: self.servers.restart_drx(),
-			                          'Restarting pipelines - DRX',
-			                          self.servers.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-		else:
+		# Figure out if the servers are up or not
+		if not all(self.servers.can_ssh()):
+			## Down, power them on
 			self.log.info("Powering on servers")
 			if not self.check_success(lambda: self.servers.do_power('on'),
 			                          'Powering on servers',
@@ -939,55 +1062,114 @@ class MsgProcessor(ConsumerThread):
 				self._wait_until_servers_can_ssh(    startup_timeout)
 			except RuntimeError:
 				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+				
+		## Stop the pipelines
+		self.log.info('Stopping pipelines')
+		for tuning in xrange(2):
+			self.servers.stop_drx(tuning=tuning)
+			self.headnode.stop_tengine(tuning=tuning)
+		self.servers.stop_tbn()
+		
+		## Make sure the pipelines have stopped
+		try:
+			self._wait_until_pipelines_stopped(max_wait=40)
+		except RuntimeError:
+			self.log.warning('Some pipelines have failed to stop, trying harder')
+			for tuning in xrange(2):
+				for server in self.headnode:
+					pids = server.pid_tengine(tuning=tuning)
+					for pid in filter(lambda x: x > 0, pids):
+						self.log.warning('  Killing %s TEngine-%i, PID %i', server.host, tuning, pid)
+						server.kill_pid(pid)
+				for server in self.servers:
+					pids = server.pid_drx(tuning=tuning)
+					for pid in filter(lambda x: x > 0, pids):
+						self.log.warning('  Killing %s DRX-%i, PID %i', server.host, tuning, pid)
+						server.kill_pid(pid)
+			for server in self.servers:
+				pids = server.pid_tbn()
+				for pid in filter(lambda x: x > 0, pids):
+					self.log.warning('  Killing %s TBN, PID %i', server.host, pid)
+					server.kill_pid(pid)
+					
+		self.log.info("Forcing CPUs into performance mode")
+		self.headnode._shell_command('/root/fixCPU.sh')
+		self.servers._shell_command('/root/fixCPU.sh')
 		
 		# WAR for synchronizer getting into a bad state when clients are killed
-		#self.log.info("Starting Synchronizer thread")
-		#self.start_synchronizer_thread()
+		self.log.info("Stopping Synchronizer thread")
+		self.stop_synchronizer_thread()
+		time.sleep(3)
+		# WAR for synchronizer getting into a bad state when clients are killed
+		self.log.info("Starting Synchronizer thread")
+		self.start_synchronizer_thread()
 		
-		# Note: This is for debugging, not in spec
-		if 'NOREPROGRAM' not in arg:
+		self.log.info("Stopping Lock thread")
+		self.stop_lock_thread()
+		time.sleep(3)
+		self.log.info("Starting Lock thread")
+		self.start_lock_thread()
+		
+		# Note: Must do this to ensure pipelines wait for the new UTC_START
+		self.utc_start     = None
+		self.utc_start_str = 'NULL'
+		
+		# Bring up the pipelines
+		can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
+		self.log.info("Can ssh: "+can_ssh_status)
+		if all(self.servers.can_ssh()):
+			self.log.info("Restarting pipelines")
+			for tuning in xrange(len(self.config['drx'])):
+				if not self.check_success(lambda: self.headnode.restart_tengine(tuning=tuning),
+									 'Restarting pipelines - DRX/T-engine',
+									 self.headnode.host):
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+				if not self.check_success(lambda: self.servers.restart_drx(tuning=tuning),
+									 'Restarting pipelines - DRX',
+									 self.servers.host):
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+			if not self.check_success(lambda: self.servers.restart_tbn(),
+			                          'Restarting pipelines - TBN',
+			                          self.servers.host):
+				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+				
+		# Bring up the FPGAs
+		if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
 			self.log.info("Programming FPGAs")
 			if not self.check_success(lambda: self.roaches.program(),
 			                          'Programming FPGAs',
 			                          self.roaches.host):
 				if 'FORCE' not in arg: # Note: Also not in spec
 					return self.raise_error_state('INI', 'BOARD_PROGRAMMING_FAILED')
+					
 		self.log.info("Configuring FPGAs")
-		#if not self.check_success(lambda: self.roaches.configure_mode('DRX'),
 		if not self.check_success(lambda: self.roaches.configure_dual_mode(),
 		                          'Configuring FPGAs',
 		                          self.roaches.host):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
-
+				
 		self.log.info("  Finished configuring FPGAs")
-
-		# TODO: Need to make sure server pipelines etc. start up and respond here
-
+		
 		start_delay = 5.
 		utc_now   = datetime.datetime.utcnow()
 		utc_start = utc_now + datetime.timedelta(0, start_delay)
 		utc_init  = utc_start - datetime.timedelta(0, 1) # 1 sec before
-		utc_start_str = utc_start.strftime(DATE_FORMAT)
 		utc_init_str  = utc_start.strftime(DATE_FORMAT)
+		utc_start = utc_start + datetime.timedelta(0, 2) # 2 sec after
+		utc_start_str = utc_start.strftime(DATE_FORMAT)
 		self.utc_start     = utc_start
 		self.utc_start_str = utc_start_str
 		self.state['lastlog'] = "Starting processing at UTC "+utc_start_str
 		self.log.info("Starting processing at UTC "+utc_start_str)
-
+		
 		# TODO: Tell server pipelines the value of utc_start_str and have them
 		#         await imminent data.
-
+		
 		# Wait until we're in the middle of the init sec
 		wait_until_utc_sec(utc_init_str)
 		time.sleep(0.5)
 		self.state['lastlog'] = "Starting processing now"
-		#self.log.info("Initializing TBN")
-		#if not self.check_success(lambda: self.tbn.tune(),
-		#                          'Initializing TBN',
-		#                          self.roaches.host):
-		#	if 'FORCE' not in arg:
-		#		return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		self.log.info("Starting FPGA processing now")
 		if not self.check_success(lambda: self.roaches.start_processing(),
 		                          'Starting FPGA processing',
@@ -999,17 +1181,83 @@ class MsgProcessor(ConsumerThread):
 		if not all(self.roaches.processing_started()):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+				
+		# Check for a time skew on the roach boards and the start time
+		self.roaches[0].roach.wait_for_pps()
+		self.roaches[0].roach.wait_for_pps()
+		markS = time.time()
+		markP = self.roaches[0].roach.fpga.read_uint('pkt_gbe0_eof_cnt')
+		markN = self.roaches[0].roach.fpga.read_uint('pkt_gbe0_n_subband')
+		markR = self.roaches[0].roach.fpga.read_uint('adc_sync_count')
+		self.log.info("Server: %i + %.6f", int(markS), markS-int(markS))
+		self.log.info("Roach: %i + %.6f", markR, 1.0*(markP/markN)/CHAN_BW)
+		utc_start     = datetime.datetime.utcfromtimestamp(int(markS) - markR) + datetime.timedelta(seconds=1)
+		utc_start_str = utc_start.strftime(DATE_FORMAT)
+		self.state['lastlog'] = "Processing started at UTC "+utc_start_str
+		self.log.info("Processing started at UTC "+utc_start_str)
+		if utc_start_str != self.utc_start_str:
+			self.log.error("Processing start time mis-match")
+			return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+			
+		# Check and make sure that *all* of the pipelines started
+		self.log.info("Checking pipeline processing")
+		## TBN
+		pipeline_pids = [p for s in self.servers.pid_tbn() for p in s]
+		pipeline_pids = filter(lambda x: x>0, pipeline_pids)
+		print 'TBN:', len(pipeline_pids), pipeline_pids
+		if len(pipeline_pids) != len(self.servers):
+			self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
+			return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+		## DRX
+		pipeline_pids = []
+		for tuning in xrange(len(self.config['drx'])):
+			pipeline_pids = [p for s in self.servers.pid_drx(tuning=tuning) for p in s]
+			pipeline_pids = filter(lambda x: x>0, pipeline_pids)
+			print 'DRX-%i:' % tuning, len(pipeline_pids), pipeline_pids
+			if len(pipeline_pids) != len(self.servers):
+				self.log.error('Found %i DRX-%i pipelines running, expected %i', len(pipeline_pids), tuning, len(self.servers))
+				return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+		## T-engine
+		for tuning in xrange(len(self.config['drx'])):
+			pipeline_pids = [p for s in self.headnode.pid_tengine(tuning=tuning) for p in s]
+			pipeline_pids = filter(lambda x: x>0, pipeline_pids)
+			print 'TEngine-%i:' % tuning, len(pipeline_pids), pipeline_pids
+			if len(pipeline_pids) != 1:
+				self.log.error('Found %i TEngine-%i pipelines running, expected %i', len(pipeline_pids), tuning,  1)
+				return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+		self.log.info('Checking pipeline processing succeeded')
+		
+		#self.log.info("Initializing TBN")
+		#if not self.check_success(lambda: self.tbn.tune(),
+		#                         'Initializing TBN',
+		#                         self.roaches.host):
+		#	if 'FORCE' not in arg:
+		#		return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		self.log.info("Initializing DRX")
+		self.roaches[0].roach.wait_for_pps()
+		for tuning in xrange(len(self.config['drx'])):
+			if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=20e6),
+			                          'Initializing DRX - %i' % tuning,
+			                          self.roaches.host):
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		for tuning in xrange(len(self.config['drx'])):
+			if not all(self.roaches.drx_data_enabled(tuning)):
+				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		#if not all(self.roaches.tbn_data_enabled()):
 		#	return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		time.sleep(0.1)
 		
-		## Calibration
-		#if not self.adc_cal(arg):
-		#	return self.raise_error_state('INI', 'ADC_CALIBRATION_FAILED')
-			
+		# Calibration
+		if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
+			if not self.adc_cal(arg):
+				if 'FORCE' not in arg: # Note: Also not in spec
+					return self.raise_error_state('INI', 'ADC_CALIBRATION_FAILED')
+					
 		self.log.info("INI finished in %.3f s", time.time() - start_time)
 		self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
 		self.state['status']  = 'NORMAL'
+		self.state['info'] = 'System calibrated and operating normally'
 		self.state['activeProcess'].pop()
 		return 0
 		
@@ -1022,25 +1270,31 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Starting ADC offset calibration")
 		
 		# Helper function - download files
-		def _downloadFiles(tTrigger, ageLimit=10.0, deleteAfterCopy=False):
+		def _downloadFiles(tTrigger, nTunings=len(self.config['drx']), ageLimit=10.0, deleteAfterCopy=False):
 			filenames = []
 			for s in (1,2,3,4,5,6):
-				cmd = "ssh adp%i 'ls -l --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | tail -n1 " % s
+				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
 				latestTBF = subprocess.check_output(cmd, shell=True)
-				try:
-					fields = latestTBF.split()
-					mtime, filename = float(fields[5]), fields[6]
-					print '!!', tTrigger, mtime, tTrigger - mtime
-					if abs(tTrigger - mtime) < ageLimit:
-						outname = '/data1/adc_cal_%i' % s
-						subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
-						filenames.append( outname )
+				lines = latestTBF.split('\n')
+				for f,line in enumerate(lines):
+					if len(line) < 3:
+						continue
 						
-						if deleteAfterCopy:
-							subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
+					try:
+						fields = line.split()
+						mtime, filename = float(fields[5]), fields[6]
+						print '!!', tTrigger, mtime, tTrigger - mtime
+						if abs(tTrigger - mtime) < ageLimit:
+							outname = '/data1/adc_cal_%i_%i' % (s, f+1)
+							subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
+							filenames.append( outname )
 							
-				except Exception as e:
-					self.log.info("ERROR: %s", str(e))
+							if deleteAfterCopy:
+								subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
+								
+					except Exception as e:
+						self.log.info("ERROR: line %i - %s", f+1, str(e))
+
 			return filenames
 			
 		# Helper function - delete files
@@ -1053,19 +1307,17 @@ class MsgProcessor(ConsumerThread):
 					status = False
 			return True
 		
-		# Tune to 60 MHz
-		freq = 60.1e6
-		shift_factor = 21
-		self.roaches.disable_drx_data()
-		self.check_success(lambda: self.roaches.tune_drx(freq, shift_factor=shift_factor),
+		# Tune to 30 MHz
+		freq = 30.1e6
+		shift_factor = 24
+		self.check_success(lambda: self.roaches.tune_drx(0, freq, shift_factor=shift_factor),
 		                   'Tuning DRX to the calibration tone',
 		                    self.roaches.host)
-		self.roaches.enable_drx_data()
-		time.sleep(10.0)
+		time.sleep(20.0)
 		
 		# Run a TBF capture and save to disk
 		self.log.info("Triggering local TBF dump")
-		self.messageServer.trigger(0, int(0.01*FS), 1, local=True)
+		self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
 		tTrigger = time.time()
 		time.sleep(5.0)
 		
@@ -1073,141 +1325,113 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Analyzing TBF capture")
 		filenames = _downloadFiles(tTrigger)
 				
-		if len(filenames) == 6:
+		if len(filenames) >= 6:
 			# Solve for the delays
 			output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
-			self.log.info('calibrateADCDelays.py - initial - %s', output)
 			
 			# Load in the delays
 			output = output.split('\n')
-			delays = []
+			delays = {}
 			for line in output:
+				if line.find('Peak Power') != -1:
+					self.log.info('Initial - %s', line)
+					
+				#self.log.info('Log line - initial: %s', line.rstrip())
 				if line.startswith('roach'):
-					_, delay = line.split(None, 1)
-					delays.append( int(delay, 10) )
-			maxDelay = max(delays)
-			
+					r, i, d = line.split(None, 2)
+					r = int(r[5:], 10) - 1
+					i = int(i[5:], 10) - 1
+					d = int(d, 10)
+					##d = max([-1, min([1, d])])	# Constrain to -1, 0, 1
+					try:
+						delays[r][i] = d
+					except KeyError:
+						delays[r] = [0 for j in xrange(32)]
+						delays[r][i] = d
+						
 			# Update the roach delay FIFOs
 			self.log.info("Setting roach FIFO delays")
-			for arc,delay in zip(self.roaches, delays):
-				try:
-					arc.roach.configure_adc_delay(32, maxDelay - delay + 10)	# needed because of block design
-				except:
-					pass
-			time.sleep(1.0)
+			badCount = 0
+			for r in delays.keys():
+				for i,d in enumerate(delays[r]):
+					try:
+						self.log.debug('Setting ADC delay for roach %i, input %i to %i', r+1, i+1, d)
+						self.roaches[r].configure_adc_delay(i, -d, relative=True)
+					except Exception as e:
+						badCount += 1
+						self.log.error('Error: %s', str(e))
+						
+			time.sleep(20.0)
 			
-			## Cleanup
-			#_deleteFiles(filenames)
+			# Cleanup
+			_deleteFiles(filenames)
 			
 			# Check by running another TBF capture
 			self.log.info("Triggering local TBF dump")
-			self.messageServer.trigger(0, int(0.01*FS), 1, local=True)
+			self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
 			tTrigger = time.time()
 			time.sleep(5.0)
 			
 			# Analyze
 			self.log.info("Verifying TBF capture")
 			filenames = _downloadFiles(tTrigger)
-			if len(filenames) == 6:
+			if len(filenames) >= 6:
 				# Verify the delays
 				output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
-				self.log.info('calibrateADCDelays.py - final - %s', output)
-				output = output.split('\n')
 				
 				# Load in the delays
+				output = output.split('\n')
 				delays = []
 				for line in output:
+					if line.find('Peak Power') != -1:
+						self.log.info('Final - %s', line)
+						
+					#self.log.info('Log line - final: %s', line.rstrip())
 					if line.startswith('roach'):
-						_, delay = line.split(None, 1)
-						delays.append( delay )
-				maxDelay = max(delays)
-				
+						_, _, delay = line.split(None, 2)
+						delays.append( int(delay, 10) )
+						
 				# Check
+				nZero = 0
 				for delay in delays:
-					status &= (delay == 0)
+					if delay == 0:
+						nZero += 1
+				self.log.info('After calibration there are %i inputs at zero', nZero)
+				nZero += badCount
+				self.log.info('After calibration and badCount there are %i inputs at zero', nZero)
+				if nZero >= 487:
+					status &= True
+				else:
+					status &= False
 					
 			else:
+				self.log.warning("adc_cal second pass - downloaded only %i files", len(filenames))
+				for filename in filenames:
+					self.log.warning("  %s", filename)
 				status = False
 		else:
+			self.log.warning("adc_cal first pass - downloaded only %i files", len(filenames))
+			for filename in filenames:
+				self.log.warning("  %s", filename)
 			status = False
 			
-		## Cleanup
-		#_deleteFiles(filenames)
+		# Cleanup
+		_deleteFiles(filenames)
 		
 		# Reset the FFT shift factor
-		shift_factor = 27
-		self.check_success(lambda: self.roaches.tune_drx(freq, shift_factor=shift_factor),
-		                   'Resetting FFT shift factor',
+		self.check_success(lambda: self.roaches.tune_drx(0, freq),
+		                   'Resetting FFT shift factor to default',
 		                    self.roaches.host)
 		time.sleep(1.0)
 		
+		# Final report
+		if status:
+			self.log.info('Calibration succeeded')
+		else:
+			self.log.error('Calibration failed')
+			
 		# Done
 		return status
-		
-	def health_chk(self, arg=None):
-		status = True
-		self.log.info("Starting health check")
-		
-		# Helper function - download files
-		def _downloadFiles(tTrigger, count=0, ageLimit=10.0, deleteAfterCopy=False):
-			filenames = []
-			for s in (1,2,3,4,5,6):
-				cmd = "ssh adp%i 'ls -l --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | tail -n1 " % s
-				latestTBF = subprocess.check_output(cmd, shell=True)
-				try:
-					fields = latestTBF.split()
-					mtime, filename = float(fields[5]), fields[6]
-					print '!!', tTrigger, mtime, tTrigger - mtime
-					if abs(tTrigger - mtime) < ageLimit:
-						outname = '/data1/health_%i_%i' % (count, s)
-						subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
-						filenames.append( outname )
-						
-						if deleteAfterCopy:
-							subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
-							
-				except Exception as e:
-					self.log.info("ERROR: %s", str(e))
-			return filenames
-			
-		# Helper function - delete files
-		def _deleteFiles(filenames):
-			status = True
-			for filename in filenames:
-				try:
-					os.unlink(filename)
-				except OSError:
-					status = False
-			return True
-			
-		filenames = []
-		for i,freq in enumerate((10e6, 20e6, 30e6, 40e6, 50e6, 60e6, 70e6, 80e6, 90e6)):
-			self.check_success(lambda: self.roaches.tune_drx(freq),
-						    'Tuning DRX to health check frequency - %.3f MHz' % (freq/1e6,),
-						    self.roaches.host)
-			self.roaches.enable_drx_data()
-			time.sleep(10.0)
-			
-			# Run a TBF capture and save to disk
-			self.log.info("Triggering local TBF dump - %.3f MHz", freq/1e6)
-			self.messageServer.trigger(0, int(0.061*FS), 1, local=True)
-			tTrigger = time.time()
-			time.sleep(5.0)
-			
-			# Download
-			self.log.info("Downloading data - %.3f MHz", freq/1e6)
-			filenames.extend( _downloadFiles(tTrigger, count=i) )
-			
-		# Analyze
-		try:
-			output = subprocess.check_output("/home/adp/lwa_sv/scripts/runLatestCheck.sh", shell=True)
-		except subprocess.CalledProcessError:
-			self.log.error("Call to 'runLatestCheck.sh' failed")
-			
-		# Done
-		_deleteFiles(filenames)
-		
-		return True
 		
 	def sht(self, arg=''):
 		# TODO: Consider allowing specification of 'only servers' or 'only boards'
@@ -1314,11 +1538,30 @@ class MsgProcessor(ConsumerThread):
 			if wait_time >= max_wait:
 				raise RuntimeError("Timed out waiting to ssh to server(s)")
 				
+	def _wait_until_pipelines_stopped(self, max_wait=60):
+		nRunning = 1
+		t0, t1 = time.time(), time.time()
+		while nRunning > 0:
+			pids = []
+			for tuning in xrange(2):
+				for server in self.servers:
+					pids.extend( server.pid_drx(tuning=tuning) )
+				for server in self.headnode:
+					pids.extend( server.pid_tengine(tuning=tuning) )
+			for server in self.servers:
+				pids.extend( server.pid_tbn() )
+			nRunning = len( filter(lambda x: x > 0, pids) )
+			
+			t1 = time.time()
+			if t1-t0 >= max_wait:
+				raise RuntimeError("Timed out waiting for pipelines to stop")
+			time.sleep(5)
+			
 	def run_execute(self):
 		self.log.info("Starting slot execution thread")
 		slot = MCS2.get_current_slot()
 		while not self.shutdown_event.is_set():
-			for cmd_processor in [self.drx, self.tbf, self.bam, self.tbn]:#, self.fst, self.bam]
+			for cmd_processor in [self.drx, self.tbf, self.bam, self.cor, self.tbn]:#, self.fst, self.bam]
 				self.thread_pool.add_task(cmd_processor.execute_commands,
 				                          slot)
 			while MCS2.get_current_slot() == slot:
@@ -1409,7 +1652,8 @@ class MsgProcessor(ConsumerThread):
 			if not self.dry_run:
 				self.process_msg(msg, lambda msg: True, '')
 		elif msg.cmd == 'RPT':
-			self.log.info('Received RPT request: '+str(msg))
+			if msg.data != 'UTC_START':
+				self.log.info('Received RPT request: '+str(msg))
 			if not self.dry_run:
 				# Note: RPT messages are processed asynchronously
 				#         to avoid stalls.
@@ -1435,6 +1679,7 @@ class MsgProcessor(ConsumerThread):
 	def shutdown(self):
 		self.shutdown_event.set()
 		self.stop_synchronizer_thread()
+		self.stop_lock_thread()
 		# Propagate shutdown to downstream consumers
 		self.msg_queue.put(ConsumerThread.STOP)
 		if not self.thread_pool.wait(self.shutdown_timeout):
@@ -1673,15 +1918,6 @@ class MsgProcessor(ConsumerThread):
 				exit_status = 0x0C
 			else:
 				self.thread_pool.add_task(self.adc_cal, msg.data)
-		elif msg.cmd == 'CHK':
-			if self.currently_processing('INI', 'SHT'):
-				# TODO: This stuff could be tidied up a bit
-				self.state['lastlog'] = ('CHK: %s - %s is active and blocking'%
-				                         ('Blocking operation in progress',
-				                          self.state['activeProcess']))
-				exit_status = 0x0C
-			else:
-				self.thread_pool.add_task(self.health_chk, msg.data)
 		elif msg.cmd == 'SHT':
 			if self.currently_processing('INI', 'SHT'):
 				self.state['lastlog'] = ('SHT: %s - %s is active and blocking'%
@@ -1715,6 +1951,8 @@ class MsgProcessor(ConsumerThread):
 			exit_status = self.tbf.process_command(msg)
 		elif msg.cmd == 'BAM':
 			exit_status = self.bam.process_command(msg)
+		elif msg.cmd == 'COR':
+			exit_status = self.cor.process_command(msg)
 		elif msg.cmd == 'TBN':
 			exit_status = self.tbn.process_command(msg)
 		else:

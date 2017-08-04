@@ -9,13 +9,19 @@ from adp import ISC
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
 from bifrost.udp_capture import UDPCapture
+from bifrost.udp_transmit import UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
 from bifrost.fft import Fft
+from bifrost.fir import FIR
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
 from bifrost.libbifrost import bf
+from bifrost.proclog import ProcLog
+from bifrost import map as BFMap, asarray as BFAsArray
+from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
+BFNoSpinZone()
 
 #import numpy as np
 import signal
@@ -30,33 +36,36 @@ import socket
 import struct
 #import time
 import datetime
+from collections import deque
 
 #from numpy.fft import ifft
 #from scipy import ifft
 from scipy.fftpack import ifft
 
-FILTER2BW = {1:    1000, 
-	     2:    3125, 
-	     3:    6250, 
-	     4:   12500, 
-	     5:   25000, 
-	     6:   50000, 
-	     7:  100000,
-	     8:  200000, 
-	     9:  400000,
-	    10:  800000,
-	    11: 1600000}
-FILTER2CHAN = {1:    1000/25000, 
-	       2:    3125/25000, 
-	       3:    6250/25000, 
-	       4:   12500/25000, 
-	       5:   25000/25000, 
-	       6:   50000/25000, 
-	       7:  100000/25000,
-	       8:  200000/25000, 
-	       9:  400000/25000,
-	      10:  800000/25000,
-	      11: 1600000/25000}
+ACTIVE_TBN_CONFIG = threading.Event()
+
+FILTER2BW = { 1:    1000, 
+		    2:    3125, 
+		    3:    6250, 
+		    4:   12500, 
+		    5:   25000, 
+		    6:   50000, 
+		    7:  100000,
+		    8:  200000, 
+		    9:  400000,
+		   10:  800000,
+		   11: 1600000}
+FILTER2CHAN = { 1:    1000/25000, 
+			 2:    3125/25000, 
+			 3:    6250/25000, 
+			 4:   12500/25000, 
+			 5:   25000/25000, 
+			 6:   50000/25000, 
+			 7:  100000/25000,
+			 8:  200000/25000, 
+			 9:  400000/25000,
+			10:  800000/25000,
+			11: 1600000/25000}
 
 __version__    = "0.1"
 __date__       = '$LastChangedDate: 2015-07-23 15:44:00 -0600 (Fri, 25 Jul 2014) $'
@@ -122,22 +131,41 @@ class CaptureOp(object):
 				#print status
 		del capture
 
-class UnpackOp(object):
+class UnpackOpCPU(object):
 	def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1):
 		self.log = log
 		self.iring = iring
 		self.oring = oring
 		self.ntime_gulp = ntime_gulp
 		self.core = core
+		
+		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+		self.in_proclog   = ProcLog(type(self).__name__+"/in")
+		self.out_proclog  = ProcLog(type(self).__name__+"/out")
+		self.size_proclog = ProcLog(type(self).__name__+"/size")
+		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+		
+		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+		self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+		
 	def main(self):
 		cpu_affinity.set_core(self.core)
+		self.bind_proclog.update({'ncore': 1, 
+							 'core0': cpu_affinity.get_core(),})
+		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read():
 				#print "HEADER:", iseq.header.tostring()
 				ihdr = json.loads(iseq.header.tostring())
+				
+				self.sequence_proclog.update(ihdr)
+				
 				nchan  = ihdr['nchan']
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
+				
 				igulp_size = self.ntime_gulp*nchan*nstand*npol
 				ishape = (self.ntime_gulp,nchan,nstand,npol,1)
 				ogulp_size = igulp_size * 2
@@ -147,11 +175,21 @@ class UnpackOp(object):
 				ohdr = ihdr.copy()
 				ohdr['nbit'] = 8
 				ohdr_str = json.dumps(ohdr)
+				
+				prev_time = time.time()
 				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
 					for ispan in iseq.read(igulp_size):
 						if ispan.size < igulp_size:
 							continue # Ignore final gulp
+						curr_time = time.time()
+						acquire_time = curr_time - prev_time
+						prev_time = curr_time
+						
 						with oseq.reserve(ogulp_size) as ospan:
+							curr_time = time.time()
+							reserve_time = curr_time - prev_time
+							prev_time = curr_time
+							
 							## Setup and load
 							idata = ispan.data_view(np.int8).reshape(ishape)
 							odata = ospan.data_view(np.int8).reshape(oshape)
@@ -165,8 +203,15 @@ class UnpackOp(object):
 							
 							## Save
 							odata[...] = bfodata.view(np.int8)
+							
+							curr_time = time.time()
+							process_time = curr_time - prev_time
+							prev_time = curr_time
+							self.perf_proclog.update({'acquire_time': acquire_time, 
+												 'reserve_time': reserve_time, 
+												 'process_time': process_time,})
 
-class TEngineOp(object):
+class TEngineOpCPU(object):
 	def __init__(self, log, iring, oring, ntime_gulp=2500,# ntime_buf=None,
 	             guarantee=True, core=-1):
 		self.log = log
@@ -179,14 +224,63 @@ class TEngineOp(object):
 		self.guarantee = guarantee
 		self.core = core
 		
+		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+		self.in_proclog   = ProcLog(type(self).__name__+"/in")
+		self.out_proclog  = ProcLog(type(self).__name__+"/out")
+		self.size_proclog = ProcLog(type(self).__name__+"/size")
+		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+		
+		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+		self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+		
 		self.configMessage = ISC.TBNConfigurationClient(addr=('adp',5832))
+		self._pending = deque()
 		self.gain = 2
 		self.filt = 7
 		self.nchan_out = FILTER2CHAN[7]
 		self.phaseRot = 1
 		
 	@ISC.logException
-	def updateConfig(self, config, hdr):
+	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+		global ACTIVE_TBN_CONFIG
+		
+		# Get the current pipeline time to figure out if we need to shelve a command or not
+		pipeline_time = time_tag / FS
+		
+		# Can we act on this configuration change now?
+		if config:
+			## Set the configuration time
+			config_time = time.time()
+			
+			## Is this command from the future?
+			if pipeline_time < config_time:
+				### Looks like it, save it for later
+				self._pending.append( (config_time, config) )
+				config = None
+				
+				### Is there something pending?
+				try:
+					stored_time, stored_config = self._pending[0]
+					if pipeline_time >= stored_time:
+						config_time, config = self._pending.popleft()
+				except IndexError:
+					pass
+			else:
+				### Nope, this is something we can use now
+				pass
+				
+		else:
+			## Is there something pending?
+			try:
+				stored_time, stored_config = self._pending[0]
+				if pipeline_time >= stored_time:
+					config_time, config = self._pending.popleft()
+			except IndexError:
+				#print "No pending configuation at %.1f" % pipeline_time
+				pass
+				
 		if config:
 			self.log.info("TEngine: New configuration received: %s", str(config))
 			freq, filt, gain = config
@@ -195,25 +289,47 @@ class TEngineOp(object):
 			self.nchan_out = FILTER2CHAN[filt]
 			self.gain = gain
 			
-			fDiff = freq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
-			self.log.info("TEngine: Tuning offset is %.3f kHz to be corrected with phase rotation", fDiff)
+			fDiff = self.rFreq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+			self.log.info("TEngine: Tuning offset is %.3f Hz to be corrected with phase rotation", fDiff)
 			
 			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
 			self.phaseRot.shape += (1,1)
 			
+			ACTIVE_TBN_CONFIG.set()
+			
 			return True
+			
+		elif forceUpdate:
+			self.log.info("TEngine: New sequence configuration received")
+			
+			try:
+				fDiff = self.rFreq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+			except AttributeError:
+				self.rFreq = (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW + CHAN_BW / 2
+				fDiff = 0.0
+			self.log.info("TEngine: Tuning offset is %.3f Hz to be corrected with phase rotation", fDiff)
+			
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
+			self.phaseRot.shape += (1,1)
+				
+			return False
+			
 		else:
 			return False
 			
 	@ISC.logException
 	def main(self):
 		cpu_affinity.set_core(self.core)
+		self.bind_proclog.update({'ncore': 1, 
+							 'core0': cpu_affinity.get_core(),})
 		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
 				ihdr = json.loads(iseq.header.tostring())
 				
-				self.updateConfig( self.configMessage(), ihdr )
+				self.sequence_proclog.update(ihdr)
+				
+				self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, forceUpdate=True )
 				
 				nsrc   = ihdr['nsrc']
 				nchan  = ihdr['nchan']
@@ -226,12 +342,12 @@ class TEngineOp(object):
 				oshape = (self.ntime_gulp*self.nchan_out,nstand,npol,2)
 				self.iring.resize(igulp_size)
 				self.oring.resize(ogulp_size)#, obuf_size)
+				
+				ticksPerTime = int(FS) / int(CHAN_BW)
+				base_time_tag = iseq.time_tag
+				
 				ohdr = {}
-				ohdr['time_tag'] = ihdr['time_tag']
-				try:
-					ohdr['cfreq']    = self.rFreq
-				except AttributeError:
-					ohdr['cfreq']    = (ihdr['chan0'] + 0.5*(ihdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+				ohdr['cfreq']    = self.rFreq
 				ohdr['bw']       = self.nchan_out*CHAN_BW
 				ohdr['gain']     = self.gain
 				ohdr['filter']   = self.filt
@@ -239,64 +355,372 @@ class TEngineOp(object):
 				ohdr['npol']     = npol
 				ohdr['complex']  = True
 				ohdr['nbit']     = 8
-				ohdr_str = json.dumps(ohdr)
 				
-				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-					for ispan in iseq.read(igulp_size):
-						if ispan.size < igulp_size:
-							continue # Ignore final gulp
+				prev_time = time.time()
+				iseq_spans = iseq.read(igulp_size)
+				while not self.iring.writing_ended():
+					reset_sequence = False
+					
+					ohdr['time_tag'] = base_time_tag
+					ohdr['cfreq']    = self.rFreq
+					ohdr['bw']       = self.nchan_out*CHAN_BW
+					ohdr['gain']     = self.gain
+					ohdr['filter']   = self.filt
+					ohdr_str = json.dumps(ohdr)
+					
+					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
+						for ispan in iseq_spans:
+							if ispan.size < igulp_size:
+								continue # Ignore final gulp
+							curr_time = time.time()
+							acquire_time = curr_time - prev_time
+							prev_time = curr_time
 							
-						self.updateConfig( self.configMessage(), ihdr )
-						
-						with oseq.reserve(ogulp_size) as ospan:
-							## Setup and load
-							idata = ispan.data_view(np.int8).reshape(ishape)
-							odata = ospan.data_view(np.int8).reshape((1,)+oshape)
-							tdata  = idata[...,0].astype(np.float32) + 1j*idata[...,1].astype(np.float32)
-							
-							## Prune and shift the data ahead of the IFFT
-							tdata = tdata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
-							tdata = np.fft.fftshift(tdata, axes=1)
-							
-							## IFFT
-							tdata = ifft(tdata, axis=1).astype(np.complex64)
-							tdata = BFArray(tdata, space='system')
-							#gdata = tdata.copy(space='cuda')
-							#try:
-							#	bfft.execute(gdata, gdata, inverse=True)
-							#except NameError:
-							#	bfft = Fft()
-							#	bfft.init(gdata, gdata, axes=1)
-							#	bfft.execute(gdata, gdata, inverse=True)
-							#tdata = gdata.copy(space='system')
-							
-							## Phase rotation
-							tdata = tdata.reshape((-1,nstand,npol))
-							tdata *= self.phaseRot
-							
-							## Scaling
-							tdata *= 128./(2**self.gain * np.sqrt(self.nchan_out))
-							
-							## Quantization
-							try:
-								Quantize(tdata, qdata)
-							except NameError:
-								qdata = BFArray(shape=tdata.shape, dtype='ci8')
-								Quantize(tdata, qdata)
+							with oseq.reserve(ogulp_size) as ospan:
+								curr_time = time.time()
+								reserve_time = curr_time - prev_time
+								prev_time = curr_time
 								
-							## Save
-							odata[...] = qdata.view(np.int8).reshape((1,)+oshape)
+								## Setup and load
+								idata = ispan.data_view(np.int8).reshape(ishape)
+								odata = ospan.data_view(np.int8).reshape((1,)+oshape)
+								tdata  = idata[...,0].astype(np.float32) + 1j*idata[...,1].astype(np.float32)
+								
+								## Prune and shift the data ahead of the IFFT
+								tdata = tdata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+								tdata = np.fft.fftshift(tdata, axes=1)
+								
+								## IFFT
+								tdata = ifft(tdata, axis=1).astype(np.complex64)
+								tdata = BFArray(tdata, space='system')
+								
+								## Phase rotation
+								tdata = tdata.reshape((-1,nstand,npol))
+								tdata *= self.phaseRot
+								
+								## Quantization
+								try:
+									Quantize(tdata, qdata, scale=128./(2**self.gain * np.sqrt(self.nchan_out)))
+								except NameError:
+									qdata = BFArray(shape=tdata.shape, dtype='ci8')
+									Quantize(tdata, qdata, scale=128./(2**self.gain * np.sqrt(self.nchan_out)))
+									
+								## Save
+								odata[...] = qdata.view(np.int8).reshape((1,)+oshape)
+								
+							## Update the base time tag
+							base_time_tag += self.ntime_gulp*ticksPerTime
 							
-							#tdata = quantize_complex8b(tdata) # Note: dtype is now real
-							#odata = ospan.data_view(np.int8).reshape((1,)+oshape)
-							#odata[...] = tdata
-							
-				# Clean-up
+							## Check for an update to the configuration
+							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
+								reset_sequence = True
+								break
+								
+							curr_time = time.time()
+							process_time = curr_time - prev_time
+							prev_time = curr_time
+							self.perf_proclog.update({'acquire_time': acquire_time, 
+												 'reserve_time': reserve_time, 
+												 'process_time': process_time,})
+												 
+					# Clean-up
+					try:
+						del qdata
+					except NameError:
+						pass
+						
+					# Reset to move on to the next input sequence?
+					if not reset_sequence:
+						break
+
+class TEngineOp(object):
+	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_max=8, # ntime_buf=None,
+	             guarantee=True, core=-1, gpu=-1):
+		self.log = log
+		self.iring = iring
+		self.oring = oring
+		self.ntime_gulp = ntime_gulp
+		self.nchan_max = nchan_max
+		#if ntime_buf is None:
+		#	ntime_buf = self.ntime_gulp*3
+		#self.ntime_buf = ntime_buf
+		self.guarantee = guarantee
+		self.core = core
+		self.gpu = gpu
+		
+		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+		self.in_proclog   = ProcLog(type(self).__name__+"/in")
+		self.out_proclog  = ProcLog(type(self).__name__+"/out")
+		self.size_proclog = ProcLog(type(self).__name__+"/size")
+		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+		
+		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+		self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+		
+		self.configMessage = ISC.TBNConfigurationClient(addr=('adp',5832))
+		self._pending = deque()
+		self.gain = 2
+		self.filt = 7#filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
+		self.nchan_out = FILTER2CHAN[self.filt]
+		self.phaseRot = 1
+		
+		#self.coeffs = np.array([-0.0179700,  0.0144130, -0.0111240, -0.0017506, 0.0254560, 
+		#                        -0.0581470,  0.0950000, -0.1290700,  0.1531900, 0.8380900, 
+		#                         0.1531900, -0.1290700,  0.0950000, -0.0581470, 0.0254560,
+		#                        -0.0017506, -0.0111240,  0.0144130, -0.0179700], dtype=np.float64)
+		#self.coeffs = np.array([-0.0050417, 0.012287, -0.0221660,  0.0303950, -0.0301380,
+		#                         0.0120970, 0.036904, -0.1499600,  0.6144000,  0.6144000, 
+		#                        -0.1499600, 0.036904,  0.0120970, -0.0301380,  0.0303950,
+		#                        -0.0221660, 0.012287, -0.0050417], dtype=np.float64)
+		self.coeffs = np.array([-3.22350e-05, -0.00021433,  0.0017756, -0.0044913,  0.0040327, 
+		                          0.00735870, -0.03218100,  0.0553980, -0.0398360, -0.0748920, 
+		                          0.58308000,  0.58308000, -0.0748920, -0.0398360,  0.0553980,
+		                         -0.03218100,  0.00735870,  0.0040327, -0.0044913,  0.0017756,
+		                         -0.00021433, -3.2235e-05], dtype=np.float64)
+		                         
+	@ISC.logException
+	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+		global ACTIVE_TBN_CONFIG
+		
+		# Get the current pipeline time to figure out if we need to shelve a command or not
+		pipeline_time = time_tag / FS
+		
+		# Can we act on this configuration change now?
+		if config:
+			## Set the configuration time
+			config_time = time.time()
+			
+			## Is this command from the future?
+			if pipeline_time < config_time:
+				### Looks like it, save it for later
+				self._pending.append( (config_time, config) )
+				config = None
+				
+				### Is there something pending?
 				try:
-					del bfft
-					del qdata
-				except NameError:
+					stored_time, stored_config = self._pending[0]
+					if pipeline_time >= stored_time:
+						config_time, config = self._pending.popleft()
+				except IndexError:
 					pass
+			else:
+				### Nope, this is something we can use now
+				pass
+				
+		else:
+			## Is there something pending?
+			try:
+				stored_time, stored_config = self._pending[0]
+				if pipeline_time >= stored_time:
+					config_time, config = self._pending.popleft()
+			except IndexError:
+				#print "No pending configuation at %.1f" % pipeline_time
+				pass
+				
+		if config:
+			self.log.info("TEngine: New configuration received: %s", str(config))
+			freq, filt, gain = config
+			self.rFreq = freq
+			self.filt = filt
+			self.nchan_out = FILTER2CHAN[filt]
+			self.gain = gain
+			
+			fDiff = self.rFreq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+			self.log.info("TEngine: Tuning offset is %.3f Hz to be corrected with phase rotation", fDiff)
+			
+			if self.gpu != -1:
+				BFSetGPU(self.gpu)
+				
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
+			self.phaseRot.shape += (1,1)
+			self.phaseRot = self.phaseRot.astype(np.complex64)
+			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			
+			ACTIVE_TBN_CONFIG.set()
+			
+			return True
+			
+		elif forceUpdate:
+			self.log.info("TEngine: New sequence configuration received")
+			
+			try:
+				fDiff = self.rFreq - (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW - CHAN_BW / 2
+			except AttributeError:
+				self.rFreq = (hdr['chan0'] + 0.5*(hdr['nchan']-1))*CHAN_BW + CHAN_BW / 2
+				fDiff = 0.0
+			self.log.info("TEngine: Tuning offset is %.3f Hz to be corrected with phase rotation", fDiff)
+			
+			if self.gpu != -1:
+				BFSetGPU(self.gpu)
+				
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
+			self.phaseRot.shape += (1,1)
+			self.phaseRot = self.phaseRot.astype(np.complex64)
+			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			
+			return False
+			
+		else:
+			return False
+			
+	@ISC.logException
+	def main(self):
+		cpu_affinity.set_core(self.core)
+		if self.gpu != -1:
+			BFSetGPU(self.gpu)
+		self.bind_proclog.update({'ncore': 1, 
+							 'core0': cpu_affinity.get_core(),
+							 'ngpu': 1,
+							 'gpu0': BFGetGPU(),})
+		
+		with self.oring.begin_writing() as oring:
+			for iseq in self.iring.read(guarantee=self.guarantee):
+				ihdr = json.loads(iseq.header.tostring())
+				
+				self.sequence_proclog.update(ihdr)
+				
+				self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, forceUpdate=True )
+				
+				nsrc   = ihdr['nsrc']
+				nchan  = ihdr['nchan']
+				nstand = ihdr['nstand']
+				npol   = ihdr['npol']
+				
+				igulp_size = self.ntime_gulp*nchan*nstand*npol*1			# 4+4 complex
+				ishape = (self.ntime_gulp,nchan,nstand,npol)
+				ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*2	# 8+8 complex
+				oshape = (self.ntime_gulp*self.nchan_out,nstand,npol,2)
+				self.iring.resize(igulp_size)
+				self.oring.resize(ogulp_size)#, obuf_size)
+				
+				ticksPerTime = int(FS) / int(CHAN_BW)
+				base_time_tag = iseq.time_tag
+				
+				ohdr = {}
+				ohdr['nstand']   = nstand
+				ohdr['npol']     = npol
+				ohdr['complex']  = True
+				ohdr['nbit']     = 8
+				ohdr['fir_size'] = self.coeffs.size
+				
+				prev_time = time.time()
+				iseq_spans = iseq.read(igulp_size)
+				while not self.iring.writing_ended():
+					reset_sequence = False
+					
+					ohdr['time_tag'] = base_time_tag
+					ohdr['cfreq']    = self.rFreq
+					ohdr['bw']       = self.nchan_out*CHAN_BW
+					ohdr['gain']     = self.gain
+					ohdr['filter']   = self.filt
+					ohdr_str = json.dumps(ohdr)
+					
+					# Adjust the gain to make this ~compatible with LWA1
+					act_gain = self.gain - 18
+					
+					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
+						for ispan in iseq_spans:
+							if ispan.size < igulp_size:
+								continue # Ignore final gulp
+							curr_time = time.time()
+							acquire_time = curr_time - prev_time
+							prev_time = curr_time
+							
+							with oseq.reserve(ogulp_size) as ospan:
+								curr_time = time.time()
+								reserve_time = curr_time - prev_time
+								prev_time = curr_time
+								
+								## Setup and load
+								idata = ispan.data_view(np.int8).reshape(ishape)
+								odata = ospan.data_view(np.int8).reshape((1,)+oshape)
+								
+								## Prune the data
+								if idata.shape[1] != self.nchan_out:
+									try:
+										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+									except NameError:
+										pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
+										pdata = BFArray(shape=pshape, dtype='ci4', native=False, space='cuda_host')
+										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+								else:
+									pdata = idata
+									
+								## Copy the data to the GPU - from here on out we are on the GPU
+								tdata = pdata.copy(space='cuda')
+								
+								## Unpack
+								try:
+									Unpack(tdata, udata)
+								except NameError:
+									udata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
+									Unpack(tdata, udata)
+									
+								## IFFT
+								gdata = BFArray(shape=udata.shape, dtype=np.complex64, space='cuda')
+								try:
+									bfft.execute(udata, gdata, inverse=True)
+								except NameError:
+									bfft = Fft()
+									bfft.init(udata, gdata, axes=1, apply_fftshift=True)
+									bfft.execute(udata, gdata, inverse=True)
+									
+								## Phase rotation
+								gdata = gdata.reshape((-1,nstand,npol))
+								BFMap("a(i,j,k) *= b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
+								
+								## FIR filter
+								try:
+									bfir.execute(gdata, fdata)
+								except NameError:
+									coeffs = BFArray(self.coeffs, space='cuda')
+									
+									bfir = FIR()
+									bfir.init(self.coeffs.size, 1, self.ntime_gulp*self.nchan_out, nstand)
+									bfir.set_coeffs(coeffs)
+									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
+									bfir.execute(gdata, fdata)
+									
+								## Quantization
+								try:
+									Quantize(fdata, qdata, scale=26.*128./(2**act_gain * np.sqrt(self.nchan_out)))
+								except NameError:
+									qdata = BFArray(shape=gdata.shape, native=False, dtype='ci8', space='cuda')
+									Quantize(fdata, qdata, scale=26.*128./(2**act_gain * np.sqrt(self.nchan_out)))
+									
+								## Save
+								cdata = qdata.copy(space='system')
+								odata[...] = cdata.view(np.int8).reshape((1,)+oshape)
+								
+							## Update the base time tag
+							base_time_tag += self.ntime_gulp*ticksPerTime
+							
+							## Check for an update to the configuration
+							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
+								reset_sequence = True
+								break
+								
+							curr_time = time.time()
+							process_time = curr_time - prev_time
+							prev_time = curr_time
+							self.perf_proclog.update({'acquire_time': acquire_time, 
+												 'reserve_time': reserve_time, 
+												 'process_time': process_time,})
+												 
+					# Clean-up
+					try:
+						del pdata
+						del udata
+						del fdata
+						del qdata
+					except NameError:
+						pass
+						
+					# Reset to move on to the next input sequence?
+					if not reset_sequence:
+						break
 
 def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
 	nframe_per_sample = int(FS) // int(bw)
@@ -323,20 +747,31 @@ def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
 
 class PacketizeOp(object):
 	# Note: Input data are: [time,beam,pol,iq]
-	def __init__(self, log, iring, nroach, roach0, addr, port, npkt_gulp=128, core=-1):
+	def __init__(self, log, iring, osock, nroach, roach0, npkt_gulp=128, core=-1):
 		self.log   = log
 		self.iring = iring
+		self.sock  = osock
 		self.nroach = nroach
 		self.roach0 = roach0
-		self.sock  = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		self.sock.connect((addr,port))
 		self.npkt_gulp = npkt_gulp
 		self.core = core
 		
-		self.sync_pipelines = MCS.Synchronizer('TBN')
+		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+		self.in_proclog   = ProcLog(type(self).__name__+"/in")
+		self.size_proclog = ProcLog(type(self).__name__+"/size")
+		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+		
+		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
+		
+		self.sync_tbn_pipelines = MCS.Synchronizer('TBN')
 		
 	def main(self):
+		global ACTIVE_TBN_CONFIG
+		
 		cpu_affinity.set_core(self.core)
+		self.bind_proclog.update({'ncore': 1, 
+							 'core0': cpu_affinity.get_core(),})
 		
 		stand0 = self.roach0 * 16 # TODO: Get this less hackily
 		ntime_pkt     = TBN_NSAMPLE_PER_PKT
@@ -345,47 +780,102 @@ class PacketizeOp(object):
 		gulp_size_max = ntime_gulp * ninput_max * 2
 		self.iring.resize(gulp_size_max)
 		
-		for isequence in self.iring.read():
-			hdr = json.loads(isequence.header.tostring())
-			#print 'PacketizeOp', hdr
-			cfreq  = hdr['cfreq']
-			bw     = hdr['bw']
-			gain   = hdr['gain']
-			nstand = hdr['nstand']
-			#stand0 = hdr['stand0']
-			npol   = hdr['npol']
-			time_tag0 = isequence.time_tag
+		self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
+		
+		for iseq in self.iring.read():
+			ihdr = json.loads(iseq.header.tostring())
+			
+			self.sequence_proclog.update(ihdr)
+			
+			self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
+			
+			#print 'PacketizeOp', ihdr
+			cfreq  = ihdr['cfreq']
+			bw     = ihdr['bw']
+			gain   = ihdr['gain']
+			nstand = ihdr['nstand']
+			#stand0 = ihdr['stand0']
+			npol   = ihdr['npol']
+			fdly   = (ihdr['fir_size'] - 1) / 2.0
+			time_tag0 = iseq.time_tag
 			time_tag  = time_tag0
 			gulp_size = ntime_gulp*nstand*npol*2
 			
-			for ispan in isequence.read(gulp_size):
-				if ispan.size < gulp_size:
-					continue # Ignore final gulp
+			ticksPerSample = int(FS) // int(bw)
+			toffset = int(time_tag0) // ticksPerSample
+			soffset = toffset % int(ntime_pkt)
+			if soffset != 0:
+				soffset = ntime_pkt - soffset
+			boffset = soffset*nstand*npol*2
+			print '!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+			
+			time_tag += soffset*ticksPerSample				# Correct for offset
+			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
+			
+			prev_time = time.time()
+			with UDPTransmit(sock=self.sock, core=self.core) as udt:
+				free_run = False
+				for ispan in iseq.read(gulp_size, begin=boffset):
+					if ispan.size < gulp_size:
+						continue # Ignore final gulp
+					curr_time = time.time()
+					acquire_time = curr_time - prev_time
+					prev_time = curr_time
 					
-				shape = (-1,nstand,npol,2)
-				data = ispan.data_view(np.int8).reshape(shape)
-				#self.sync_pipelines(time_tag)
-				for t in xrange(0, ntime_gulp, ntime_pkt):
-					self.sync_pipelines(time_tag)
-					for stand in xrange(nstand):
-						for pol in xrange(npol):
-							pktdata = data[t:t+ntime_pkt,stand,pol,:]
-							#pktdata = pktdata[...,::-1] # WAR: Swap I/Q
-							#assert( len(pktdata) == ntime_pkt )
-							time_tag_cur = time_tag + int(round(float(t)/bw*FS))
-							hdr = gen_tbn_header(stand0+stand, pol, cfreq, gain,
-							                     time_tag_cur, time_tag0, bw)
-							pkt = hdr + pktdata.tostring()
-							try:
-								self.sock.send(pkt)
-							except socket.error:
-								pass
+					shape = (-1,nstand,npol,2)
+					data = ispan.data_view(np.int8).reshape(shape)
+					#self.sync_tbn_pipelines(time_tag)
+					for t in xrange(0, ntime_gulp, ntime_pkt):
+						time_tag_cur = time_tag + int(t)*ticksPerSample
+						try:
+							self.sync_tbn_pipelines(time_tag_cur)
+							if free_run:
+								print "Leaving free running"
+								free_run = False
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							if not free_run:
+								print "Entering free running"
+								free_run = True
 								
-				time_tag += int(round(float(ntime_gulp)/bw*FS))
+						pkts = []
+						for stand in xrange(nstand):
+							for pol in xrange(npol):
+								pktdata = data[t:t+ntime_pkt,stand,pol,:]
+								#pktdata = pktdata[...,::-1] # WAR: Swap I/Q
+								#assert( len(pktdata) == ntime_pkt )
+								hdr = gen_tbn_header(stand0+stand, pol, cfreq, gain,
+												 time_tag_cur, time_tag0, bw)
+								try:
+									pkt = hdr + pktdata.tostring()
+									pkts.append( pkt )
+								except Exception as e:
+									print 'Packing Error', str(e)
+									
+						try:
+							if ACTIVE_TBN_CONFIG.is_set():
+								udt.sendmany(pkts)
+						except Exception as e:
+							print 'Sending Error', str(e)
+					time_tag += int(ntime_gulp)*ticksPerSample
+			
+					curr_time = time.time()
+					process_time = curr_time - prev_time
+					prev_time = curr_time
+					self.perf_proclog.update({'acquire_time': acquire_time, 
+										 'reserve_time': -1, 
+										 'process_time': process_time,})
+										 
+			del udt
 
-def get_utc_start():
+def get_utc_start(shutdown_event=None):
 	got_utc_start = False
 	while not got_utc_start:
+		if shutdown_event is not None:
+			if shutdown_event.is_set():
+				raise RuntimeError("Shutting down without getting the start time")
+				
 		try:
 			with MCS.Communicator() as adp_control:
 				utc_start = adp_control.report('UTC_START')
@@ -422,6 +912,7 @@ def partition_packed(nitem, npart, part_idx):
 
 def main(argv):
 	parser = argparse.ArgumentParser(description='LWA-SV ADP TBN Service')
+	parser.add_argument('-f', '--fork',       action='store_true',       help='Fork and run in the background')
 	parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
 	parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
 	parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
@@ -429,7 +920,13 @@ def main(argv):
 	parser.add_argument('-q', '--quiet',      action='count', default=0, help='Decrease verbosity')
 	args = parser.parse_args()
 	
+	# Fork, if requested
+	if args.fork:
+		stderr = '/tmp/%s.stderr' % (os.path.splitext(os.path.basename(__file__))[0],)
+		daemonize(stdin='/dev/null', stdout='/dev/null', stderr=stderr)
+		
 	config = Adp.parse_config_file(args.configfile)
+	tbnConfig = config['tbn']
 	
 	log = logging.getLogger(__name__)
 	logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
@@ -457,6 +954,7 @@ def main(argv):
 	log.info("Log file:     %s", args.logfile)
 	log.info("Dry run:      %r", args.dryrun)
 	
+	ops = []
 	shutdown_event = threading.Event()
 	def handle_signal_terminate(signum, frame):
 		SIGNAL_NAMES = dict((k, v) for v, k in \
@@ -464,7 +962,10 @@ def main(argv):
 		                    if v.startswith('SIG') and \
 		                    not v.startswith('SIG_'))
 		log.warning("Received signal %i %s", signum, SIGNAL_NAMES[signum])
-		ops[0].shutdown()
+		try:
+			ops[0].shutdown()
+		except IndexError:
+			pass
 		shutdown_event.set()
 	for sig in [signal.SIGHUP,
 	            signal.SIGINT,
@@ -472,9 +973,9 @@ def main(argv):
 	            signal.SIGTERM,
 	            signal.SIGTSTP]:
 		signal.signal(sig, handle_signal_terminate)
-	
+		
 	log.info("Waiting to get UTC_START")
-	utc_start_dt = get_utc_start()
+	utc_start_dt = get_utc_start(shutdown_event)
 	log.info("UTC_START:    %s", utc_start_dt.strftime(DATE_FORMAT))
 	
 	hostname = socket.gethostname()
@@ -482,23 +983,29 @@ def main(argv):
 	log.info("Hostname:     %s", hostname)
 	log.info("Server index: %i", server_idx)
 	
-	pipeline_idx = config['tbn']['pipeline_idx']
-	recorder_idx = config['tbn']['recorder_idx']
-	iaddr  = config['server']['data_ifaces'][pipeline_idx]
-	iport  = config['server']['data_ports' ][pipeline_idx]
-	oaddr  = config['host']['recorders'][recorder_idx]
-	oport  = config['recorder']['port']
+	## Network - input
+	pipeline_idx = tbnConfig['pipeline_idx']
+	iaddr        = config['server']['data_ifaces'][pipeline_idx]
+	iport        = config['server']['data_ports' ][pipeline_idx]
+	## Network - output
+	recorder_idx = tbnConfig['recorder_idx']
+	recConfig    = config['recorder'][recorder_idx]
+	oaddr        = recConfig['host']
+	oport        = recConfig['port']
+	
 	nroach_tot = len(config['host']['roaches'])
 	nserver    = len(config['host']['servers'])
 	tbn_servers = config['host']['servers-tbn']
 	server_data_host = config['host']['servers-data'][server_idx]
 	nroach = len([srv for srv in tbn_servers if srv == server_data_host])
 	roach0 = [i for (i,srv) in enumerate(tbn_servers) if srv == server_data_host][0]
-	core0 = config['tbn']['first_cpu_core']
+	cores = config['tbn']['cpus']
+	gpus  = config['tbn']['gpus']
 	
 	log.info("Src address:  %s:%i", iaddr, iport)
 	log.info("Dst address:  %s:%i", oaddr, oport)
 	log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
+	log.info("Cores:        %s", ' '.join([str(v) for v in cores]))
 	
 	# Note: Capture uses Bifrost address+socket objects, while output uses
 	#         plain Python address+socket objects.
@@ -506,30 +1013,27 @@ def main(argv):
 	isock = UDPSocket()
 	isock.bind(iaddr)
 	
-	capture_ring = Ring()
-	unpack_ring = Ring()
-	tengine_ring = Ring()
+	capture_ring = Ring(name="capture")
+	unpack_ring = Ring(name="unpack")
+	tengine_ring = Ring(name="tengine")
 	
-	osock = None # TODO
+	oaddr = Address(oaddr, oport)
+	osock = UDPSocket()
+	osock.connect(oaddr)
 	
-	ops = []
-	core = core0
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
-	                     buffer_ntime=25000, slot_ntime=25000, core=core,
+	                     buffer_ntime=2500, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
-	core += 1
-	ops.append(UnpackOp(log, capture_ring, unpack_ring, 
-	                    core=core))
-	core += 1
-	ops.append(TEngineOp(log, unpack_ring, tengine_ring,
-	                     core=core))
-	core += 1
-	ops.append(PacketizeOp(log, tengine_ring,
+	#ops.append(UnpackOpCPU(log, capture_ring, unpack_ring, 
+	#                       ntime_gulp=2500, core=cores.pop(0)))
+	#ops.append(TEngineOpCPU(log, unpack_ring, tengine_ring,
+	#                        ntime_gulp=2500, core=cores.pop(0)))
+	ops.append(TEngineOp(log, capture_ring, tengine_ring,
+	                     ntime_gulp=2500, core=cores.pop(0), gpu=gpus.pop(0)))
+	ops.append(PacketizeOp(log, tengine_ring, osock=osock, 
 	                       nroach=nroach, roach0=roach0,
-	                       addr=oaddr, port=oport,
-	                       npkt_gulp=10, core=core))
-	core += 1
+	                       npkt_gulp=19, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
