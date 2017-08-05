@@ -15,7 +15,7 @@ fi
 
 DO_CONFIG=1
 DO_SOFTWARE=1
-DO_RESTART=1
+DO_RESTART=0
 DO_QUERY=0
 while [[ $# -gt 0 ]]; do
 	key="${1}"
@@ -31,8 +31,8 @@ while [[ $# -gt 0 ]]; do
 			echo "-h,--help            Show this help message"
 			echo "-c,--config-only     Only update the configuration file and restart the ADP services"
 			echo "-s,--software-only   Only update the ADP software and restart the ADP services"
-			echo "-n,--no-restart      Do not restart the ADP services after an update"
-			echo "-r,--restart-only    Do not udpdate, only restart the ADP services"
+			echo "-r,--restart         Rrestart the ADP services after an update"
+			echo "-o,--restart-only    Do not udpdate, only restart the ADP services"
 			echo "-q,--query           Query the status of the ADP services"
 			exit 0
 			;;
@@ -46,11 +46,11 @@ while [[ $# -gt 0 ]]; do
                         DO_SOFTWARE=1
 			DO_QUERY=0
                         ;;
-		-n|--no-restart)
-                        DO_RESTART=0
+		-r|--restart)
+                        DO_RESTART=1
 			DO_QUERY=0
                         ;;
-		-r|--restart-only)
+		-0|--restart-only)
 			DO_CONFIG=0
 			DO_SOFTWARE=0
 			DO_RESTART=1
@@ -116,9 +116,9 @@ fi
 if [ "${DO_RESTART}" == "1" ]; then
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then
-			ssh adp${node} "restart adp-control && restart adp-tengine"
+			ssh adp${node} "restart adp-control && restart adp-tengine-0 && restart adp-tengine-1"
 		else
-			ssh adp${node} "restart adp-tbn && restart adp-drx"
+			ssh adp${node} "restart adp-tbn && restart adp-drx-0 && restart adp-drx-1"
 		fi
 	done
 fi
@@ -130,9 +130,9 @@ fi
 if [ "${DO_QUERY}" == "1" ]; then
         for node in `seq 0 6`; do
                 if [ "${node}" == "0" ]; then
-                        ssh adp${node} "status adp-control && status adp-tengine"
+                        ssh adp${node} "status adp-control && status adp-tengine-0 && status adp-tengine-1"
                 else
-                        ssh adp${node} "status adp-tbn && status adp-drx"
+                        ssh adp${node} "status adp-tbn && status adp-drx-0 && status adp-drx-1"
                 fi
         done
 fi
