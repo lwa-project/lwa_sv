@@ -103,7 +103,7 @@ nfs_client: network
 	mount -a -t nfs
 
 .PHONY: ntp
-$(NTP_CONF): ../ntp.conf network
+$(NTP_CONF): ntp.conf network
 	/usr/sbin/ntpdate $(LOCAL_NTP_SERVER) ntp.ubuntu.com pool.ntp.org # Initial estimate
 	apt-get install -y ntp
 	cp $< $@
