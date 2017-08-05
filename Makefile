@@ -20,7 +20,7 @@ configure_server_partial:
 	$(MAKE) -C ./config/ configure_server_partial
 .PHONY: configure_server_partial
 
-install_headnode: install_adp_control_service
+install_headnode: install_adp_control_service install_adp_tengine_service
 #install_server:   cuda install_adp_pipeline
 install_server:   install_adp_pipeline
 
@@ -44,17 +44,33 @@ install_adp_control_service: $(INSTALL_BIN_DIR)/adp_control.py $(SERVICE_CONF_DI
 	tail -n 40 /var/log/upstart/adp-control.log
 .PHONY: install_adp_control_service
 
+install_adp_tengine_service: $(INSTALL_BIN_DIR)/adp_tengine.py $(SERVICE_CONF_DIR)/adp-tengine-0.conf $(SERVICE_CONF_DIR)/adp-tengine-1.conf $(INSTALL_SHARE_DIR)/adp_config.json install_numactl
+        initctl reload-configuration
+	stop adp-tengine-0 ; start adp-tengine-0
+	stop adp-tengine-1 ; start adp-tengine-1
+.PHONY: install_adp_tengine_service
+
 install_adp_tbn_service: $(INSTALL_BIN_DIR)/adp_tbn.py $(SERVICE_CONF_DIR)/adp-tbn.conf $(INSTALL_SHARE_DIR)/adp_config.json
 	initctl reload-configuration
 	stop  adp-tbn ; start adp-tbn # Note: Need to stop+start to reload the conf file
 .PHONY: install_adp_tbn_service
 
-install_adp_pipeline: install_adp_tbn_service
+install_adp_drx_service: $(INSTALL_BIN_DIR)/adp_drx.py $(SERVICE_CONF_DIR)/adp-drx-0.conf $(SERVICE_CONF_DIR)/adp-drx-1.conf $(INSTALL_SHARE_DIR)/adp_config.json
+        initctl reload-configuration
+	stop  adp-drx-0 ; start adp-drx-0
+	stop  adp-drx-1 ; start adp-drx-1
+.PHONY: install_adp_drx_service
+
+install_adp_pipeline: install_numactl install_adp_tbn_service install_adp_drx_service
 .PHONY: install_adp_pipeline
 
+install_numactl:
+	apt-get install -y numactl
+.PHONY: install_numactl
+
 install_sshpass:
-	pt-get install -y sshpass
-.PHONE: install_sshpass
+	apt-get install -y sshpass
+.PHONY: install_sshpass
 
 CUDA_DOWNLOAD_PATH        ?= "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1404/x86_64/cuda-repo-ubuntu1404_7.0-28_amd64.deb"
 CUDA_INSTALL_FILE         ?= cuda-repo-ubuntu1404_7.0-28_amd64.deb
