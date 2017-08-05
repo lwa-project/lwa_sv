@@ -8,4 +8,4 @@ include ../common.mk
 all:
 
 configure: configure_grub network resolvconf configure_hosts ssh nfs_client ntp sysctl socket_buffers irq_affinity
-configure_partial: ntp sysctl socket_buffers irq_affinity
+configure_partial: ntp sysctl socket_buffers irq_affinity rclocal

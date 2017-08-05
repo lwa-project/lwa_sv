@@ -8,6 +8,7 @@ DNSMASQ_CONF              ?= /etc/dnsmasq.conf
 HOSTS_CONF                ?= /etc/hosts
 ETHERS_CONF               ?= /etc/ethers
 IPTABLES_CONF             ?= /etc/iptables.rules
+RCLOCAL_CONF              ?= /etc/rc.local
 MGMT_SUBNET               ?= 169.254.128.0/24
 SSHD_CONFIG               ?= /etc/ssh/sshd_config
 SSH_CONFIG                ?= /etc/ssh/ssh_config
@@ -71,6 +72,10 @@ configure_hosts: $(HOSTS_CONF)
 $(ETHERS_CONF): ./ethers network
 	cp $< $@
 configure_ethers: $(ETHERS_CONF)
+
+.PHONY: configure_rclocal
+$(RCLOCAL_CONF): ../rc.local
+	cp $< $@
 
 .PHONY: ssh
 $(SSHD_CONF): ./sshd_config
