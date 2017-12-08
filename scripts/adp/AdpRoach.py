@@ -145,25 +145,11 @@ class AdpRoach(object):
 		ip_addr_bram_vals = np.zeros(1024, 'L')
 		ip_addr_bram_vals[:len(dst_ips)] = [ip2int(ip) for ip in dst_ips]
 		ip_addr_bram_packed = struct.pack('>1024L', *ip_addr_bram_vals)
-		if gbe_idx < 2:
-			self.fpga.write('pkt_gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
-		elif gbe_idx == 2:
-			# HACK
-			self.fpga.write('pkt_gbe1_ip_addr_bram1', ip_addr_bram_packed)
-		else:
-			# HACK
-			self.fpga.write('pkt_gbe1_ip_addr_bram2', ip_addr_bram_packed)
+		self.fpga.write('pkt_gbe%i_ip_addr_bram' % gbe_idx, ip_addr_bram_packed)
 		ip_port_bram_vals = np.zeros(1024, 'L')
 		ip_port_bram_vals[:len(dst_ports)] = [int(port) for port in dst_ports]
 		ip_port_bram_packed = struct.pack('>1024L', *ip_port_bram_vals)
-		if gbe_idx < 2:
-			self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
-		elif gbe_idx == 2:
-			# HACK
-			self.fpga.write('pkt_gbe1_ip_port_bram1', ip_port_bram_packed)
-		else:
-			# HACK
-			self.fpga.write('pkt_gbe1_ip_port_bram2', ip_port_bram_packed)
+		self.fpga.write('pkt_gbe%i_ip_port_bram' % gbe_idx, ip_port_bram_packed)
 		return self.check_link(gbe_idx)
 		
 	def reset(self, syncFunction=None):
