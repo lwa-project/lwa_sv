@@ -110,7 +110,7 @@ class Tbn(SlotCommandProcessor):
 		
 	def tune(self, freq=38.00e6, filt=1, gain=1):
 		## Convert to the DP frequency scale
-		freq = round(freq/FS*2**32)/2**32 * FS
+		freq = FS * int(freq / FS * 2**32) / 2**32
 		
 		self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
 		rets = self.roaches.tune_tbn(freq)
@@ -121,7 +121,7 @@ class Tbn(SlotCommandProcessor):
 		
 	def start(self, freq=59.98e6, filt=1, gain=1):
 		## Convert to the DP frequency scale
-		freq = round(freq/FS*2**32)/2**32 * FS
+		freq = FS * int(freq / FS * 2**32) / 2**32
 		
 		self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
 		## TODO: Check whether pausing the data flow is necessary
@@ -170,7 +170,7 @@ class Drx(SlotCommandProcessor):
 		
 	def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1):
 		## Convert to the DP frequency scale
-		freq = round(freq/FS*2**32)/2**32 * FS
+		freq = FS * int(freq / FS * 2**32) / 2**32
 		
 		self.log.info("Tuning DRX %i: freq=%f,filt=%i,gain=%i" % (tuning,freq,filt,gain))
 		rets = self.roaches.tune_drx(tuning, freq)
@@ -183,7 +183,7 @@ class Drx(SlotCommandProcessor):
 		
 	def start(self, tuning=0, freq=59.98e6, filt=1, gain=1):
 		## Convert to the DP frequency scale
-		freq = round(freq/FS*2**32)/2**32 * FS
+		freq = FS * int(freq / FS * 2**32) / 2**32
 		
 		self.log.info("Starting DRX %i data: freq=%f,filt=%i,gain=%i" % (tuning, freq,filt,gain))
 		### TODO: Check whether pausing the data flow is necessary

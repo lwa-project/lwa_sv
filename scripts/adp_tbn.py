@@ -731,7 +731,7 @@ def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
 	frame_num    = ((time_tag - time_tag0) // nframe_per_packet) % frame_num_wrap + 1 # Packet sequence no.
 	id_frame_num = idval << 24 | frame_num
 	assert( 0 <= cfreq < FS )
-	tuning_word  = int(round(cfreq / FS * 2**32))
+	tuning_word  = int(cfreq / FS * 2**32)
 	tbn_id       = (pol + NPOL*stand) + 1
 	gain         = gain
 	#if stand == 0 and pol == 0:

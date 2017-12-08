@@ -916,7 +916,7 @@ def gen_cor_header(stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
 	frame_num    = 0
 	id_frame_num = idval << 24 | frame_num
 	assert( 0 <= freq0 < FS )
-	tuning_word  = int(round(freq0 / FS * 2**32))
+	tuning_word  = int(freq0 / FS * 2**32)
 	#if stand == 0 and pol == 0:
 	#	print cfreq, bw, gain, time_tag, time_tag0
 	#	print nframe_per_sample, nframe_per_packet

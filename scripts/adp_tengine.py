@@ -501,7 +501,7 @@ def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
 	frame_num    = 0
 	id_frame_num = idval << 24 | frame_num
 	assert( 0 <= cfreq < FS )
-	tuning_word  = int(round(cfreq / FS * 2**32))
+	tuning_word  = int(cfreq / FS * 2**32)
 	#if stand == 0 and pol == 0:
 	#	print cfreq, bw, gain, time_tag, time_tag0
 	#	print nframe_per_sample, nframe_per_packet
