@@ -139,7 +139,7 @@ class AdpRoach(object):
 		mac_base    = mac2int("02:02:00:00:00:00")
 		src_ip_base = ip2int(src_ip_base)
 		src_port    = src_port_base + gbe_idx
-		src_ip      = src_ip_base + (self.num-1)*2 + gbe_idx
+		src_ip      = src_ip_base + (self.num-1)*3 + gbe_idx
 		src_mac     = mac_base + src_ip
 		self.fpga.config_10gbe_core('pkt_gbe%i' % gbe_idx, src_mac, src_ip, src_port, arp_table)
 		ip_addr_bram_vals = np.zeros(1024, 'L')
