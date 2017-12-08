@@ -237,7 +237,7 @@ class TEngineOp(object):
 		self.gain = 7
 		self.filt = filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
 		self.nchan_out = FILTER2CHAN[self.filt]
-		self.phaseRot = 1
+		self.phaseRot = 1.0
 		
 		self.coeffs = np.array([ 0.0111580, -0.0074330,  0.0085684, -0.0085984,  0.0070656, -0.0035905, 
 		                        -0.0020837,  0.0099858, -0.0199800,  0.0316360, -0.0443470,  0.0573270, 
@@ -309,8 +309,7 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
-			self.phaseRot.shape += (1,1)
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			self.phaseRot = self.phaseRot.astype(np.complex64)
 			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
 			
@@ -331,8 +330,7 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
-			self.phaseRot.shape += (1,1)
+			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			self.phaseRot = self.phaseRot.astype(np.complex64)
 			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
 			
@@ -439,8 +437,9 @@ class TEngineOp(object):
 									bfft.execute(gdata, gdata, inverse=True)
 									
 								## Phase rotation
+								gdata = gdata.reshape((-1,nstand*npol))
+								BFMap("a(i,j) *= b(i)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j'), shape=gdata.shape)
 								gdata = gdata.reshape((-1,nstand,npol))
-								BFMap("a(i,j,k) *= b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
 								
 								## FIR filter
 								try:
