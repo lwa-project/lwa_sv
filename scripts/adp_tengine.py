@@ -772,9 +772,9 @@ def main(argv):
 	isock.bind(iaddr)
 	isock.timeout = 0.5
 	
-	capture_ring = Ring(name="capture-%i" % tuning)
-	reorder_ring = Ring(name="reorder-%i" % tuning)
-	tengine_ring = Ring(name="tengine-%i" % tuning)
+	capture_ring = Ring(name="capture-%i" % tuning, core=cores[0])
+	reorder_ring = Ring(name="reorder-%i" % tuning, core=cores[0])
+	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
 	
 	oaddr = Address(oaddr, oport)
 	osock = UDPSocket()
