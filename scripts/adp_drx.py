@@ -17,8 +17,7 @@ from bifrost.unpack import unpack as Unpack
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
-from bifrost.beamformer import Beamformer
-from bifrost.linalg import LinAlg as Correlator
+from bifrost.linalg import LinAlg
 from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
@@ -40,7 +39,7 @@ from collections import deque
 
 ACTIVE_COR_CONFIG = threading.Event()
 
-__version__    = "0.1"
+__version__    = "0.2"
 __date__       = '$LastChangedDate: 2016-08-09 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
 __copyright__  = "Copyright 2016, The LWA-SV Project"
@@ -147,35 +146,59 @@ class CopyOp(object):
 				#obuf_size  = 5*25000*nchan*nstand*npol
 				self.iring.resize(igulp_size, igulp_size*10)
 				#self.oring.resize(ogulp_size)#, obuf_size)
+				
+				ticksPerTime = FS / CHAN_BW
+				base_time_tag = iseq.time_tag
+				
 				ohdr = ihdr.copy()
-				ohdr_str = json.dumps(ohdr)
 				
 				prev_time = time.time()
-				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-					for ispan in iseq.read(igulp_size):
-						if ispan.size < igulp_size:
-							continue # Ignore final gulp
-						curr_time = time.time()
-						acquire_time = curr_time - prev_time
-						prev_time = curr_time
-						
-						with oseq.reserve(ogulp_size) as ospan:
+				iseq_spans = iseq.read(size)
+				while not self.iring.writing_ended():
+					reset_sequence = False
+					
+					ohdr['timetag'] = base_time_tag
+					ohdr_str = json.dumps(ohdr)
+					
+					with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+						for ispan in iseq_spans:
+							if ispan.size < igulp_size:
+								continue # Ignore final gulp
 							curr_time = time.time()
-							reserve_time = curr_time - prev_time
+							acquire_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							idata = ispan.data_view(np.uint8)
-							odata = ospan.data_view(np.uint8)	
-							#odata[...] = idata
-							BFMemCopy(odata, idata)
-							#print "COPY"
+							try:
+								with oseq.reserve(ogulp_size, nonblocking=True) as ospan:
+									curr_time = time.time()
+									reserve_time = curr_time - prev_time
+									prev_time = curr_time
+									
+									idata = ispan.data_view(np.uint8)
+									odata = ospan.data_view(np.uint8)	
+									BFMemCopy(odata, idata)
+									#print "COPY"
+									
+							except IOError:
+								curr_time = time.time()
+								reserve_time = curr_time - prev_time
+								prev_time = curr_time
+								
+								reset_sequence = True
+								
+							## Update the base time tag
+							base_time_tag += nTime*ticksPerTime
 							
 							curr_time = time.time()
 							process_time = curr_time - prev_time
 							prev_time = curr_time
 							self.perf_proclog.update({'acquire_time': acquire_time, 
-												 'reserve_time': reserve_time, 
-												 'process_time': process_time,})
+							                          'reserve_time': reserve_time, 
+							                          'process_time': process_time,})
+							
+							# Reset to move on to the next input sequence?
+							if reset_sequence:
+								break
 
 def get_time_tag(dt=datetime.datetime.utcnow(), seq_offset=0):
 	timestamp = int((dt - ADP_EPOCH).total_seconds())
@@ -297,7 +320,7 @@ class TriggeredDumpOp(object):
 			
 			# HACK TESTING write to file instead of socket
 			if local:
-				filename = '/data1/test_%s_%i_%020i.tbf' % (socket.gethostname(), self.tuning, dump_time_tag)#time_tag0
+				filename = '/data0/test_%s_%i_%020i.tbf' % (socket.gethostname(), self.tuning, dump_time_tag)#time_tag0
 				ofile = open(filename, 'wb')
 			else:
 				udt = UDPTransmit(sock=self.sock, core=self.core)
@@ -356,7 +379,7 @@ class TriggeredDumpOp(object):
 
 class BeamformerOp(object):
 	# Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nroach_max=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach_max=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
 		self.log   = log
 		self.iring = iring
 		self.oring = oring
@@ -379,19 +402,20 @@ class BeamformerOp(object):
 		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 		
 		self.nchan_max = nchan_max
+		self.nbeam_max = nbeam_max
 		self.configMessage = ISC.BAMConfigurationClient(addr=('adp',5832))
 		self._pending = deque()
 		
 	@ISC.logException
-	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+	def updateConfig(self, config, hdr, time_tag, cgains, forceUpdate=False):
 		# Get the current pipeline time to figure out if we need to shelve a command or not
 		pipeline_time = time_tag / FS
 		
 		# Can we act on this configuration change now?
 		if config:
 			## Pull out the tuning (something unique to DRX/BAM/COR)
-			tuning = config[3]
-			if tuning != self.tuning:
+			beam, tuning = config[0], config[3]
+			if beam > self.nbeam_max or tuning != self.tuning:
 				return False
 				
 			## Set the configuration time - BAM commands are for the specified slot in the next second
@@ -432,66 +456,47 @@ class BeamformerOp(object):
 				self.log.info("Beamformer: Not for this tuning, skipping")
 				return False
 				
-			if self.gpu != -1:
-				BFSetGPU(self.gpu)
-				
 			# Byteswap to get into little endian
 			delays = delays.byteswap().newbyteorder()
 			gains = gains.byteswap().newbyteorder()
 			
 			# Unpack and re-shape the delays (to seconds) and gains (to floating-point)
 			delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
-			delays.shape = (delays.size/2, 2)
 			gains = gains/32767.0
-			gains.shape = (gains.size/4, 2, 2)
+			gains.shape = (gains.size/2, 2)
 			
-			# Cleanup of the previous gains/delays if needed.
-			try:
-				del self.delays
-				del self.gains
-			except AttributeError:
-				pass
-				
-			# Set the beamformer delays and gains
-			self.delays = BFArray(delays.astype(np.float64), dtype=np.float64, space='cuda')
-			self.gains  = BFArray(gains.astype(np.float64), dtype=np.float64, space='cuda')
-			try:
-				self.bfbf.set_delays(hdr['chan0']*CHAN_BW, CHAN_BW, self.delays, prots=self.prots)
-			except AttributeError:
-				self.prots = BFArray(shape=(hdr['nchan'], hdr['nstand'], 2), dtype=np.complex128, space='cuda')
-				self.bfbf.set_delays(hdr['chan0']*CHAN_BW, CHAN_BW, self.delays, prots=self.prots)
-			self.log.info('  Delays set')
-			self.bfbf.set_gains(self.gains)
-			self.log.info('  Gains set')
+			# Save for later
+			self.delays = delays*1
+			self.gains = gains*1
+			
+			# Compute the complex gains needed for the beamformer
+			freqs = CHAN_BW * (hdr['chan0'] + numpy.arange(hdr['nchan']))
+			freqs.shape = (freqs.size, 1)
+			cgains[2*(beam-1)+0,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,0]
+			cgains[2*(bean-1)+1,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,1]
+			self.log.info('  Complex gains set - beam %i' % beam)
 			
 			return True
 			
 		elif forceUpdate:
 			self.log.info("Beamformer: New sequence configuration received")
 			
-			if self.gpu != -1:
-				BFSetGPU(self.gpu)
-				
 			# Set the beamformer delays and gains
 			try:
-				self.bfbf.set_delays(hdr['chan0']*CHAN_BW, CHAN_BW, self.delays, prots=self.prots)
-				self.log.info('  Delays set')
-				self.bfbf.set_gains(self.gains)
-				self.log.info('  Gains set')
-			except AttributeError:
-				delays = np.zeros((hdr['nstand'], 2), dtype=np.float64)
-				gains  = np.zeros((hdr['nstand'], 2, 2), dtype=np.float64)
+				## Compute the complex gains needed for the beamformer
+				freqs = CHAN_BW * (hdr['chan0'] + numpy.arange(hdr['nchan']))
+				freqs.shape = (freqs.size, 1)
+				cgains[2*(beam-1)+0,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,0]
+				cgains[2*(bean-1)+1,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,1]
+				self.log.info('  Complex gains set - beam %i' % beam)
 				
-				self.delays = BFArray(delays.astype(np.float64), dtype=np.float64, space='cuda')
-				self.gains  = BFArray(gains.astype(np.float64), dtype=np.float64, space='cuda')
-				try:
-					self.bfbf.set_delays(hdr['chan0']*CHAN_BW, CHAN_BW, self.delays, prots=self.prots)
-				except AttributeError:
-					self.prots = BFArray(shape=(hdr['nchan'], hdr['nstand'], 2), dtype=np.complex128, space='cuda')
-					self.bfbf.set_delays(hdr['chan0']*CHAN_BW, CHAN_BW, self.delays, prots=self.prots)
-				self.log.info('  Initialize delays')
-				self.bfbf.set_gains(self.gains)
-				self.log.info('  Initialize gains')
+			except AttributeError:
+				self.delays = np.zeros((hdr['nstand']*2), dtype=np.float64)
+				self.gains  = np.zeros((hdr['nstand']*2, 2), dtype=np.float64)
+				
+				cgains[2*(beam-1)+0,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,0]
+				cgains[2*(bean-1)+1,:,:] = numpy.exp(-2j*numpy.pi*freqs*self.delays) * self.gains[:,1]
+				self.log.info('  Complex gains set - beam %i' % beam)
 				
 			return True
 			
@@ -508,7 +513,7 @@ class BeamformerOp(object):
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
 		
-		self.bfbf = Beamformer()
+		self.bfbf = LinAlg()
 		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
@@ -517,9 +522,8 @@ class BeamformerOp(object):
 				self.sequence_proclog.update(ihdr)
 				
 				# Setup the beamformer
-				self.bfbf.init(self.ntime_gulp, ihdr['nchan'], ihdr['nstand'], 'cuda')
-				
-				status = self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, forceUpdate=True )
+				cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
+				status = self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, cgains, forceUpdate=True )
 				
 				nchan  = ihdr['nchan']
 				nstand = ihdr['nstand']
@@ -527,13 +531,13 @@ class BeamformerOp(object):
 				igulp_size = self.ntime_gulp*nchan*nstand*npol		# 4+4 complex
 				ogulp_size = self.ntime_gulp*nchan*1*npol*8			# complex64
 				ishape = (self.ntime_gulp,nchan,nstand,npol)
-				oshape = (self.ntime_gulp,nchan,1,npol)
+				oshape = (self.ntime_gulp,nchan,self.nbeam_max*2)
 				
 				ticksPerTime = int(FS) / int(CHAN_BW)
 				base_time_tag = iseq.time_tag
 				
 				ohdr = ihdr.copy()
-				ohdr['nstand'] = 1
+				ohdr['nstand'] = self.nbeam_max
 				ohdr['nbit'] = 64
 				ohdr['complex'] = True
 				ohdr_str = json.dumps(ohdr)
@@ -541,7 +545,7 @@ class BeamformerOp(object):
 				self.oring.resize(ogulp_size)
 				
 				# Setup the intermidiate arrays
-				bdata = BFArray(shape=(self.ntime_gulp,nchan,1,npol), dtype=np.complex64, space='cuda')
+				bdata = BFArray(shape=(self.ntime_gulp,nchan,self.nbeam_max*2), dtype=np.complex64, space='cuda')
 				
 				prev_time = time.time()
 				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
@@ -566,16 +570,16 @@ class BeamformerOp(object):
 							
 							## Beamform
 							ddata = bfidata.copy(space='cuda')
-							self.bfbf.execute(ddata, bdata)
+							self.bfbf.matmul(1.0, cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, bdata)
 							
 							## Save and cleanup
-							odata[...] = bdata.copy(space='system')
+							odata[...] = bdata.copy(space='system').transpose(2,0,1)
 							
 						## Update the base time tag
 						base_time_tag += self.ntime_gulp*ticksPerTime
 						
 						## Check for an update to the configuration
-						self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False )
+						self.updateConfig( self.configMessage(), ihdr, base_time_tag, cgains, forceUpdate=False )
 						
 						curr_time = time.time()
 						process_time = curr_time - prev_time
@@ -693,7 +697,7 @@ class CorrelatorOp(object):
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
 		
-		self.bfcc = Correlator()
+		self.bfcc = LinAlg()
 		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
@@ -751,47 +755,60 @@ class CorrelatorOp(object):
 							acquire_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							with oseq.reserve(ogulp_size) as ospan:
-								curr_time = time.time()
-								reserve_time = curr_time - prev_time
-								prev_time = curr_time
+							curr_time = time.time()
+							reserve_time = curr_time - prev_time
+							prev_time = curr_time
+							
+							## Setup and load
+							idata = ispan.data_view(np.uint8).reshape(ishape)
+							
+							## Fix the type
+							t0 = time.time()
+							tdata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+							
+							## Copy
+							t1 = time.time()
+							tdata = tdata.copy(space='cuda')
+							
+							## Unpack
+							t2 = time.time()
+							try:
+								Unpack(tdata, udata)
+							except NameError:
+								udata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+								Unpack(tdata, udata)
 								
-								## Setup and load
-								idata = ispan.data_view(np.uint8).reshape(ishape)
-								odata = ospan.data_view(np.complex64).reshape(oshape)
-								
-								## Fix the type
-								t0 = time.time()
-								tdata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
-								
-								## Copy
-								t1 = time.time()
-								tdata = tdata.copy(space='cuda')
-								
-								## Unpack
-								t2 = time.time()
-								try:
-									Unpack(tdata, udata)
-								except NameError:
-									udata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
-									Unpack(tdata, udata)
+							## Correlate
+							t3 = time.time()
+							cscale = gain_act if nAccumulate else 0.0
+							pdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,2,0)), 0.0, cdata)
+							## HACK - I need this on fornax to get the accumlation to work
+							BFMap('a(i,j,k) = %f*a(i,j,k) + b(i,j,k)' % cscale, {'a':cdata, 'b':pdata}, axis_names=('i','j','k'), shape=cdata.shape)
+							nAccumulate += self.ntime_gulp
+							
+							curr_time = time.time()
+							process_time = curr_time - prev_time
+							prev_time = curr_time
+							
+							## Dump?
+							t4 = time.time()
+							if nAccumulate == navg_seq:
+								print "dump"
+								with oseq.reserve(ogulp_size) as ospan:
+									odata = ospan.data_view(np.complex64).reshape(oshape)
 									
-								## Correlate
-								t3 = time.time()
-								cscale = gain_act if nAccumulate else 0.0
-								cdata = self.bfcc.matmul(gain_act, udata.transpose((1,2,0)), None, cscale, cdata)
-								nAccumulate += self.ntime_gulp
-								
-								## Dump?
-								t4 = time.time()
-								if nAccumulate == navg_seq:
-									print "dump"
+									curr_time = time.time()
+									reserve_time = curr_time - prev_time
+									prev_time = curr_time
+									
 									odata[...] = cdata
-									nAccumulate = 0
-									
-								t5 = time.time()
-								print (t5-t0)*1000, '->', (t1-t0)*1000, (t2-t1)*1000, (t3-t2)*1000, (t4-t3)*1000, (t5-t4)*1000
+								nAccumulate = 0
+							else:
+								reserve_time = 0.0
 								
+							t5 = time.time()
+							print (t5-t0)*1000, '->', (t1-t0)*1000, (t2-t1)*1000, (t3-t2)*1000, (t4-t3)*1000, (t5-t4)*1000
+							
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
 							
@@ -986,17 +1003,18 @@ class PacketizeOp(object):
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
 					
-					data = ispan.data_view(np.complex64).reshape(ishape)
-					BFMap('a(i,j-1,j) = Complex<float>(a(i,j,j-1).real, -a(i,j,j-1).imag)', {'a':data}, axis_names=('i','j','k'), shape=data.shape)
-					data = data.copy(space='system')
-					data = data.reshape(nchan,nstand,2,nstand,2)
-					data = np.swapaxes(data, 2, 3)
+					idata = ispan.data_view(np.complex64).reshape(ishape)
+					ldata = idata.copy(space='cuda')
+					BFMap('a(i,j-1,j) = Complex<float>(a(i,j,j-1).real, -a(i,j,j-1).imag)', {'a':ldata}, axis_names=('i','j','k'), shape=ldata.shape)
+					odata = ldata.copy(space='system')
+					odata = odata.reshape(nchan,nstand,2,nstand,2)
+					odata = numpy.swapaxes(odata, 2, 3)
 					
 					time_tag_cur = time_tag + ticksPerFrame
 					for i in xrange(nstand):
 						pkts = []
 						for j in xrange(i, nstand):
-							pktdata = data[:,i,j,:,:]
+							pktdata = data[:,j,i,:,:]
 							hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, 1)
 							try:
 								pkt = hdr + pktdata.tostring()
@@ -1164,9 +1182,9 @@ def main(argv):
 	isock.bind(iaddr)
 	isock.timeout = 0.5
 	
-	capture_ring = Ring(name="capture-%i" % tuning)
-	tbf_ring     = Ring(name="buffer-%i" % tuning)
-	tengine_ring = Ring(name="tengine-%i" % tuning)
+	capture_ring = Ring(name="capture-%i" % tuning, core=cores[0])
+	tbf_ring     = Ring(name="buffer-%i" % tuning, core=cores[0])
+	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
 	# TODO: Put this into config file instead
@@ -1203,7 +1221,7 @@ def main(argv):
 	                           max_bytes_per_sec=bw_max))
 	ops.append(BeamformerOp(log=log, iring=capture_ring, oring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=GSIZE,
-	                        nchan_max=nchan_max, 
+	                        nchan_max=nchan_max, nbeam_max=1, 
 	                        core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=50,
