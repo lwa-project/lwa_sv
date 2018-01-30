@@ -651,21 +651,14 @@ class TEngineOp(object):
 								## Copy the data to the GPU - from here on out we are on the GPU
 								tdata = pdata.copy(space='cuda')
 								
-								## Unpack
-								try:
-									Unpack(tdata, udata)
-								except NameError:
-									udata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
-									Unpack(tdata, udata)
-									
 								## IFFT
-								gdata = BFArray(shape=udata.shape, dtype=np.complex64, space='cuda')
+								gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
 								try:
-									bfft.execute(udata, gdata, inverse=True)
+									bfft.execute(tdata, gdata, inverse=True)
 								except NameError:
 									bfft = Fft()
-									bfft.init(udata, gdata, axes=1, apply_fftshift=True)
-									bfft.execute(udata, gdata, inverse=True)
+									bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
+									bfft.execute(tdata, gdata, inverse=True)
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand,npol))
