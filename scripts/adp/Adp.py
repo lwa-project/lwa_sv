@@ -1273,7 +1273,7 @@ class MsgProcessor(ConsumerThread):
 		def _downloadFiles(tTrigger, nTunings=len(self.config['drx']), ageLimit=10.0, deleteAfterCopy=False):
 			filenames = []
 			for s in (1,2,3,4,5,6):
-				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
+				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
 				latestTBF = subprocess.check_output(cmd, shell=True)
 				lines = latestTBF.split('\n')
 				for f,line in enumerate(lines):
@@ -1285,7 +1285,7 @@ class MsgProcessor(ConsumerThread):
 						mtime, filename = float(fields[5]), fields[6]
 						print '!!', tTrigger, mtime, tTrigger - mtime
 						if abs(tTrigger - mtime) < ageLimit:
-							outname = '/data1/adc_cal_%i_%i' % (s, f+1)
+							outname = '/data0/adc_cal_%i_%i' % (s, f+1)
 							subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
 							filenames.append( outname )
 							
