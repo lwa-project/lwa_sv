@@ -14,7 +14,7 @@ from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
 from bifrost.fft import Fft
-from bifrost.fir import FIR
+from bifrost.fir import Fir
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
 from bifrost.libbifrost import bf
@@ -668,11 +668,14 @@ class TEngineOp(object):
 								try:
 									bfir.execute(gdata, fdata)
 								except NameError:
+									coeffs = self.coeffs*1.0
+									coeffs.shape += (1,)
+									coeffs = np.repeat(coeffs, nstand*npol, axis=1)
+									coeffs.shape = (coeffs.shape[0],nstand,npol)
 									coeffs = BFArray(self.coeffs, space='cuda')
 									
-									bfir = FIR()
-									bfir.init(self.coeffs.size, 1, self.ntime_gulp*self.nchan_out, nstand)
-									bfir.set_coeffs(coeffs)
+									bfir = Fir()
+									bfir.init(self.coeffs, 1)
 									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
 									bfir.execute(gdata, fdata)
 									
