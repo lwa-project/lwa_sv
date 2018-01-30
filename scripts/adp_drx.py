@@ -522,7 +522,7 @@ class BeamformerOp(object):
 				self.sequence_proclog.update(ihdr)
 				
 				# Setup the beamformer
-				cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
+				cgains = BFArray(shape=(self.nbeam_max*2,ihdr['nchan'],ihdr['nstand']*ihdr['npol']), dtype=np.complex64, space='cuda')
 				status = self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, cgains, forceUpdate=True )
 				
 				nchan  = ihdr['nchan']
