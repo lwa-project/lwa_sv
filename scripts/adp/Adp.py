@@ -1054,7 +1054,8 @@ class MsgProcessor(ConsumerThread):
 			if not self.check_success(lambda: self.servers.do_power('on'),
 			                          'Powering on servers',
 			                          self.servers.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 			startup_timeout = self.config['server']['startup_timeout']
 			try:
 				#self._wait_until_servers_power('on', startup_timeout)
