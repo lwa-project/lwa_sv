@@ -618,7 +618,7 @@ class TEngineOp(object):
 					ohdr_str = json.dumps(ohdr)
 					
 					# Adjust the gain to make this ~compatible with LWA1
-					act_gain = self.gain - 18
+					act_gain = self.gain - 18 + 4
 					
 					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
