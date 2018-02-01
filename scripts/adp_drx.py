@@ -153,7 +153,7 @@ class CopyOp(object):
 				ohdr = ihdr.copy()
 				
 				prev_time = time.time()
-				iseq_spans = iseq.read(size)
+				iseq_spans = iseq.read(igulp_size)
 				while not self.iring.writing_ended():
 					reset_sequence = False
 					
@@ -545,7 +545,7 @@ class BeamformerOp(object):
 				self.oring.resize(ogulp_size)
 				
 				# Setup the intermidiate arrays
-				bdata = BFArray(shape=(self.ntime_gulp,nchan,self.nbeam_max*2), dtype=np.complex64, space='cuda')
+				bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
 				
 				prev_time = time.time()
 				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
