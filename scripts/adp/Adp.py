@@ -1333,7 +1333,7 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Analyzing TBF capture")
 		filenames = _downloadFiles(tTrigger)
 				
-		if len(filenames) >= 6 or 'FORCE' in args:
+		if len(filenames) >= 6 or 'FORCE' in arg:
 			# Solve for the delays
 			output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
 			
@@ -1383,7 +1383,7 @@ class MsgProcessor(ConsumerThread):
 			# Analyze
 			self.log.info("Verifying TBF capture")
 			filenames = _downloadFiles(tTrigger)
-			if len(filenames) >= 6 or 'FORCE' in args:
+			if len(filenames) >= 6 or 'FORCE' in arg:
 				# Verify the delays
 				output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
 				
