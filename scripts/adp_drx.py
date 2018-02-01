@@ -144,10 +144,10 @@ class CopyOp(object):
 				igulp_size = self.ntime_gulp*nchan*nstand*npol
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
-				self.iring.resize(igulp_size, igulp_size*10)
+				self.iring.resize(igulp_size)#, igulp_size*10)
 				#self.oring.resize(ogulp_size)#, obuf_size)
 				
-				ticksPerTime = FS / CHAN_BW
+				ticksPerTime = int(FS / CHAN_BW)
 				base_time_tag = iseq.time_tag
 				
 				ohdr = ihdr.copy()
@@ -160,7 +160,7 @@ class CopyOp(object):
 					ohdr['timetag'] = base_time_tag
 					ohdr_str = json.dumps(ohdr)
 					
-					with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
 							if ispan.size < igulp_size:
 								continue # Ignore final gulp
@@ -187,7 +187,7 @@ class CopyOp(object):
 								reset_sequence = True
 								
 							## Update the base time tag
-							base_time_tag += nTime*ticksPerTime
+							base_time_tag += self.ntime_gulp*ticksPerTime
 							
 							curr_time = time.time()
 							process_time = curr_time - prev_time
@@ -530,7 +530,7 @@ class BeamformerOp(object):
 				npol   = ihdr['npol']
 				igulp_size = self.ntime_gulp*nchan*nstand*npol		# 4+4 complex
 				ogulp_size = self.ntime_gulp*nchan*1*npol*8			# complex64
-				ishape = (self.ntime_gulp,nchan,nstand,npol)
+				ishape = (self.ntime_gulp,nchan,nstand*npol)
 				oshape = (self.ntime_gulp,nchan,self.nbeam_max*2)
 				
 				ticksPerTime = int(FS) / int(CHAN_BW)
@@ -568,9 +568,18 @@ class BeamformerOp(object):
 							## Fix the type
 							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 							
+							## Copy
+							tdata = bfidata.copy(space='cuda')
+							
+							## Unpack
+							try:
+								Unpack(tdata, ddata)
+							except NameError:
+								ddata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
+								Unpack(tdata, ddata)
+								
 							## Beamform
-							ddata = bfidata.copy(space='cuda')
-							self.bfbf.matmul(1.0, cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, bdata)
+							bdata = self.bfbf.matmul(1.0, cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, bdata)
 							
 							## Save and cleanup
 							odata[...] = bdata.copy(space='system').transpose(2,0,1)
@@ -767,21 +776,18 @@ class CorrelatorOp(object):
 							tdata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 							
 							## Copy
-							t1 = time.time()
 							tdata = tdata.copy(space='cuda')
 							
 							## Unpack
-							t2 = time.time()
 							try:
 								Unpack(tdata, udata)
 							except NameError:
-								udata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+								udata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
 								Unpack(tdata, udata)
 								
 							## Correlate
-							t3 = time.time()
 							cscale = gain_act if nAccumulate else 0.0
-							pdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,2,0)), 0.0, cdata)
+							pdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,0,2)), 0.0, cdata)
 							## HACK - I need this on fornax to get the accumlation to work
 							BFMap('a(i,j,k) = %f*a(i,j,k) + b(i,j,k)' % cscale, {'a':cdata, 'b':pdata}, axis_names=('i','j','k'), shape=cdata.shape)
 							nAccumulate += self.ntime_gulp
@@ -807,7 +813,7 @@ class CorrelatorOp(object):
 								reserve_time = 0.0
 								
 							t5 = time.time()
-							print (t5-t0)*1000, '->', (t1-t0)*1000, (t2-t1)*1000, (t3-t2)*1000, (t4-t3)*1000, (t5-t4)*1000
+							print (t5-t0)*1000, '->', (t4-t3)*1000, (t5-t4)*1000
 							
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
