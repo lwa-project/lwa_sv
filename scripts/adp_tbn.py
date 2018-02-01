@@ -672,10 +672,10 @@ class TEngineOp(object):
 									coeffs.shape += (1,)
 									coeffs = np.repeat(coeffs, nstand*npol, axis=1)
 									coeffs.shape = (coeffs.shape[0],nstand,npol)
-									coeffs = BFArray(self.coeffs, space='cuda')
+									coeffs = BFArray(coeffs, space='cuda')
 									
 									bfir = Fir()
-									bfir.init(self.coeffs, 1)
+									bfir.init(coeffs, 1)
 									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
 									bfir.execute(gdata, fdata)
 									
