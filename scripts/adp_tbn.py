@@ -618,7 +618,7 @@ class TEngineOp(object):
 					ohdr_str = json.dumps(ohdr)
 					
 					# Adjust the gain to make this ~compatible with LWA1
-					act_gain = self.gain - 18 + 4
+					act_gain = self.gain - 18
 					
 					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
@@ -662,7 +662,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand,npol))
-								BFMap("a(i,j,k) *= b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
+								BFMap("a(i,j,k) *= 128./16.* b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
 								
 								## FIR filter
 								try:
