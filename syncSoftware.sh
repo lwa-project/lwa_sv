@@ -15,6 +15,7 @@ fi
 
 DO_CONFIG=1
 DO_SOFTWARE=1
+DO_UPSTART=1
 DO_RESTART=0
 DO_QUERY=0
 while [[ $# -gt 0 ]]; do
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
 			echo "-h,--help            Show this help message"
 			echo "-c,--config-only     Only update the configuration file and restart the ADP services"
 			echo "-s,--software-only   Only update the ADP software and restart the ADP services"
+			echo "-u,--upstart-only    Only update the ADP upstart service definitions"
 			echo "-r,--restart         Rrestart the ADP services after an update"
 			echo "-o,--restart-only    Do not udpdate, only restart the ADP services"
 			echo "-q,--query           Query the status of the ADP services"
@@ -39,13 +41,21 @@ while [[ $# -gt 0 ]]; do
 		-c|--config-only)
 			DO_CONFIG=1
 			DO_SOFTWARE=0
+			DO_UPSTART=0
 			DO_QUERY=0
 			;;
 		-s|--software-only)
 			DO_CONFIG=0
                         DO_SOFTWARE=1
+			DO_UPSTART=0
 			DO_QUERY=0
                         ;;
+		-u|--upstart-only)
+			DO_CONFIG=0
+			DO_SOFTWARE=0
+			DO_UPSTART=1
+			DO_QUERY=0
+			;;
 		-r|--restart)
                         DO_RESTART=1
 			DO_QUERY=0
@@ -53,12 +63,14 @@ while [[ $# -gt 0 ]]; do
 		-0|--restart-only)
 			DO_CONFIG=0
 			DO_SOFTWARE=0
+			DO_UPSTART=0
 			DO_RESTART=1
 			DO_QUERY=0
 			;;
 		-q|--query)
 			DO_CONFIG=0
                         DO_SOFTWARE=0
+			DO_UPSTART=0
                         DO_RESTART=0
 			DO_QUERY=1
 			;;
@@ -108,6 +120,24 @@ if [ "${DO_SOFTWARE}" == "1" ]; then
 	done
 fi
 
+
+#
+# Upstart
+#
+
+if [ "${DO_UPSTART}" == "1" ]; then
+	SRC_PATH=/home/adp/lwa_sv/config
+	DST_PATH=/etc/init
+	
+	for node in `seq 0 6`; do
+		if [ "${node}" == "0" ]; then
+			rsync -e ssh -avH ${SRC_PATH}/headnode/adp-*.conf adp${node}:${DST_PATH}/
+		else
+			rsync -e ssh -avH ${SRC_PATH}/servers/adp-*.conf adp${node}:${DST_PATH}/
+		fi
+		ssh adp${node} "initctl reload-configuration"
+	done
+fi
 
 #
 # Restart
