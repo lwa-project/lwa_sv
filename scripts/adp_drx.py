@@ -144,61 +144,37 @@ class CopyOp(object):
 				igulp_size = self.ntime_gulp*nchan*nstand*npol
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
-				self.iring.resize(igulp_size)#, igulp_size*10)
+				self.iring.resize(igulp_size, igulp_size*10)
 				#self.oring.resize(ogulp_size)#, obuf_size)
-				
-				ticksPerTime = int(FS / CHAN_BW)
-				base_time_tag = iseq.time_tag
-				
 				ohdr = ihdr.copy()
+				ohdr_str = json.dumps(ohdr)
 				
 				prev_time = time.time()
-				iseq_spans = iseq.read(igulp_size)
-				while not self.iring.writing_ended():
-					reset_sequence = False
-					
-					ohdr['timetag'] = base_time_tag
-					ohdr_str = json.dumps(ohdr)
-					
-					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
-						for ispan in iseq_spans:
-							if ispan.size < igulp_size:
-								continue # Ignore final gulp
+				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+					for ispan in iseq.read(igulp_size):
+						if ispan.size < igulp_size:
+							continue # Ignore final gulp
+						curr_time = time.time()
+						acquire_time = curr_time - prev_time
+						prev_time = curr_time
+						
+						with oseq.reserve(ogulp_size) as ospan:
 							curr_time = time.time()
-							acquire_time = curr_time - prev_time
+							reserve_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							try:
-								with oseq.reserve(ogulp_size, nonblocking=True) as ospan:
-									curr_time = time.time()
-									reserve_time = curr_time - prev_time
-									prev_time = curr_time
-									
-									idata = ispan.data_view(np.uint8)
-									odata = ospan.data_view(np.uint8)	
-									BFMemCopy(odata, idata)
-									#print "COPY"
-									
-							except IOError:
-								curr_time = time.time()
-								reserve_time = curr_time - prev_time
-								prev_time = curr_time
-								
-								reset_sequence = True
-								
-							## Update the base time tag
-							base_time_tag += self.ntime_gulp*ticksPerTime
+							idata = ispan.data_view(np.uint8)
+							odata = ospan.data_view(np.uint8)	
+							#odata[...] = idata
+							BFMemCopy(odata, idata)
+							#print "COPY"
 							
 							curr_time = time.time()
 							process_time = curr_time - prev_time
 							prev_time = curr_time
 							self.perf_proclog.update({'acquire_time': acquire_time, 
-							                          'reserve_time': reserve_time, 
-							                          'process_time': process_time,})
-							
-							# Reset to move on to the next input sequence?
-							if reset_sequence:
-								break
+												 'reserve_time': reserve_time, 
+												 'process_time': process_time,})
 
 def get_time_tag(dt=datetime.datetime.utcnow(), seq_offset=0):
 	timestamp = int((dt - ADP_EPOCH).total_seconds())
