@@ -297,7 +297,7 @@ class TriggeredDumpOp(object):
 			
 			# HACK TESTING write to file instead of socket
 			if local:
-				filename = '/data1/test_%s_%i_%020i.tbf' % (socket.gethostname(), self.tuning, dump_time_tag)#time_tag0
+				filename = '/data0/test_%s_%i_%020i.tbf' % (socket.gethostname(), self.tuning, dump_time_tag)#time_tag0
 				ofile = open(filename, 'wb')
 			else:
 				udt = UDPTransmit(sock=self.sock, core=self.core)

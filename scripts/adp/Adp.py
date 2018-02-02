@@ -1054,15 +1054,17 @@ class MsgProcessor(ConsumerThread):
 			if not self.check_success(lambda: self.servers.do_power('on'),
 			                          'Powering on servers',
 			                          self.servers.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 			startup_timeout = self.config['server']['startup_timeout']
 			try:
 				#self._wait_until_servers_power('on', startup_timeout)
 				# **TODO: Use this instead when Paramiko issues resolved!
 				self._wait_until_servers_can_ssh(    startup_timeout)
 			except RuntimeError:
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-				
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+					
 		## Stop the pipelines
 		self.log.info('Stopping pipelines')
 		for tuning in xrange(2):
@@ -1117,22 +1119,25 @@ class MsgProcessor(ConsumerThread):
 		# Bring up the pipelines
 		can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
 		self.log.info("Can ssh: "+can_ssh_status)
-		if all(self.servers.can_ssh()):
+		if all(self.servers.can_ssh()) or 'FORCE' in arg:
 			self.log.info("Restarting pipelines")
 			for tuning in xrange(len(self.config['drx'])):
 				if not self.check_success(lambda: self.headnode.restart_tengine(tuning=tuning),
 									 'Restarting pipelines - DRX/T-engine',
 									 self.headnode.host):
-					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+					if 'FORCE' not in arg:
+						return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 				if not self.check_success(lambda: self.servers.restart_drx(tuning=tuning),
 									 'Restarting pipelines - DRX',
 									 self.servers.host):
-					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+					if 'FORCE' not in arg:
+						return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
 			if not self.check_success(lambda: self.servers.restart_tbn(),
 			                          'Restarting pipelines - TBN',
 			                          self.servers.host):
-				return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
-				
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+					
 		# Bring up the FPGAs
 		if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
 			self.log.info("Programming FPGAs")
@@ -1207,7 +1212,8 @@ class MsgProcessor(ConsumerThread):
 		print 'TBN:', len(pipeline_pids), pipeline_pids
 		if len(pipeline_pids) != len(self.servers):
 			self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
-			return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+			if 'FORCE' not in arg:
+				return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
 		## DRX
 		pipeline_pids = []
 		for tuning in xrange(len(self.config['drx'])):
@@ -1216,7 +1222,8 @@ class MsgProcessor(ConsumerThread):
 			print 'DRX-%i:' % tuning, len(pipeline_pids), pipeline_pids
 			if len(pipeline_pids) != len(self.servers):
 				self.log.error('Found %i DRX-%i pipelines running, expected %i', len(pipeline_pids), tuning, len(self.servers))
-				return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
 		## T-engine
 		for tuning in xrange(len(self.config['drx'])):
 			pipeline_pids = [p for s in self.headnode.pid_tengine(tuning=tuning) for p in s]
@@ -1224,7 +1231,8 @@ class MsgProcessor(ConsumerThread):
 			print 'TEngine-%i:' % tuning, len(pipeline_pids), pipeline_pids
 			if len(pipeline_pids) != 1:
 				self.log.error('Found %i TEngine-%i pipelines running, expected %i', len(pipeline_pids), tuning,  1)
-				return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+				if 'FORCE' not in arg:
+					return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
 		self.log.info('Checking pipeline processing succeeded')
 		
 		#self.log.info("Initializing TBN")
@@ -1273,7 +1281,7 @@ class MsgProcessor(ConsumerThread):
 		def _downloadFiles(tTrigger, nTunings=len(self.config['drx']), ageLimit=10.0, deleteAfterCopy=False):
 			filenames = []
 			for s in (1,2,3,4,5,6):
-				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data1/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
+				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
 				latestTBF = subprocess.check_output(cmd, shell=True)
 				lines = latestTBF.split('\n')
 				for f,line in enumerate(lines):
@@ -1285,7 +1293,7 @@ class MsgProcessor(ConsumerThread):
 						mtime, filename = float(fields[5]), fields[6]
 						print '!!', tTrigger, mtime, tTrigger - mtime
 						if abs(tTrigger - mtime) < ageLimit:
-							outname = '/data1/adc_cal_%i_%i' % (s, f+1)
+							outname = '/data0/adc_cal_%i_%i' % (s, f+1)
 							subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
 							filenames.append( outname )
 							
@@ -1325,7 +1333,7 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Analyzing TBF capture")
 		filenames = _downloadFiles(tTrigger)
 				
-		if len(filenames) >= 6:
+		if len(filenames) >= 6 or 'FORCE' in arg:
 			# Solve for the delays
 			output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
 			
@@ -1375,7 +1383,7 @@ class MsgProcessor(ConsumerThread):
 			# Analyze
 			self.log.info("Verifying TBF capture")
 			filenames = _downloadFiles(tTrigger)
-			if len(filenames) >= 6:
+			if len(filenames) >= 6 or 'FORCE' in arg:
 				# Verify the delays
 				output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
 				
