@@ -662,7 +662,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand,npol))
-								BFMap("a(i,j,k) *= 128./16.* b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
+								BFMap("a(i,j,k) *= 1./16.* b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
 								
 								## FIR filter
 								try:
@@ -708,7 +708,6 @@ class TEngineOp(object):
 					# Clean-up
 					try:
 						del pdata
-						del udata
 						del fdata
 						del qdata
 					except NameError:
