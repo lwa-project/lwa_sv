@@ -770,6 +770,9 @@ def main(argv):
 	log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
 	log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
 	
+	cpu_affinity.set_core(cores[0])
+	BFSetGPU(gpus[0])
+	
 	iaddr = Address(iaddr, iport)
 	isock = UDPSocket()
 	isock.bind(iaddr)

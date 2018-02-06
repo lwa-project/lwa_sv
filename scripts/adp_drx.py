@@ -1190,6 +1190,9 @@ def main(argv):
 	log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
 	log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
 	
+	cpu_affinity.set_core(cores[0])
+	BFSetGPU(gpus[0])
+	
 	# Note: Capture uses Bifrost address+socket objects, while output uses
 	#         plain Python address+socket objects.
 	iaddr = Address(iaddr, iport)
