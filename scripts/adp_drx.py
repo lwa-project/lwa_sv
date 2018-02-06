@@ -770,17 +770,12 @@ class CorrelatorOp(object):
 							acquire_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							curr_time = time.time()
-							reserve_time = curr_time - prev_time
-							prev_time = curr_time
-							
 							## Setup and load
 							idata = ispan.data_view(np.uint8).reshape(ishape)
 							if ochan != nchan:
 								idata = idata[:,:ochan,:]
 								
 							## Fix the type
-							t0 = time.time()
 							tdata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 							
 							## Copy
@@ -817,11 +812,9 @@ class CorrelatorOp(object):
 									
 									odata[...] = cdata
 								nAccumulate = 0
-							else:
-								reserve_time = 0.0
-								
-							t5 = time.time()
-							#print (t5-t0)*1000, '->', (t4-t0)*1000, (t5-t4)*1000
+							curr_time = time.time()
+							reserve_time = curr_time - prev_time
+							prev_time = curr_time
 							
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
@@ -832,7 +825,7 @@ class CorrelatorOp(object):
 								break
 								
 							curr_time = time.time()
-							process_time = curr_time - prev_time
+							process_time += curr_time - prev_time
 							prev_time = curr_time
 							self.perf_proclog.update({'acquire_time': acquire_time, 
 							                          'reserve_time': reserve_time, 
@@ -1010,7 +1003,7 @@ class PacketizeOp(object):
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
 			# HACK for verification
-			filename = '/data0/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag0/FS)#time_tag0
+			filename = '/data0/test_%s_%020i.cor' % (socket.gethostname(), time_tag0)#time_tag0
 			ofile = open(filename, 'wb')
 			
 			prev_time = time.time()
@@ -1068,6 +1061,11 @@ class PacketizeOp(object):
 										 'process_time': process_time,})
 										 
 			del udt
+			
+			try:
+				ofile.close()
+			except:
+				pass
 
 def get_utc_start(shutdown_event=None):
 	got_utc_start = False
