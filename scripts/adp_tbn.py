@@ -1002,6 +1002,9 @@ def main(argv):
 	log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
 	log.info("Cores:        %s", ' '.join([str(v) for v in cores]))
 	
+	cpu_affinity.set_core(cores[0])
+	BFSetGPU(gpus[0])
+	
 	# Note: Capture uses Bifrost address+socket objects, while output uses
 	#         plain Python address+socket objects.
 	iaddr = Address(iaddr, iport)
