@@ -628,7 +628,7 @@ class CorrelatorOp(object):
 		self.nchan_max = nchan_max
 		self.configMessage = ISC.CORConfigurationClient(addr=('adp',5832))
 		self._pending = deque()
-		self.navg = 10*100
+		self.navg = 5*100
 		self.gain = 0
 		
 	@ISC.logException
