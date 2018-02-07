@@ -420,7 +420,7 @@ class TEngineOp(object):
 										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
 									except NameError:
 										pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
-										pdata = BFArray(shape=pshape, dtype=np.complex64, space='cuda_host')
+										pdata = BFArray(shape=pshape, dtype=np.complex64, space='system')
 										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
 								else:
 									pdata = idata
@@ -769,9 +769,6 @@ def main(argv):
 	log.info("Tunings:      %i (of %i)", tuning+1, ntuning)
 	log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
 	log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
-	
-	cpu_affinity.set_core(cores[0])
-	BFSetGPU(gpus[0])
 	
 	iaddr = Address(iaddr, iport)
 	isock = UDPSocket()

@@ -195,8 +195,8 @@ class UnpackOpCPU(object):
 							odata = ospan.data_view(np.int8).reshape(oshape)
 							
 							## Fix the type
-							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data, space='cuda_host')
-							bfodata = BFArray(shape=idata.shape, dtype='ci8', space='cuda_host')
+							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data, space='system')
+							bfodata = BFArray(shape=idata.shape, dtype='ci8', space='system')
 							
 							## Unpack
 							Unpack(bfidata, bfodata)
@@ -643,7 +643,7 @@ class TEngineOp(object):
 										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
 									except NameError:
 										pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
-										pdata = BFArray(shape=pshape, dtype='ci4', native=False, space='cuda_host')
+										pdata = BFArray(shape=pshape, dtype='ci4', native=False, space='system')
 										pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
 								else:
 									pdata = idata
@@ -1001,9 +1001,6 @@ def main(argv):
 	log.info("Dst address:  %s:%i", oaddr, oport)
 	log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
 	log.info("Cores:        %s", ' '.join([str(v) for v in cores]))
-	
-	cpu_affinity.set_core(cores[0])
-	BFSetGPU(gpus[0])
 	
 	# Note: Capture uses Bifrost address+socket objects, while output uses
 	#         plain Python address+socket objects.
