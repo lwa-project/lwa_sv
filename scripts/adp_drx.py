@@ -1258,15 +1258,15 @@ def main(argv):
 	ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=50,
 	                        core=cores.pop(0)))
-	# HACK for verification
-	if hostname == 'adp3' and tuning == 0:
-		ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
-		                        tuning=tuning, ntime_gulp=GSIZE,
-		                        nchan_max=nchan_max, 
-		                        core=3 if tuning == 0 else 10, gpu=tuning))
-		ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-		                       npkt_gulp=1, 
-		                       core=3 if tuning == 0 else 10, gpu=tuning))
+	## HACK for verification
+	#if hostname == 'adp3' and tuning == 0:
+	#	ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
+	#	                        tuning=tuning, ntime_gulp=GSIZE,
+	#	                        nchan_max=nchan_max, 
+	#	                        core=3 if tuning == 0 else 10, gpu=tuning))
+	#	ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
+	#	                       npkt_gulp=1, 
+	#	                       core=3 if tuning == 0 else 10, gpu=tuning))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
