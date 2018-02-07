@@ -830,7 +830,6 @@ class CorrelatorOp(object):
 							self.perf_proclog.update({'acquire_time': acquire_time, 
 							                          'reserve_time': reserve_time, 
 							                          'process_time': process_time,})
-							print '!!!', acquire_time*1000, reserve_time*1000, process_time*1000
 							
 					# Clean-up
 					try:
