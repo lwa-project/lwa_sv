@@ -1025,7 +1025,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 2500
+	GSIZE= 500
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
 	                     buffer_ntime=2500, slot_ntime=25000, core=cores.pop(0),
