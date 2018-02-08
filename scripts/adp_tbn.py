@@ -696,6 +696,15 @@ class TEngineOp(object):
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
+								
+								# Clean-up
+								try:
+									del pdata
+									del fdata
+									del qdata
+								except NameError:
+									pass
+									
 								break
 								
 							curr_time = time.time()

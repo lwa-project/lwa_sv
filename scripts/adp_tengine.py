@@ -165,7 +165,10 @@ class ReorderChannelsOp(object):
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
 				
-				igulp_size = self.ntime_gulp*nchan*nstand*npol*16				# complex128
+				if nstand == 1:
+					igulp_size = self.ntime_gulp*nchan*nstand*npol*16				# complex128
+				else:
+					igulp_size = self.ntime_gulp*nchan*nstand*npol*8				# complex64
 				ishape = (self.ntime_gulp,nchan/nsrc,nsrc,npol)
 				ogulp_size = self.ntime_gulp*nchan*nstand*npol*8				# complex64
 				oshape = (self.ntime_gulp,nchan,1,npol)
@@ -191,7 +194,10 @@ class ReorderChannelsOp(object):
 							reserve_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							idata = ispan.data_view(np.complex128).reshape(ishape)
+							if nstand == 1:
+								idata = ispan.data_view(np.complex128).reshape(ishape)
+							else:
+								idata = ispan.data_view(np.complex64).reshape(ishape)
 							odata = ospan.data_view(np.complex64).reshape(oshape)
 							
 							rdata = idata.astype(np.complex64)
@@ -473,6 +479,17 @@ class TEngineOp(object):
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
+								
+								## Clean-up
+								try:
+									del pdata
+									del bfft
+									del bfir
+									del fdata
+									del qdata
+								except NameError:
+									pass
+									
 								break
 								
 							curr_time = time.time()
