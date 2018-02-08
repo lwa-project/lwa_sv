@@ -290,7 +290,7 @@ class TriggeredDumpOp(object):
 		# HACK TESTING
 		dump_time_tag = time_tag
 		if dump_time_tag is None:
-			time_offset    = -4.0
+			time_offset    = -2.4
 			time_offset_s  = int(time_offset)
 			time_offset_us = int(round((time_offset-time_offset_s)*1e6))
 			time_offset    = datetime.timedelta(seconds=time_offset_s, microseconds=time_offset_us)
@@ -542,7 +542,7 @@ class BeamformerOp(object):
 				
 				ohdr = ihdr.copy()
 				ohdr['nstand'] = self.nbeam_max
-				ohdr['nbit'] = 64
+				ohdr['nbit'] = 32
 				ohdr['complex'] = True
 				ohdr_str = json.dumps(ohdr)
 				
@@ -843,24 +843,25 @@ class CorrelatorOp(object):
 					if not reset_sequence:
 						break
 
-def gen_chips_header(server, nchan, chan0, seq, gbe=0, nservers=6):
+def gen_chips_header(server, nchan, chan0, seq, gbe=0, nbeam=1, nservers=6):
 	return struct.pack('>BBBBBBHQ', 
 				    server, 
 				    gbe, 
 				    nchan,
-				    1, 
+				    nbeam, 
 				    0,
 				    nservers,
 				    chan0-nchan*(server-1), 
 				    seq)
 	
 class RetransmitOp(object):
-	def __init__(self, log, osock, iring, tuning=0, nchan_max=256, ntime_gulp=2500, guarantee=True, core=-1):
+	def __init__(self, log, osock, iring, tuning=0, nchan_max=256, ntime_gulp=2500, nbeam_max=1, guarantee=True, core=-1):
 		self.log   = log
 		self.sock = osock
 		self.iring = iring
 		self.tuning = tuning
 		self.ntime_gulp = ntime_gulp
+		self.nbeam_max = nbeam_max
 		self.guarantee = guarantee
 		self.core = core
 		
@@ -908,8 +909,11 @@ class RetransmitOp(object):
 					prev_time = curr_time
 					
 					idata = ispan.data_view(np.complex64).reshape(igulp_shape)
-					pdata = idata.astype(np.complex128)
-					
+					if nbeam_max == 1:
+						pdata = idata.astype(np.complex128)
+					else:
+						pdata = idata
+						
 					pkts = []
 					for t in xrange(0, self.ntime_gulp):
 						pktdata = pdata[t,:,:]
@@ -1216,7 +1220,7 @@ def main(argv):
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
 	# TODO: Put this into config file instead
-	tbf_buffer_secs = 5
+	tbf_buffer_secs = 3
 	
 	oaddr = Address(oaddr, oport)
 	osock = UDPSocket()
@@ -1257,6 +1261,7 @@ def main(argv):
 	                        core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=50,
+	                        nbeam_max=1, 
 	                        core=cores.pop(0)))
 	## HACK for verification
 	#if hostname == 'adp3' and tuning == 0:
