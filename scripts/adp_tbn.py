@@ -1025,17 +1025,17 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 500
+	GSIZE= 2500
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
-	                     buffer_ntime=GSIZW, slot_ntime=25000, core=cores.pop(0),
+	                     buffer_ntime=2500, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
 	#ops.append(UnpackOpCPU(log, capture_ring, unpack_ring, 
-	#                       ntime_gulp=GSIZE, core=cores.pop(0)))
+	#                       ntime_gulp=2500, core=cores.pop(0)))
 	#ops.append(TEngineOpCPU(log, unpack_ring, tengine_ring,
-	#                        ntime_gulp=GSIZE, core=cores.pop(0)))
+	#                        ntime_gulp=2500, core=cores.pop(0)))
 	ops.append(TEngineOp(log, capture_ring, tengine_ring,
-	                     ntime_gulp=GSIZE, core=cores.pop(0), gpu=gpus.pop(0)))
+	                     ntime_gulp=2500, core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring, osock=osock, 
 	                       nroach=nroach, roach0=roach0,
 	                       npkt_gulp=3, core=cores.pop(0)))
