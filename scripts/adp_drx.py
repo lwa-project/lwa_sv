@@ -909,7 +909,7 @@ class RetransmitOp(object):
 					prev_time = curr_time
 					
 					idata = ispan.data_view(np.complex64).reshape(igulp_shape)
-					if nbeam_max == 1:
+					if self.nbeam_max == 1:
 						pdata = idata.astype(np.complex128)
 					else:
 						pdata = idata
