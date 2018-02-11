@@ -768,7 +768,7 @@ class PacketizeOp(object):
 		
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
 		
-		self.sync_tbn_pipelines = MCS.Synchronizer('TBN')
+		#self.sync_tbn_pipelines = MCS.Synchronizer('TBN')
 		
 	def main(self):
 		global ACTIVE_TBN_CONFIG
@@ -831,17 +831,17 @@ class PacketizeOp(object):
 					#self.sync_tbn_pipelines(time_tag)
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						try:
-							self.sync_tbn_pipelines(time_tag_cur)
-							if free_run:
-								print "Leaving free running"
-								free_run = False
-						except ValueError:
-							continue
-						except (socket.timeout, socket.error):
-							if not free_run:
-								print "Entering free running"
-								free_run = True
+						#try:
+						#	self.sync_tbn_pipelines(time_tag_cur)
+						#	if free_run:
+						#		print "Leaving free running"
+						#		free_run = False
+						#except ValueError:
+						#	continue
+						#except (socket.timeout, socket.error):
+						#	if not free_run:
+						#		print "Entering free running"
+						#		free_run = True
 								
 						pkts = []
 						for stand in xrange(nstand):
@@ -1025,7 +1025,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 500
+	GSIZE= 1000
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
@@ -1038,7 +1038,7 @@ def main(argv):
 	                     ntime_gulp=GSIZE, core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring, osock=osock, 
 	                       nroach=nroach, roach0=roach0,
-	                       npkt_gulp=3, core=cores.pop(0)))
+	                       npkt_gulp=7, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	

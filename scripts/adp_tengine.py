@@ -557,7 +557,7 @@ class PacketizeOp(object):
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		
-		self.sync_drx_pipelines = MCS.Synchronizer('DRX')
+		#self.sync_drx_pipelines = MCS.Synchronizer('DRX')
 		
 	@ISC.logException
 	def main(self):
@@ -619,12 +619,12 @@ class PacketizeOp(object):
 					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						try:
-							self.sync_drx_pipelines(time_tag_cur)
-						except ValueError:
-							continue
-						except (socket.timeout, socket.error):
-							pass
+						#try:
+						#	self.sync_drx_pipelines(time_tag_cur)
+						#except ValueError:
+						#	continue
+						#except (socket.timeout, socket.error):
+						#	pass
 							
 						pkts = []
 						for beam in xrange(nbeam):
@@ -800,7 +800,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 2500
+	GSIZE= 500
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
