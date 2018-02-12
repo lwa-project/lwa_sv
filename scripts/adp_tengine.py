@@ -816,8 +816,8 @@ def main(argv):
 		                core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring,
 		                  osock=osock, 
-		                  nbeam=1, beam0=1, tuning=tuning, 
-		                  npkt_gulp=24, core=cores.pop(0)))
+		                  nbeam=2, beam0=1, tuning=tuning, 
+		                  npkt_gulp=48, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	

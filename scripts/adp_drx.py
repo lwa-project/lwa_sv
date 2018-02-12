@@ -533,7 +533,7 @@ class BeamformerOp(object):
 				status = self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, forceUpdate=True )
 				
 				igulp_size = self.ntime_gulp*nchan*nstand*npol		# 4+4 complex
-				ogulp_size = self.ntime_gulp*nchan*1*npol*8			# complex64
+				ogulp_size = self.ntime_gulp*nchan*self.nbeam_max*npol*8			# complex64
 				ishape = (self.ntime_gulp,nchan,nstand*npol)
 				oshape = (self.ntime_gulp,nchan,self.nbeam_max*2)
 				
@@ -894,7 +894,7 @@ class RetransmitOp(object):
 			nstand = ihdr['nstand']
 			npol   = ihdr['npol']
 			igulp_size = self.ntime_gulp*nchan*nstand*npol*8		# complex64
-			igulp_shape = (self.ntime_gulp,nchan,npol)
+			igulp_shape = (self.ntime_gulp,nchan,nstand,npol)
 			
 			seq0 = ihdr['seq0']
 			seq = seq0
@@ -1257,11 +1257,11 @@ def main(argv):
 	                           max_bytes_per_sec=bw_max))
 	ops.append(BeamformerOp(log=log, iring=capture_ring, oring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=GSIZE,
-	                        nchan_max=nchan_max, nbeam_max=1, 
+	                        nchan_max=nchan_max, nbeam_max=2, 
 	                        core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=50,
-	                        nbeam_max=1, 
+	                        nbeam_max=2, 
 	                        core=cores.pop(0)))
 	## HACK for verification
 	#if hostname == 'adp3' and tuning == 0:
