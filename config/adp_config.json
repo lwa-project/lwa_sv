@@ -112,13 +112,13 @@
 				{
 					"pipeline_idx":      0,
 					"recorder_idx":      0,
-					"cpus":              [0, 2, 3, 4],
+					"cpus":              [0, 2, 3, 4, 5],
 					"gpus":              [0]
 				},
 				{
 					"pipeline_idx":      1,
 					"recorder_idx":      0,
-					"cpus":              [8, 9, 10, 11],
+					"cpus":              [8, 9, 10, 11, 12],
 					"gpus":              [1]
 				}
 	],

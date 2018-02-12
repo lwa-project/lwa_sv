@@ -75,6 +75,8 @@ class CaptureOp(object):
 		self.log    = log
 		self.args   = args
 		self.kwargs = kwargs
+		self.nbeam_max = self.kwargs['nbeam_max']
+		del self.kwargs['nbeam_max']
 		self.utc_start = self.kwargs['utc_start']
 		del self.kwargs['utc_start']
 		self.shutdown_event = threading.Event()
@@ -97,7 +99,7 @@ class CaptureOp(object):
 			'nchan':    nchan*nsrc, 
 			'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
 			'bw':       nchan*nsrc*CHAN_BW,
-			'nstand':   1,
+			'nstand':   self.nbeam_max,
 			#'stand0':   src0*16, # TODO: Pass src0 to the callback too(?)
 			'npol':     2,
 			'complex':  True,
@@ -146,7 +148,7 @@ class ReorderChannelsOp(object):
 		self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
 		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 		
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
@@ -169,9 +171,9 @@ class ReorderChannelsOp(object):
 					igulp_size = self.ntime_gulp*nchan*nstand*npol*16				# complex128
 				else:
 					igulp_size = self.ntime_gulp*nchan*nstand*npol*8				# complex64
-				ishape = (self.ntime_gulp,nchan/nsrc,nsrc,npol)
+				ishape = (self.ntime_gulp,nchan/nsrc,nsrc,nstand*npol)
 				ogulp_size = self.ntime_gulp*nchan*nstand*npol*8				# complex64
-				oshape = (self.ntime_gulp,nchan,1,npol)
+				oshape = (self.ntime_gulp,nchan,nstand,npol)
 				self.iring.resize(igulp_size, igulp_size*10)
 				self.oring.resize(ogulp_size)#, obuf_size)
 				
@@ -202,7 +204,7 @@ class ReorderChannelsOp(object):
 							
 							rdata = idata.astype(np.complex64)
 							
-							odata[...] = np.swapaxes(rdata, 1, 2).reshape((self.ntime_gulp,nchan,1,npol))
+							odata[...] = np.swapaxes(rdata, 1, 2).reshape((self.ntime_gulp,nchan,nstand,npol))
 							
 							curr_time = time.time()
 							process_time = curr_time - prev_time
@@ -345,7 +347,7 @@ class TEngineOp(object):
 		else:
 			return False
 			
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		cpu_affinity.set_core(self.core)
 		if self.gpu != -1:
@@ -490,6 +492,10 @@ class TEngineOp(object):
 								except NameError:
 									pass
 									
+								ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1               # 4+4 complex
+          				                        oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
+								self.oring.resize(ogulp_size)
+								
 								break
 								
 							curr_time = time.time()
@@ -537,11 +543,11 @@ def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
 
 class PacketizeOp(object):
 	# Note: Input data are: [time,beam,pol,iq]
-	def __init__(self, log, iring, osock, nbeam, beam0, tuning=0, npkt_gulp=128, core=-1):
+	def __init__(self, log, iring, osock, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
 		self.log   = log
 		self.iring = iring
 		self.sock  = osock
-		self.nbeam = nbeam
+		self.nbeam_max = nbeam_max
 		self.beam0 = beam0
 		self.tuning = tuning
 		self.npkt_gulp = npkt_gulp
@@ -569,7 +575,7 @@ class PacketizeOp(object):
 		
 		ntime_pkt     = DRX_NSAMPLE_PER_PKT
 		ntime_gulp    = self.npkt_gulp * ntime_pkt
-		ninput_max    = self.nbeam * 2
+		ninput_max    = self.nbeam_max * 2
 		gulp_size_max = ntime_gulp * ninput_max * 2
 		self.iring.resize(gulp_size_max)
 		
@@ -599,7 +605,7 @@ class PacketizeOp(object):
 			soffset = toffset % int(ntime_pkt)
 			if soffset != 0:
 				soffset = ntime_pkt - soffset
-			boffset = soffset*nbeam*npol
+			boffset = soffset*self.nbeam_max*npol
 			print '!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
 			
 			time_tag += soffset*ticksPerSample				# Correct for offset
@@ -614,9 +620,10 @@ class PacketizeOp(object):
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
 					
-					shape = (-1,nbeam,npol)
+					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
-					
+				
+					pkts = []	
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						#try:
@@ -626,8 +633,7 @@ class PacketizeOp(object):
 						#except (socket.timeout, socket.error):
 						#	pass
 							
-						pkts = []
-						for beam in xrange(nbeam):
+						for beam in xrange(self.nbeam_max):
 							for pol in xrange(npol):
 								pktdata = data[t:t+ntime_pkt,beam,pol]
 								hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -638,13 +644,13 @@ class PacketizeOp(object):
 								except Exception as e:
 									print 'Packing Error', str(e)
 									
-						try:
-							if ACTIVE_DRX_CONFIG.is_set():
-								if not self.tbfLock.is_set():
-									udt.sendmany(pkts)
-						except Exception as e:
-							print 'Sending Error', str(e)
-							
+					try:
+						if ACTIVE_DRX_CONFIG.is_set():
+							if not self.tbfLock.is_set():
+								udt.sendmany(pkts)
+					except Exception as e:
+						print 'Sending Error', str(e)
+						
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
 					curr_time = time.time()
@@ -800,11 +806,12 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 500
+	GSIZE= 2500
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nserver, src0=server0, max_payload_size=9000,
+	                     nbeam_max=2, 
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
 	ops.append(ReorderChannelsOp(log, capture_ring, reorder_ring, 
@@ -816,8 +823,8 @@ def main(argv):
 		                core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring,
 		                  osock=osock, 
-		                  nbeam=2, beam0=1, tuning=tuning, 
-		                  npkt_gulp=48, core=cores.pop(0)))
+		                  nbeam_max=2, beam0=1, tuning=tuning, 
+		                  npkt_gulp=96, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
