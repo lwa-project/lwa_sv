@@ -49,6 +49,9 @@
 				"gpus":              [1]
 			}
 	],
+	"tbf": {
+		"buffer_time_sec":  3.0
+	},
 	"tbn": {
 		"capture_bandwidth": 200e3,
 		"pipeline_idx":      2,

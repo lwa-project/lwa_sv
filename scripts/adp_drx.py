@@ -410,6 +410,19 @@ class BeamformerOp(object):
 		self.configMessage = ISC.BAMConfigurationClient(addr=('adp',5832))
 		self._pending = deque()
 		
+		# Setup the beamformer
+		if self.gpu != -1:
+			BFSetGPU(self.gpu)
+		## Metadata
+		nchan = self.nchan_max
+		nstand, npol = self.nroach_max*16, 2
+		## Delays and gains
+		self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
+		self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
+		self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
+		## Intermidiate arrays
+		self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
+		
 	@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		# Get the current pipeline time to figure out if we need to shelve a command or not
@@ -526,10 +539,6 @@ class BeamformerOp(object):
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
 				
-				# Setup the beamformer
-				self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
-				self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
-				self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
 				status = self.updateConfig( self.configMessage(), ihdr, iseq.time_tag, forceUpdate=True )
 				
 				igulp_size = self.ntime_gulp*nchan*nstand*npol		# 4+4 complex
@@ -547,9 +556,6 @@ class BeamformerOp(object):
 				ohdr_str = json.dumps(ohdr)
 				
 				self.oring.resize(ogulp_size)
-				
-				# Setup the intermidiate arrays
-				bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
 				
 				prev_time = time.time()
 				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
@@ -583,10 +589,10 @@ class BeamformerOp(object):
 								Unpack(tdata, ddata)
 								
 							## Beamform
-							bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, bdata)
+							self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, self.bdata)
 							
 							## Save and cleanup
-							odata[...] = bdata.copy(space='system').transpose(2,0,1)
+							odata[...] = self.bdata.copy(space='system').transpose(2,0,1)
 							
 						## Update the base time tag
 						base_time_tag += self.ntime_gulp*ticksPerTime
@@ -630,6 +636,19 @@ class CorrelatorOp(object):
 		self._pending = deque()
 		self.navg = 5*100
 		self.gain = 0
+		
+		# Setup the correlator
+		if self.gpu != -1:
+			BFSetGPU(self.gpu)
+		## Metadata
+		nchan = self.nchan_max
+		nstand, npol = self.nroach_max*16, 2
+		## Decimation
+		self.chan_decim = 1
+		ochan = nchan / self.chan_decim
+		## Intermidiate arrays
+		cdata = np.zeros((ochan,nstand*npol,nstand*npol), dtype=np.complex64)
+		self.cdata = BFArray(cdata, space='cuda')
 		
 	@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -723,7 +742,7 @@ class CorrelatorOp(object):
 				self.log.info("Correlator: Start of new sequence: %s", str(ihdr))
 				
 				nchan  = ihdr['nchan']
-				ochan  = nchan / 1
+				ochan  = nchan / self.chan_decim
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
 				igulp_size = self.ntime_gulp*nchan*nstand*npol		# 4+4 complex
@@ -742,10 +761,7 @@ class CorrelatorOp(object):
 				
 				self.oring.resize(ogulp_size)
 				
-				# Setup the intermidiate arrays
 				nAccumulate = 0
-				cdata = np.zeros((ochan,nstand*npol,nstand*npol), dtype=np.complex64)
-				cdata = BFArray(cdata, space='cuda')
 				
 				prev_time = time.time()
 				iseq_spans = iseq.read(igulp_size)
@@ -790,9 +806,7 @@ class CorrelatorOp(object):
 								
 							## Correlate
 							cscale = gain_act if nAccumulate else 0.0
-							cdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,0,2)), 1.0, cdata)
-							### HACK - I need this on fornax to get the accumlation to work
-							#BFMap('a(i,j,k) = %f*a(i,j,k) + b(i,j,k)' % cscale, {'a':cdata, 'b':pdata}, axis_names=('i','j','k'), shape=cdata.shape)
+							self.cdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,0,2)), cscale, self.cdata)
 							nAccumulate += self.ntime_gulp
 							
 							curr_time = time.time()
@@ -810,7 +824,7 @@ class CorrelatorOp(object):
 									reserve_time = curr_time - prev_time
 									prev_time = curr_time
 									
-									odata[...] = cdata
+									odata[...] = self.cdata
 								nAccumulate = 0
 							curr_time = time.time()
 							reserve_time = curr_time - prev_time
@@ -835,7 +849,6 @@ class CorrelatorOp(object):
 					try:
 						del udata
 						del pdata
-						del cdata
 					except NameError:
 						pass
 						
@@ -1219,8 +1232,7 @@ def main(argv):
 	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
-	# TODO: Put this into config file instead
-	tbf_buffer_secs = 3
+	tbf_buffer_secs = config['tbf']['buffer_time_sec']
 	
 	oaddr = Address(oaddr, oport)
 	osock = UDPSocket()
@@ -1238,7 +1250,7 @@ def main(argv):
 	bw_max    = obw/nserver/ntuning
 	
 	# TODO:  Figure out what to do with this resize
-	GSIZE= 500
+	GSIZE = 500
 	ogulp_size = GSIZE *nchan_max*256*2
 	obuf_size  = tbf_buffer_secs*25000 *nchan_max*256*2
 	tbf_ring.resize(ogulp_size, obuf_size)
