@@ -78,7 +78,10 @@ ff02::2 ip6-allrouters
 192.168.40.14	adp4-data
 192.168.40.15	adp5-data
 192.168.40.16	adp6-data
-192.168.40.41	drsu1 # Data recorder
+192.168.40.41	dr1 # Data recorder 1
+192.168.40.42	dr2 # Data recorder 2
+192.168.40.43	dr3 # Data recorder 3
+192.168.40.44	lasi # LWA All-Sky Imager
 
 169.254.128.101 mgmt-switch
 169.254.128.101 hp48        # Alias for mgmt-switch
