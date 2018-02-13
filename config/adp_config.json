@@ -138,7 +138,7 @@
 					"host":              "dr2", 
 					"port":              10000,
 					"max_bytes_per_sec": 104851000
-				}
+				},
 				{
 					"host":              "dr3", 
 					"port":              10000,
