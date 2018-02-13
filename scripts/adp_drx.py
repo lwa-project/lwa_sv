@@ -1232,7 +1232,7 @@ def main(argv):
 	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
-	tbf_buffer_secs = config['tbf']['buffer_time_sec']
+	tbf_buffer_secs = int(round(config['tbf']['buffer_time_sec']))
 	
 	oaddr = Address(oaddr, oport)
 	osock = UDPSocket()
