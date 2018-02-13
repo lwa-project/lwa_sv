@@ -628,7 +628,7 @@ class PacketizeOp(object):
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 				
-					pkts = []	
+					pkts = []
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						#try:
@@ -639,6 +639,128 @@ class PacketizeOp(object):
 						#	pass
 							
 						for beam in xrange(self.nbeam_max):
+							for pol in xrange(npol):
+								pktdata = data[t:t+ntime_pkt,beam,pol]
+								hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
+											time_tag_cur)
+								try:
+									pkt = hdr + pktdata.tostring()
+									pkts.append( pkt )
+								except Exception as e:
+									print 'Packing Error', str(e)
+									
+					try:
+						if ACTIVE_DRX_CONFIG.is_set():
+							if not self.tbfLock.is_set():
+								udt.sendmany(pkts)
+					except Exception as e:
+						print 'Sending Error', str(e)
+						
+					time_tag += int(ntime_gulp)*ticksPerSample
+					
+					curr_time = time.time()
+					process_time = curr_time - prev_time
+					prev_time = curr_time
+					self.perf_proclog.update({'acquire_time': acquire_time, 
+										 'reserve_time': -1, 
+										 'process_time': process_time,})
+										 
+			del udt
+
+class SinglePacketizeOp(object):
+	# Note: Input data are: [time,beam,pol,iq]
+	def __init__(self, log, iring, osock, nbeam_max=1, beam0=1, beam=1, tuning=0, npkt_gulp=128, core=-1):
+		self.log   = log
+		self.iring = iring
+		self.sock  = osock
+		self.nbeam_max = nbeam_max
+		self.beam0 = beam0
+		self.beam = beam
+		self.tuning = tuning
+		self.npkt_gulp = npkt_gulp
+		self.core = core
+		
+		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+		self.in_proclog   = ProcLog(type(self).__name__+"/in")
+		self.size_proclog = ProcLog(type(self).__name__+"/size")
+		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+		
+		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+		
+		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+		
+		#self.sync_drx_pipelines = MCS.Synchronizer('DRX')
+		
+	@ISC.logException
+	def main(self):
+		global ACTIVE_DRX_CONFIG
+		
+		cpu_affinity.set_core(self.core)
+		self.bind_proclog.update({'ncore': 1, 
+							 'core0': cpu_affinity.get_core(),})
+		
+		ntime_pkt     = DRX_NSAMPLE_PER_PKT
+		ntime_gulp    = self.npkt_gulp * ntime_pkt
+		ninput_max    = self.nbeam_max * 2
+		gulp_size_max = ntime_gulp * ninput_max * 2
+		self.iring.resize(gulp_size_max)
+		
+		self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
+		
+		for isequence in self.iring.read():
+			ihdr = json.loads(isequence.header.tostring())
+			
+			self.sequence_proclog.update(ihdr)
+			
+			self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
+			
+			#print 'PacketizeOp', ihdr
+			cfreq  = ihdr['cfreq']
+			bw     = ihdr['bw']
+			gain   = ihdr['gain']
+			filt   = ihdr['filter']
+			nbeam  = ihdr['nstand']
+			npol   = ihdr['npol']
+			fdly   = (ihdr['fir_size'] - 1) / 2.0
+			time_tag0 = isequence.time_tag
+			time_tag  = time_tag0
+			gulp_size = ntime_gulp*nbeam*npol
+			
+			ticksPerSample = int(FS) // int(bw)
+			toffset = int(time_tag0) // ticksPerSample
+			soffset = toffset % int(ntime_pkt)
+			if soffset != 0:
+				soffset = ntime_pkt - soffset
+			boffset = soffset*self.nbeam_max*npol
+			print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+			
+			time_tag += soffset*ticksPerSample				# Correct for offset
+			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
+			
+			prev_time = time.time()
+			with UDPTransmit(sock=self.sock, core=self.core) as udt:
+				for ispan in isequence.read(gulp_size, begin=boffset):
+					if ispan.size < gulp_size:
+						continue # Ignore final gulp
+					curr_time = time.time()
+					acquire_time = curr_time - prev_time
+					prev_time = curr_time
+					
+					shape = (-1,self.nbeam_max,npol)
+					data = ispan.data_view(np.int8).reshape(shape)
+				
+					pkts = []
+					for t in xrange(0, ntime_gulp, ntime_pkt):
+						time_tag_cur = time_tag + int(t)*ticksPerSample
+						#try:
+						#	self.sync_drx_pipelines(time_tag_cur)
+						#except ValueError:
+						#	continue
+						#except (socket.timeout, socket.error):
+						#	pass
+							
+						for beam in xrange(self.beam-1, self.beam):
 							for pol in xrange(npol):
 								pktdata = data[t:t+ntime_pkt,beam,pol]
 								hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -824,7 +946,7 @@ def main(argv):
 	                            core=cores.pop(0)))
 	ops.append(TEngineOp(log, reorder_ring, tengine_ring,
 		                tuning=tuning, ntime_gulp=GSIZE, 
-		                 nchan_max=nchan_max, 
+		                nchan_max=nchan_max, 
 		                core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring,
 		                  osock=osock, 
