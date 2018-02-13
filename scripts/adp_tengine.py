@@ -690,8 +690,6 @@ class SinglePacketizeOp(object):
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		
-		#self.sync_drx_pipelines = MCS.Synchronizer('DRX')
-		
 	@ISC.logException
 	def main(self):
 		global ACTIVE_DRX_CONFIG
@@ -753,24 +751,17 @@ class SinglePacketizeOp(object):
 					pkts = []
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						#try:
-						#	self.sync_drx_pipelines(time_tag_cur)
-						#except ValueError:
-						#	continue
-						#except (socket.timeout, socket.error):
-						#	pass
-							
-						for beam in xrange(self.beam-1, self.beam):
-							for pol in xrange(npol):
-								pktdata = data[t:t+ntime_pkt,beam,pol]
-								hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
-											time_tag_cur)
-								try:
-									pkt = hdr + pktdata.tostring()
-									pkts.append( pkt )
-								except Exception as e:
-									print 'Packing Error', str(e)
-									
+						
+						for pol in xrange(npol):
+							pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
+							hdr = gen_drx_header(self.beam-1+self.beam0, self.tuning+1, pol, cfreq, filt, 
+							                     time_tag_cur)
+							try:
+								pkt = hdr + pktdata.tostring()
+								pkts.append( pkt )
+							except Exception as e:
+								print 'Packing Error', str(e)
+								
 					try:
 						if ACTIVE_DRX_CONFIG.is_set():
 							if not self.tbfLock.is_set():
@@ -903,13 +894,22 @@ def main(argv):
 	iport        = config['server']['data_ports' ][tngConfig['pipeline_idx']]
 	# Network - output
 	recorder_idx = tngConfig['recorder_idx']
-	recConfig    = config['recorder'][recorder_idx]
-	oaddr        = recConfig['host']
-	oport        = recConfig['port']
-	obw          = recConfig['max_bytes_per_sec']
-	
+	try:
+		recConfig    = [config['recorder'][idx] for idx in recorder_idx]
+		oaddr        = [rc['host']              for rc in recConfig]
+		oport        = [rc['port']              for rc in recConfig]
+		obw          = [rc['max_bytes_per_sec'] for rc in recConfig]
+		split_beam = True
+	except TypeError:
+		recConfig    = config['recorder'][recorder_idx]
+		oaddr        = recConfig['host']
+		oport        = recConfig['port']
+		obw          = recConfig['max_bytes_per_sec']
+		split_beam = False
+		
 	nserver = len(config['host']['servers'])
 	server0 = 0
+	nbeam = drxConfig['beam_count']
 	cores = tngConfig['cpus']
 	gpus  = tngConfig['gpus']
 	
@@ -929,29 +929,40 @@ def main(argv):
 	reorder_ring = Ring(name="reorder-%i" % tuning, core=cores[0])
 	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
 	
-	oaddr = Address(oaddr, oport)
-	osock = UDPSocket()
-	osock.connect(oaddr)
-	
 	GSIZE = 2500
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nserver, src0=server0, max_payload_size=9000,
-	                     nbeam_max=2, 
+	                     nbeam_max=nbeam, 
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
 	ops.append(ReorderChannelsOp(log, capture_ring, reorder_ring, 
 	                            ntime_gulp=GSIZE, 
 	                            core=cores.pop(0)))
 	ops.append(TEngineOp(log, reorder_ring, tengine_ring,
-		                tuning=tuning, ntime_gulp=GSIZE, 
-		                nchan_max=nchan_max, 
-		                core=cores.pop(0), gpu=gpus.pop(0)))
-	ops.append(PacketizeOp(log, tengine_ring,
-		                  osock=osock, 
-		                  nbeam_max=2, beam0=1, tuning=tuning, 
-		                  npkt_gulp=96, core=cores.pop(0)))
+	                     tuning=tuning, ntime_gulp=GSIZE, 
+	                     nchan_max=nchan_max, 
+	                     core=cores.pop(0), gpu=gpus.pop(0)))
+	if split_beam:
+		for beam in xrange(nbeam):
+			oaddr = Address(oaddr[beam], oport[beam])
+			osock = UDPSocket()
+			osock.connect(oaddr)
+			
+			ops.append(SinglePacketizeOp(log, tengine_ring,
+			                             osock=osock, 
+			                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
+			                             npkt_gulp=96, core=cores.pop(0)))
+	else:
+		oaddr = Address(oaddr, oport)
+		osock = UDPSocket()
+		osock.connect(oaddr)
+		
+		ops.append(PacketizeOp(log, tengine_ring,
+		                       osock=osock, 
+		                       nbeam_max=nbeam, beam0=1, tuning=tuning, 
+		                       npkt_gulp=96, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	

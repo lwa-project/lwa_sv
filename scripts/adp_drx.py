@@ -1209,6 +1209,7 @@ def main(argv):
 	nroach_tot = len(config['host']['roaches'])
 	nserver    = len(config['host']['servers'])
 	nroach, roach0 = nroach_tot, 0
+	nbeam = drxConfig['beam_count']
 	cores = drxConfig['cpus']
 	gpus  = drxConfig['gpus']
 	
@@ -1269,11 +1270,11 @@ def main(argv):
 	                           max_bytes_per_sec=bw_max))
 	ops.append(BeamformerOp(log=log, iring=capture_ring, oring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=GSIZE,
-	                        nchan_max=nchan_max, nbeam_max=2, 
+	                        nchan_max=nchan_max, nbeam_max=nbeam, 
 	                        core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=50,
-	                        nbeam_max=2, 
+	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
 	## HACK for verification
 	#if hostname == 'adp3' and tuning == 0:

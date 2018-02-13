@@ -17,15 +17,16 @@
 	"host": {
 		"servers": ["adp1","adp2","adp3","adp4","adp5","adp6"],
 		"roaches": ["roach1", "roach2", "roach3", "roach4",
-				  "roach5", "roach6", "roach7", "roach8",
-				  "roach9", "roach10","roach11","roach12",
-				  "roach13","roach14","roach15","roach16"],
-		"servers-data": ["adp1-data", "adp2-data", "adp3-data", "adp4-data", "adp5-data", "adp6-data"],
+		            "roach5", "roach6", "roach7", "roach8",
+		            "roach9", "roach10","roach11","roach12",
+		            "roach13","roach14","roach15","roach16"],
+		"servers-data": ["adp1-data", "adp2-data", "adp3-data",
+		                 "adp4-data", "adp5-data", "adp6-data"],
 		"tengines": ["adp-data", "adp-data"],
 		"servers-tbn": ["adp1-data", "adp1-data", "adp1-data", "adp2-data",
-					 "adp2-data", "adp2-data", "adp3-data", "adp3-data",
-					 "adp3-data", "adp4-data", "adp4-data", "adp4-data",
-					 "adp5-data", "adp5-data", "adp5-data", "adp6-data"]
+		                "adp2-data", "adp2-data", "adp3-data", "adp3-data",
+		                "adp3-data", "adp4-data", "adp4-data", "adp4-data",
+		                "adp5-data", "adp5-data", "adp5-data", "adp6-data"]
 	},
 	"ipmi": {
 		"username": "admin",
@@ -34,6 +35,7 @@
 	"drx": [
 			{
 				"capture_bandwidth": 19.8e6,
+				"beam_count":        2,
 				"pipeline_idx":      0,
 				"tengine_idx":       0,
 				"recorder_idx":      0,
@@ -42,6 +44,7 @@
 			}, 
 			{
 				"capture_bandwidth": 19.8e6,
+				"beam_count":        2,
 				"pipeline_idx":      1,
 				"tengine_idx":       1,
 				"recorder_idx":      0,
@@ -55,7 +58,7 @@
 	"tbn": {
 		"capture_bandwidth": 200e3,
 		"pipeline_idx":      2,
-		"recorder_idx":      1,
+		"recorder_idx":      2,
 		"cpus":              [1, 13, 14, 15],
 		"gpus":              [1]
 	},
@@ -114,13 +117,13 @@
 	"tengine": [
 				{
 					"pipeline_idx":      0,
-					"recorder_idx":      0,
+					"recorder_idx":      [0, 1],
 					"cpus":              [0, 2, 3, 4, 5],
 					"gpus":              [0]
 				},
 				{
 					"pipeline_idx":      1,
-					"recorder_idx":      0,
+					"recorder_idx":      [0, 1],
 					"cpus":              [8, 9, 10, 11, 12],
 					"gpus":              [1]
 				}
@@ -133,6 +136,11 @@
 				},
 				{
 					"host":              "dr2", 
+					"port":              10000,
+					"max_bytes_per_sec": 104851000
+				}
+				{
+					"host":              "dr3", 
 					"port":              10000,
 					"max_bytes_per_sec": 104851000
 				}
