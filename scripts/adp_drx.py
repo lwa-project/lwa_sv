@@ -415,7 +415,7 @@ class BeamformerOp(object):
 			BFSetGPU(self.gpu)
 		## Metadata
 		nchan = self.nchan_max
-		nstand, npol = self.nroach_max*16, 2
+		nstand, npol = nroach_max*16, 2
 		## Delays and gains
 		self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
 		self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
@@ -642,7 +642,7 @@ class CorrelatorOp(object):
 			BFSetGPU(self.gpu)
 		## Metadata
 		nchan = self.nchan_max
-		nstand, npol = self.nroach_max*16, 2
+		nstand, npol = nroach_max*16, 2
 		## Decimation
 		self.chan_decim = 1
 		ochan = nchan / self.chan_decim
