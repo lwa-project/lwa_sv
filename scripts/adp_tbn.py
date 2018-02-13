@@ -475,8 +475,6 @@ class PacketizeOp(object):
 		
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
 		
-		#self.sync_tbn_pipelines = MCS.Synchronizer('TBN')
-		
 	def main(self):
 		global ACTIVE_TBN_CONFIG
 		
@@ -535,27 +533,14 @@ class PacketizeOp(object):
 					
 					shape = (-1,nstand,npol,2)
 					data = ispan.data_view(np.int8).reshape(shape)
-					#self.sync_tbn_pipelines(time_tag)
+					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						#try:
-						#	self.sync_tbn_pipelines(time_tag_cur)
-						#	if free_run:
-						#		print "Leaving free running"
-						#		free_run = False
-						#except ValueError:
-						#	continue
-						#except (socket.timeout, socket.error):
-						#	if not free_run:
-						#		print "Entering free running"
-						#		free_run = True
-								
+						
 						pkts = []
 						for stand in xrange(nstand):
 							for pol in xrange(npol):
 								pktdata = data[t:t+ntime_pkt,stand,pol,:]
-								#pktdata = pktdata[...,::-1] # WAR: Swap I/Q
-								#assert( len(pktdata) == ntime_pkt )
 								hdr = gen_tbn_header(stand0+stand, pol, cfreq, gain,
 												 time_tag_cur, time_tag0, bw)
 								try:
@@ -570,7 +555,7 @@ class PacketizeOp(object):
 						except Exception as e:
 							print 'Sending Error', str(e)
 					time_tag += int(ntime_gulp)*ticksPerSample
-			
+					
 					curr_time = time.time()
 					process_time = curr_time - prev_time
 					prev_time = curr_time
