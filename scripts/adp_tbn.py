@@ -395,7 +395,16 @@ class TEngineOp(object):
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
 								
-								# Clean-up
+								### New output size/shape
+								ngulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*2	# 8+8 complex
+								nshape = (self.ntime_gulp*self.nchan_out,nstand,npol,2)
+								if ngulp_size != ogulp_size:
+									ogulp_size = ngulp_size
+									oshape = nshape
+									
+									self.oring.resize(ogulp_size)
+									
+								### Clean-up
 								try:
 									del pdata
 									del fdata
@@ -723,7 +732,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 1000
+	GSIZE = 1000
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),

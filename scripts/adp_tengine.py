@@ -482,7 +482,16 @@ class TEngineOp(object):
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
 								
-								## Clean-up
+								### New output size/shape
+								ngulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1               # 4+4 complex
+								nshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
+								if ngulp_size != ogulp_size:
+									ogulp_size = ngulp_size
+									oshape = nshape
+									
+									self.oring.resize(ogulp_size)
+									
+								### Clean-up
 								try:
 									del pdata
 									del bfft
@@ -492,10 +501,6 @@ class TEngineOp(object):
 								except NameError:
 									pass
 									
-								ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1               # 4+4 complex
-          				                        oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
-								self.oring.resize(ogulp_size)
-								
 								break
 								
 							curr_time = time.time()
@@ -516,7 +521,7 @@ class TEngineOp(object):
 							del qdata
 						except NameError:
 							pass
-						
+							
 						break
 
 def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
@@ -806,7 +811,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE= 2500
+	GSIZE = 2500
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
