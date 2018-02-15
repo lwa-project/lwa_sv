@@ -258,14 +258,14 @@ class TEngineOp(object):
 		if self.gpu != -1:
 			BFSetGPU(self.gpu)
 		## Metadata
-		nstand, npol = nbeam*16, 2
+		nstand, npol = nbeam, 2
 		## Coefficients
 		coeffs.shape += (1,)
 		coeffs = np.repeat(coeffs, nstand*npol, axis=1)
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
 		                         
-	@ISC.logException
+	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_DRX_CONFIG
 		
@@ -445,15 +445,17 @@ class TEngineOp(object):
 									pdata = idata
 									
 								### From here until going to the output ring we are on the GPU
-								gdata = pdata.copy(space='cuda')
+								tdata = pdata.copy(space='cuda')
 								
 								## IFFT
 								try:
-									bfft.execute(gdata, gdata, inverse=True)
+									bfft.execute(tdata, gdata, inverse=True)
 								except NameError:
+									gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+									
 									bfft = Fft()
-									bfft.init(gdata, gdata, axes=1, apply_fftshift=True)
-									bfft.execute(gdata, gdata, inverse=True)
+									bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
+									bfft.execute(tdata, gdata, inverse=True)
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand*npol))
@@ -464,9 +466,10 @@ class TEngineOp(object):
 								try:
 									bfir.execute(gdata, fdata)
 								except NameError:
+									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
+									
 									bfir = Fir()
 									bfir.init(self.coeffs, 1)
-									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
 									bfir.execute(gdata, fdata)
 									
 								## Quantization
@@ -498,7 +501,8 @@ class TEngineOp(object):
 									
 								### Clean-up
 								try:
-									del bfft
+									del pdata
+									del gdata
 									del fdata
 									del qdata
 								except NameError:
@@ -517,7 +521,8 @@ class TEngineOp(object):
 					if not reset_sequence:
 						## Clean-up
 						try:
-							del bfft
+							del pdata
+							del gdata
 							del fdata
 							del qdata
 						except NameError:
@@ -571,7 +576,7 @@ class PacketizeOp(object):
 		
 		#self.sync_drx_pipelines = MCS.Synchronizer('DRX')
 		
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		global ACTIVE_DRX_CONFIG
 		
@@ -691,7 +696,7 @@ class SinglePacketizeOp(object):
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		global ACTIVE_DRX_CONFIG
 		
@@ -763,13 +768,13 @@ class SinglePacketizeOp(object):
 							except Exception as e:
 								print 'Packing Error', str(e)
 								
-					try:
-						if ACTIVE_DRX_CONFIG.is_set():
-							if not self.tbfLock.is_set():
-								udt.sendmany(pkts)
-					except Exception as e:
-						print 'Sending Error', str(e)
-						
+						try:
+							if ACTIVE_DRX_CONFIG.is_set():
+								if not self.tbfLock.is_set():
+									udt.sendmany(pkts)
+						except Exception as e:
+							print 'Sending Error', str(e)
+							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
 					curr_time = time.time()
@@ -785,7 +790,7 @@ def izip(*iterables):
 	while True:
 		yield [it.next() for it in iterables]
         
-class SplitPacketizeOp(object):
+class DualPacketizeOp(object):
 	# Note: Input data are: [time,beam,pol,iq]
 	def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
 		self.log   = log
@@ -797,7 +802,8 @@ class SplitPacketizeOp(object):
 		self.npkt_gulp = npkt_gulp
 		self.core = core
 		
-		assert(len(self.socks) == self.nbeam_max)
+		assert(len(self.socks) == 2)
+		assert(self.nbeam_max  == 2)
 		
 		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
 		self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -809,7 +815,7 @@ class SplitPacketizeOp(object):
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		global ACTIVE_DRX_CONFIG
 		
@@ -856,7 +862,8 @@ class SplitPacketizeOp(object):
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
 			prev_time = time.time()
-			udts = [UDPTransmit(sock=sock, core=self.core) for sock in self.socks]
+			udt0 = UDPTransmit(sock=self.socks[0], core=self.core)
+			udt1 = UDPTransmit(sock=self.socks[1], core=self.core)
 			for ispan in isequence.read(gulp_size, begin=boffset):
 				if ispan.size < gulp_size:
 					continue # Ignore final gulp
@@ -867,26 +874,35 @@ class SplitPacketizeOp(object):
 				shape = (-1,self.nbeam_max,npol)
 				data = ispan.data_view(np.int8).reshape(shape)
 			
-				pkts = [[] for beam in xrange(self.nbeam_max)]
+				pkts0, pkts1 = [], []
 				for t in xrange(0, ntime_gulp, ntime_pkt):
 					time_tag_cur = time_tag + int(t)*ticksPerSample
 					
-					for beam in xrange(self.nbeam_max):
-						for pol in xrange(npol):
-							pktdata = data[t:t+ntime_pkt,beam,pol]
-							hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
-							                     time_tag_cur)
-							try:
-								pkt = hdr + pktdata.tostring()
-								pkts[beam].append( pkt )
-							except Exception as e:
-								print 'Packing Error', str(e)
-								
+					for pol in xrange(npol):
+						## First beam
+						pktdata0 = data[t:t+ntime_pkt,0,pol]
+						hdr0 = gen_drx_header(0+self.beam0, self.tuning+1, pol, cfreq, filt, 
+						                      time_tag_cur)
+						try:
+							pkt0 = hdr0 + pktdata0.tostring()
+							pkts0.append( pkt0 )
+						except Exception as e:
+							print 'Packing Error', str(e)
+						## Second beam
+						pktdata1 = data[t:t+ntime_pkt,1,pol]
+						hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
+						                      time_tag_cur)
+						try:
+							pkt1 = hdr1 + pktdata1.tostring()
+							pkts1.append( pkt1 )
+						except Exception as e:
+							print 'Packing Error', str(e)
+							
 				try:
 					if ACTIVE_DRX_CONFIG.is_set():
 						if not self.tbfLock.is_set():
-							for udt,pkt in izip(udts,pkts)
-								udt.sendmany(pkt)
+							udt0.sendmany(pkts0)
+							udt1.sendmany(pkts1)
 				except Exception as e:
 					print 'Sending Error', str(e)
 					
@@ -899,7 +915,8 @@ class SplitPacketizeOp(object):
 									 'reserve_time': -1, 
 									 'process_time': process_time,})
 									 
-			del udts[:]
+			del udt0
+			del udt1
 
 def get_utc_start(shutdown_event=None):
 	got_utc_start = False
@@ -1054,7 +1071,7 @@ def main(argv):
 	reorder_ring = Ring(name="reorder-%i" % tuning)
 	tengine_ring = Ring(name="tengine-%i" % tuning)
 	
-	GSIZE = 500
+	GSIZE = 1000
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
@@ -1070,16 +1087,14 @@ def main(argv):
 	                     nchan_max=nchan_max, nbeam=nbeam, 
 	                     core=cores.pop(0), gpu=gpus.pop(0)))
 	if split_beam:
-		socks = []
-		for beam in xrange(nbeam):
+		for beam in xrange(1):
 			raddr = Address(oaddr[beam], oport[beam])
 			rsock = UDPSocket()
 			rsock.connect(raddr)
-			socks.append( rsock )
-		ops.append(SplitPacketizeOp(log, tengine_ring,
-		                             osocks=socks, 
-		                             nbeam_max=nbeam, beam0=1, tuning=tuning, 
-		                             npkt_gulp=24, core=cores.pop(0)))
+			ops.append(SinglePacketizeOp(log, tengine_ring,
+			                             osock=rsock,
+			                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
+			                             npkt_gulp=24, core=cores.pop(0)))
 	else:
 		oaddr = Address(oaddr, oport)
 		osock = UDPSocket()

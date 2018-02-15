@@ -189,7 +189,7 @@ class TEngineOp(object):
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
 		                        
-	@ISC.logException
+	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_TBN_CONFIG
 		
@@ -274,7 +274,7 @@ class TEngineOp(object):
 		else:
 			return False
 			
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		cpu_affinity.set_core(self.core)
 		if self.gpu != -1:
@@ -358,15 +358,17 @@ class TEngineOp(object):
 									pdata = idata
 									
 								## Copy the data to the GPU - from here on out we are on the GPU
-								gdata = pdata.copy(space='cuda')
+								tdata = pdata.copy(space='cuda')
 								
 								## IFFT
 								try:
-									bfft.execute(gdata, gdata, inverse=True)
+									bfft.execute(tdata, gdata, inverse=True)
 								except NameError:
+									gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+									
 									bfft = Fft()
-									bfft.init(gdata, gdata, axes=1, apply_fftshift=True)
-									bfft.execute(gdata, gdata, inverse=True)
+									bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
+									bfft.execute(tdata, gdata, inverse=True)
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand,npol))
@@ -376,9 +378,10 @@ class TEngineOp(object):
 								try:
 									bfir.execute(gdata, fdata)
 								except NameError:
+									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
+									
 									bfir = Fir()
 									bfir.init(self.coeffs, 1)
-									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
 									bfir.execute(gdata, fdata)
 									
 								## Quantization
@@ -410,7 +413,8 @@ class TEngineOp(object):
 									
 								### Clean-up
 								try:
-									del bfft
+									del pdata
+									del gdata
 									del fdata
 									del qdata
 								except NameError:
@@ -427,7 +431,8 @@ class TEngineOp(object):
 												 
 					# Clean-up
 					try:
-						del bfft
+						del pdata
+						del gdata
 						del fdata
 						del qdata
 					except NameError:

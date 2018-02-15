@@ -145,7 +145,7 @@ class CopyOp(object):
 				igulp_size = self.ntime_gulp*nchan*nstand*npol
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
-				self.iring.resize(igulp_size)#, igulp_size*10)
+				self.iring.resize(igulp_size, igulp_size*10)
 				#self.oring.resize(ogulp_size)#, obuf_size)
 				
 				ticksPerTime = int(FS / CHAN_BW)
@@ -428,7 +428,7 @@ class BeamformerOp(object):
 		self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
 		self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
 		
-	@ISC.logException
+	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		# Get the current pipeline time to figure out if we need to shelve a command or not
 		pipeline_time = time_tag / FS
@@ -650,7 +650,7 @@ class CorrelatorOp(object):
 		self.udata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci8', space='cuda')
 		self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
 		
-	@ISC.logException
+	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_COR_CONFIG
 		
@@ -719,7 +719,7 @@ class CorrelatorOp(object):
 		else:
 			return False
 			
-	@ISC.logException
+	#@ISC.logException
 	def main(self):
 		cpu_affinity.set_core(self.core)
 		if self.gpu != -1:
@@ -1232,7 +1232,7 @@ def main(argv):
 	bw_max    = obw/nserver/ntuning
 	
 	# TODO:  Figure out what to do with this resize
-	GSIZE = 500
+	GSIZE = 1000
 	ogulp_size = GSIZE *nchan_max*256*2
 	obuf_size  = tbf_buffer_secs*25000 *nchan_max*256*2
 	tbf_ring.resize(ogulp_size, obuf_size)
