@@ -13,6 +13,7 @@ from bifrost.udp_transmit import UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
+from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
@@ -383,12 +384,12 @@ class TriggeredDumpOp(object):
 
 class BeamformerOp(object):
 	# Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach_max=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
 		self.log   = log
 		self.iring = iring
 		self.oring = oring
 		self.tuning = tuning
-		ninput_max = nroach_max*32#*2
+		ninput_max = nroach*32#*2
 		self.ntime_gulp = ntime_gulp
 		self.guarantee = guarantee
 		self.core = core
@@ -415,12 +416,16 @@ class BeamformerOp(object):
 			BFSetGPU(self.gpu)
 		## Metadata
 		nchan = self.nchan_max
-		nstand, npol = nroach_max*16, 2
+		nstand, npol = nroach*16, 2
+		## Object
+		self.bfbf = LinAlg()
 		## Delays and gains
 		self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
 		self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
 		self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
 		## Intermidiate arrays
+		## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
+		self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
 		self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
 		
 	@ISC.logException
@@ -527,8 +532,6 @@ class BeamformerOp(object):
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
 		
-		self.bfbf = LinAlg()
-		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
 				ihdr = json.loads(iseq.header.tostring())
@@ -579,17 +582,10 @@ class BeamformerOp(object):
 							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 							
 							## Copy
-							tdata = bfidata.copy(space='cuda')
+							copy_array(self.tdata, bfidata)
 							
-							## Unpack
-							try:
-								Unpack(tdata, ddata)
-							except NameError:
-								ddata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
-								Unpack(tdata, ddata)
-								
 							## Beamform
-							self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), ddata.transpose(1,2,0), 0.0, self.bdata)
+							self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), self.tdata.transpose(1,2,0), 0.0, self.bdata)
 							
 							## Save and cleanup
 							odata[...] = self.bdata.copy(space='system').transpose(2,0,1)
@@ -609,12 +605,12 @@ class BeamformerOp(object):
 
 class CorrelatorOp(object):
 	# Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nroach_max=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+	def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
 		self.log   = log
 		self.iring = iring
 		self.oring = oring
 		self.tuning = tuning
-		ninput_max = nroach_max*32#*2
+		ninput_max = nroach*32#*2
 		self.ntime_gulp = ntime_gulp
 		self.guarantee = guarantee
 		self.core = core
@@ -642,13 +638,17 @@ class CorrelatorOp(object):
 			BFSetGPU(self.gpu)
 		## Metadata
 		nchan = self.nchan_max
-		nstand, npol = nroach_max*16, 2
+		nstand, npol = nroach*16, 2
 		## Decimation
 		self.chan_decim = 1
 		ochan = nchan / self.chan_decim
+		## Object
+		self.bfcc = LinAlg()
 		## Intermidiate arrays
-		cdata = np.zeros((ochan,nstand*npol,nstand*npol), dtype=np.complex64)
-		self.cdata = BFArray(cdata, space='cuda')
+		## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
+		self.tdata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci4', native=False, space='cuda')
+		self.udata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci8', space='cuda')
+		self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
 		
 	@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -729,8 +729,6 @@ class CorrelatorOp(object):
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
 		
-		self.bfcc = LinAlg()
-		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
 				ihdr = json.loads(iseq.header.tostring())
@@ -792,21 +790,17 @@ class CorrelatorOp(object):
 								idata = idata[:,:ochan,:]
 								
 							## Fix the type
-							tdata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 							
 							## Copy
-							tdata = tdata.copy(space='cuda')
+							copy_array(self.tdata, bfidata)
 							
 							## Unpack
-							try:
-								Unpack(tdata, udata)
-							except NameError:
-								udata = BFArray(shape=tdata.shape, dtype='ci8', space='cuda')
-								Unpack(tdata, udata)
-								
+							Unpack(self.tdata, self.udata)
+							
 							## Correlate
 							cscale = gain_act if nAccumulate else 0.0
-							self.cdata = self.bfcc.matmul(gain_act, None, udata.transpose((1,0,2)), cscale, self.cdata)
+							self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
 							nAccumulate += self.ntime_gulp
 							
 							curr_time = time.time()
@@ -814,15 +808,9 @@ class CorrelatorOp(object):
 							prev_time = curr_time
 							
 							## Dump?
-							t4 = time.time()
 							if nAccumulate == navg_seq:
-								print "dump"
 								with oseq.reserve(ogulp_size) as ospan:
 									odata = ospan.data_view(np.complex64).reshape(oshape)
-									
-									curr_time = time.time()
-									reserve_time = curr_time - prev_time
-									prev_time = curr_time
 									
 									odata[...] = self.cdata
 								nAccumulate = 0
@@ -845,13 +833,6 @@ class CorrelatorOp(object):
 							                          'reserve_time': reserve_time, 
 							                          'process_time': process_time,})
 							
-					# Clean-up
-					try:
-						del udata
-						del pdata
-					except NameError:
-						pass
-						
 					# Reset to move on to the next input sequence?
 					if not reset_sequence:
 						break
@@ -1228,9 +1209,9 @@ def main(argv):
 	isock.bind(iaddr)
 	isock.timeout = 0.5
 	
-	capture_ring = Ring(name="capture-%i" % tuning, core=cores[0])
-	tbf_ring     = Ring(name="buffer-%i" % tuning, core=cores[0])
-	tengine_ring = Ring(name="tengine-%i" % tuning, core=cores[0])
+	capture_ring = Ring(name="capture-%i" % tuning)
+	tbf_ring     = Ring(name="buffer-%i" % tuning)
+	tengine_ring = Ring(name="tengine-%i" % tuning)
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
 	tbf_buffer_secs = int(round(config['tbf']['buffer_time_sec']))

@@ -132,7 +132,7 @@ class CaptureOp(object):
 		del capture
 
 class TEngineOp(object):
-	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_max=8, # ntime_buf=None,
+	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_max=8, nroach=3, # ntime_buf=None,
 	             guarantee=True, core=-1, gpu=-1):
 		self.log = log
 		self.iring = iring
@@ -164,20 +164,31 @@ class TEngineOp(object):
 		self.nchan_out = FILTER2CHAN[self.filt]
 		self.phaseRot = 1
 		
-		#self.coeffs = np.array([-0.0179700,  0.0144130, -0.0111240, -0.0017506, 0.0254560, 
-		#                        -0.0581470,  0.0950000, -0.1290700,  0.1531900, 0.8380900, 
-		#                         0.1531900, -0.1290700,  0.0950000, -0.0581470, 0.0254560,
-		#                        -0.0017506, -0.0111240,  0.0144130, -0.0179700], dtype=np.float64)
-		#self.coeffs = np.array([-0.0050417, 0.012287, -0.0221660,  0.0303950, -0.0301380,
-		#                         0.0120970, 0.036904, -0.1499600,  0.6144000,  0.6144000, 
-		#                        -0.1499600, 0.036904,  0.0120970, -0.0301380,  0.0303950,
-		#                        -0.0221660, 0.012287, -0.0050417], dtype=np.float64)
-		self.coeffs = np.array([-3.22350e-05, -0.00021433,  0.0017756, -0.0044913,  0.0040327, 
-		                          0.00735870, -0.03218100,  0.0553980, -0.0398360, -0.0748920, 
-		                          0.58308000,  0.58308000, -0.0748920, -0.0398360,  0.0553980,
-		                         -0.03218100,  0.00735870,  0.0040327, -0.0044913,  0.0017756,
-		                         -0.00021433, -3.2235e-05], dtype=np.float64)
-		                         
+		#coeffs = np.array([-0.0179700,  0.0144130, -0.0111240, -0.0017506, 0.0254560, 
+		#                   -0.0581470,  0.0950000, -0.1290700,  0.1531900, 0.8380900, 
+		#                    0.1531900, -0.1290700,  0.0950000, -0.0581470, 0.0254560,
+		#                   -0.0017506, -0.0111240,  0.0144130, -0.0179700], dtype=np.float64)
+		#coeffs = np.array([-0.0050417, 0.012287, -0.0221660,  0.0303950, -0.0301380,
+		#                    0.0120970, 0.036904, -0.1499600,  0.6144000,  0.6144000, 
+		#                   -0.1499600, 0.036904,  0.0120970, -0.0301380,  0.0303950,
+		#                   -0.0221660, 0.012287, -0.0050417], dtype=np.float64)
+		coeffs = np.array([-3.22350e-05, -0.00021433,  0.0017756, -0.0044913,  0.0040327, 
+		                    0.00735870, -0.03218100,  0.0553980, -0.0398360, -0.0748920, 
+		                    0.58308000,  0.58308000, -0.0748920, -0.0398360,  0.0553980,
+		                   -0.03218100,  0.00735870,  0.0040327, -0.0044913,  0.0017756,
+		                   -0.00021433, -3.2235e-05], dtype=np.float64)
+		
+		# Setup the FIR filter
+		if self.gpu != -1:
+			BFSetGPU(self.gpu)
+		## Metadata
+		nstand, npol = nroach*16, 2
+		## Coefficients
+		coeffs.shape += (1,)
+		coeffs = np.repeat(coeffs, nstand*npol, axis=1)
+		coeffs.shape = (coeffs.shape[0],nstand,npol)
+		self.coeffs = BFArray(coeffs, space='cuda')
+		                        
 	@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_TBN_CONFIG
@@ -301,7 +312,7 @@ class TEngineOp(object):
 				ohdr['npol']     = npol
 				ohdr['complex']  = True
 				ohdr['nbit']     = 8
-				ohdr['fir_size'] = self.coeffs.size
+				ohdr['fir_size'] = self.coeffs.shape[0]
 				
 				prev_time = time.time()
 				iseq_spans = iseq.read(igulp_size)
@@ -347,16 +358,15 @@ class TEngineOp(object):
 									pdata = idata
 									
 								## Copy the data to the GPU - from here on out we are on the GPU
-								tdata = pdata.copy(space='cuda')
+								gdata = pdata.copy(space='cuda')
 								
 								## IFFT
-								gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
 								try:
-									bfft.execute(tdata, gdata, inverse=True)
+									bfft.execute(gdata, gdata, inverse=True)
 								except NameError:
 									bfft = Fft()
-									bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
-									bfft.execute(tdata, gdata, inverse=True)
+									bfft.init(gdata, gdata, axes=1, apply_fftshift=True)
+									bfft.execute(gdata, gdata, inverse=True)
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand,npol))
@@ -366,14 +376,8 @@ class TEngineOp(object):
 								try:
 									bfir.execute(gdata, fdata)
 								except NameError:
-									coeffs = self.coeffs*1.0
-									coeffs.shape += (1,)
-									coeffs = np.repeat(coeffs, nstand*npol, axis=1)
-									coeffs.shape = (coeffs.shape[0],nstand,npol)
-									coeffs = BFArray(coeffs, space='cuda')
-									
 									bfir = Fir()
-									bfir.init(coeffs, 1)
+									bfir.init(self.coeffs, 1)
 									fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
 									bfir.execute(gdata, fdata)
 									
@@ -406,7 +410,7 @@ class TEngineOp(object):
 									
 								### Clean-up
 								try:
-									del pdata
+									del bfft
 									del fdata
 									del qdata
 								except NameError:
@@ -423,7 +427,7 @@ class TEngineOp(object):
 												 
 					# Clean-up
 					try:
-						del pdata
+						del bfft
 						del fdata
 						del qdata
 					except NameError:
@@ -723,7 +727,8 @@ def main(argv):
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
 	ops.append(TEngineOp(log, capture_ring, tengine_ring,
-	                     ntime_gulp=GSIZE, core=cores.pop(0), gpu=gpus.pop(0)))
+	                     ntime_gulp=GSIZE, nroach=nroach, 
+	                     core=cores.pop(0), gpu=gpus.pop(0)))
 	ops.append(PacketizeOp(log, tengine_ring, osock=osock, 
 	                       nroach=nroach, roach0=roach0,
 	                       npkt_gulp=7, core=cores.pop(0)))
