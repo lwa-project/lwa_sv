@@ -623,6 +623,8 @@ class PacketizeOp(object):
 			time_tag += soffset*ticksPerSample				# Correct for offset
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
+			gulp_count = time_tag // 10 // ntime_gulp
+			
 			prev_time = time.time()
 			with UDPTransmit(sock=self.sock, core=self.core) as udt:
 				for ispan in isequence.read(gulp_size, begin=boffset):
@@ -635,16 +637,16 @@ class PacketizeOp(object):
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
+					try:
+						self.sync_drx_pipelines(gulp_count)
+					except ValueError:
+						pass
+					except (socket.timeout, socket.error):
+						pass
+						
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						
-						try:
-							self.sync_drx_pipelines(time_tag_cur)
-						except ValueError:
-							continue
-						except (socket.timeout, socket.error):
-							pass
-							
 						pkts = []
 						for beam in xrange(self.nbeam_max):
 							for pol in xrange(npol):
@@ -665,6 +667,8 @@ class PacketizeOp(object):
 							print 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
+					
+					gulp_count += ticksPerSample // 10
 					
 					curr_time = time.time()
 					process_time = curr_time - prev_time
@@ -746,6 +750,8 @@ class SinglePacketizeOp(object):
 			time_tag += soffset*ticksPerSample				# Correct for offset
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
+			gulp_count = time_tag // 10 // ntime_gulp
+			
 			prev_time = time.time()
 			with UDPTransmit(sock=self.sock, core=self.core) as udt:
 				for ispan in isequence.read(gulp_size, begin=boffset):
@@ -758,16 +764,16 @@ class SinglePacketizeOp(object):
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
+					try:
+						self.sync_drx_pipelines(gulp_count)
+					except ValueError:
+						pass
+					except (socket.timeout, socket.error):
+						pass
+						
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						
-						try:
-							self.sync_drx_pipelines(time_tag_cur)
-						except ValueError:
-							continue
-						except (socket.timeout, socket.error):
-							pass
-							
 						pkts = []
 						for pol in xrange(npol):
 							pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
@@ -787,6 +793,8 @@ class SinglePacketizeOp(object):
 							print 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
+					
+					gulp_count += ticksPerSample // 10
 					
 					curr_time = time.time()
 					process_time = curr_time - prev_time
@@ -874,6 +882,8 @@ class DualPacketizeOp(object):
 			time_tag += soffset*ticksPerSample				# Correct for offset
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
+			gulp_count = time_tag // 10 // ntime_gulp
+			
 			prev_time = time.time()
 			udt0 = UDPTransmit(sock=self.socks[0], core=self.core)
 			udt1 = UDPTransmit(sock=self.socks[1], core=self.core)
@@ -887,16 +897,16 @@ class DualPacketizeOp(object):
 				shape = (-1,self.nbeam_max,npol)
 				data = ispan.data_view(np.int8).reshape(shape)
 				
+				try:
+					self.sync_drx_pipelines(gulp_count)
+				except ValueError:
+					pass
+				except (socket.timeout, socket.error):
+					pass
+					
 				for t in xrange(0, ntime_gulp, ntime_pkt):
 					time_tag_cur = time_tag + int(t)*ticksPerSample
 					
-					try:
-						self.sync_drx_pipelines(time_tag_cur)
-					except ValueError:
-						continue
-					except (socket.timeout, socket.error):
-						pass
-						
 					pkts0, pkts1 = [], []
 					for pol in xrange(npol):
 						## First beam
@@ -927,6 +937,8 @@ class DualPacketizeOp(object):
 						print 'Sending Error', str(e)
 						
 				time_tag += int(ntime_gulp)*ticksPerSample
+				
+				gulp_count += ticksPerSample // 10
 				
 				curr_time = time.time()
 				process_time = curr_time - prev_time
@@ -1091,7 +1103,7 @@ def main(argv):
 	reorder_ring = Ring(name="reorder-%i" % tuning)
 	tengine_ring = Ring(name="tengine-%i" % tuning)
 	
-	GSIZE = 1000
+	GSIZE = 2500
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))	# Subtly different from what is in adp_drx.py
 	
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
@@ -1114,7 +1126,7 @@ def main(argv):
 			ops.append(SinglePacketizeOp(log, tengine_ring,
 			                             osock=rsock,
 			                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
-			                             npkt_gulp=24, core=cores.pop(0)))
+			                             npkt_gulp=16, core=cores.pop(0)))
 	else:
 		oaddr = Address(oaddr, oport)
 		osock = UDPSocket()
@@ -1123,7 +1135,7 @@ def main(argv):
 		ops.append(PacketizeOp(log, tengine_ring,
 		                       osock=osock, 
 		                       nbeam_max=nbeam, beam0=1, tuning=tuning, 
-		                       npkt_gulp=24, core=cores.pop(0)))
+		                       npkt_gulp=16, core=cores.pop(0)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
