@@ -1277,6 +1277,9 @@ class MsgProcessor(ConsumerThread):
 		status = True
 		self.log.info("Starting ADC offset calibration")
 		
+		# Move the tone down to 30 MHz
+		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 30", shell=True)
+		
 		# Helper function - download files
 		def _downloadFiles(tTrigger, nTunings=len(self.config['drx']), ageLimit=10.0, deleteAfterCopy=False):
 			filenames = []
@@ -1438,6 +1441,9 @@ class MsgProcessor(ConsumerThread):
 		else:
 			self.log.error('Calibration failed')
 			
+		# Move the tone up to 103 MHz (aliases to 600 kHz)
+		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 103", shell=True)
+		
 		# Done
 		return status
 		
