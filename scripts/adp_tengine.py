@@ -575,7 +575,7 @@ class PacketizeOp(object):
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		
-		#self.sync_drx_pipelines = MCS.Synchronizer('DRX')
+		self.sync_drx_pipelines = MCS.Synchronizer('DRX')
 		
 	#@ISC.logException
 	def main(self):
@@ -634,17 +634,18 @@ class PacketizeOp(object):
 					
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
-				
-					pkts = []
+					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						#try:
-						#	self.sync_drx_pipelines(time_tag_cur)
-						#except ValueError:
-						#	continue
-						#except (socket.timeout, socket.error):
-						#	pass
+						
+						try:
+							self.sync_drx_pipelines(time_tag_cur)
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							pass
 							
+						pkts = []
 						for beam in xrange(self.nbeam_max):
 							for pol in xrange(npol):
 								pktdata = data[t:t+ntime_pkt,beam,pol]
@@ -656,13 +657,13 @@ class PacketizeOp(object):
 								except Exception as e:
 									print 'Packing Error', str(e)
 									
-					try:
-						if ACTIVE_DRX_CONFIG.is_set():
-							if not self.tbfLock.is_set():
-								udt.sendmany(pkts)
-					except Exception as e:
-						print 'Sending Error', str(e)
-						
+						try:
+							if ACTIVE_DRX_CONFIG.is_set():
+								if not self.tbfLock.is_set():
+									udt.sendmany(pkts)
+						except Exception as e:
+							print 'Sending Error', str(e)
+							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
 					curr_time = time.time()
@@ -696,6 +697,8 @@ class SinglePacketizeOp(object):
 		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+		
+		self.sync_drx_pipelines = MCS.Synchronizer('DRX%i' % self.beam)
 		
 	#@ISC.logException
 	def main(self):
@@ -754,11 +757,18 @@ class SinglePacketizeOp(object):
 					
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
-				
-					pkts = []
+					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						
+						try:
+							self.sync_drx_pipelines(time_tag_cur)
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							pass
+							
+						pkts = []
 						for pol in xrange(npol):
 							pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
 							hdr = gen_drx_header(self.beam-1+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -815,6 +825,8 @@ class DualPacketizeOp(object):
 		self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
 		
 		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+		
+		self.sync_drx_pipelines = MCS.Synchronizer('DRX')
 		
 	#@ISC.logException
 	def main(self):
@@ -874,11 +886,18 @@ class DualPacketizeOp(object):
 				
 				shape = (-1,self.nbeam_max,npol)
 				data = ispan.data_view(np.int8).reshape(shape)
-			
-				pkts0, pkts1 = [], []
+				
 				for t in xrange(0, ntime_gulp, ntime_pkt):
 					time_tag_cur = time_tag + int(t)*ticksPerSample
 					
+					try:
+						self.sync_drx_pipelines(time_tag_cur)
+					except ValueError:
+						continue
+					except (socket.timeout, socket.error):
+						pass
+						
+					pkts0, pkts1 = [], []
 					for pol in xrange(npol):
 						## First beam
 						pktdata0 = data[t:t+ntime_pkt,0,pol]
@@ -899,14 +918,14 @@ class DualPacketizeOp(object):
 						except Exception as e:
 							print 'Packing Error', str(e)
 							
-				try:
-					if ACTIVE_DRX_CONFIG.is_set():
-						if not self.tbfLock.is_set():
-							udt0.sendmany(pkts0)
-							udt1.sendmany(pkts1)
-				except Exception as e:
-					print 'Sending Error', str(e)
-					
+					try:
+						if ACTIVE_DRX_CONFIG.is_set():
+							if not self.tbfLock.is_set():
+								udt0.sendmany(pkts0)
+								udt1.sendmany(pkts1)
+					except Exception as e:
+						print 'Sending Error', str(e)
+						
 				time_tag += int(ntime_gulp)*ticksPerSample
 				
 				curr_time = time.time()

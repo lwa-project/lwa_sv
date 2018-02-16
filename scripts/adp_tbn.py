@@ -485,6 +485,8 @@ class PacketizeOp(object):
 		
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
 		
+		self.sync_tbn_pipelines = MCS.Synchronizer('TBN')
+		
 	def main(self):
 		global ACTIVE_TBN_CONFIG
 		
@@ -547,6 +549,13 @@ class PacketizeOp(object):
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
 						
+						try:
+							self.sync_tbn_pipelines(time_tag_cur)
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							pass
+							
 						pkts = []
 						for stand in xrange(nstand):
 							for pol in xrange(npol):
@@ -564,6 +573,7 @@ class PacketizeOp(object):
 								udt.sendmany(pkts)
 						except Exception as e:
 							print 'Sending Error', str(e)
+							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
 					curr_time = time.time()
