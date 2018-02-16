@@ -362,6 +362,7 @@ class TEngineOp(object):
 								
 								## IFFT
 								try:
+									gdata = gdata.reshape(*t.shape)
 									bfft.execute(tdata, gdata, inverse=True)
 								except NameError:
 									gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
