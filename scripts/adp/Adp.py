@@ -1441,8 +1441,8 @@ class MsgProcessor(ConsumerThread):
 		else:
 			self.log.error('Calibration failed')
 			
-		# Move the tone up to 103 MHz (aliases to 600 kHz)
-		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 103", shell=True)
+		# Move the tone up to 95 MHz
+		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 95", shell=True)
 		
 		# Done
 		return status
