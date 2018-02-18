@@ -623,8 +623,6 @@ class PacketizeOp(object):
 			time_tag += soffset*ticksPerSample				# Correct for offset
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
-			gulp_count = time_tag // 10 // ntime_gulp
-			
 			prev_time = time.time()
 			with UDPTransmit(sock=self.sock, core=self.core) as udt:
 				for ispan in isequence.read(gulp_size, begin=boffset):
@@ -637,16 +635,15 @@ class PacketizeOp(object):
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
-					try:
-						self.sync_drx_pipelines(gulp_count)
-					except ValueError:
-						pass
-					except (socket.timeout, socket.error):
-						pass
-						
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						
+						try:
+							self.sync_drx_pipelines(time_tag_cur)
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							pass
+							
 						pkts = []
 						for beam in xrange(self.nbeam_max):
 							for pol in xrange(npol):
@@ -667,8 +664,6 @@ class PacketizeOp(object):
 							print 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
-					
-					gulp_count += ticksPerSample // 10
 					
 					curr_time = time.time()
 					process_time = curr_time - prev_time
@@ -750,8 +745,6 @@ class SinglePacketizeOp(object):
 			time_tag += soffset*ticksPerSample				# Correct for offset
 			time_tag -= int(round(fdly*ticksPerSample))		# Correct for FIR filter delay
 			
-			gulp_count = time_tag // 10 // ntime_gulp
-			
 			prev_time = time.time()
 			with UDPTransmit(sock=self.sock, core=self.core) as udt:
 				for ispan in isequence.read(gulp_size, begin=boffset):
@@ -764,16 +757,15 @@ class SinglePacketizeOp(object):
 					shape = (-1,self.nbeam_max,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
-					try:
-						self.sync_drx_pipelines(gulp_count)
-					except ValueError:
-						pass
-					except (socket.timeout, socket.error):
-						pass
-						
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						
+						try:
+							self.sync_drx_pipelines(time_tag_cur)
+						except ValueError:
+							continue
+						except (socket.timeout, socket.error):
+							pass
+							
 						pkts = []
 						for pol in xrange(npol):
 							pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
@@ -793,8 +785,6 @@ class SinglePacketizeOp(object):
 							print 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
-					
-					gulp_count += ticksPerSample // 10
 					
 					curr_time = time.time()
 					process_time = curr_time - prev_time

@@ -548,7 +548,6 @@ class PacketizeOp(object):
 					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						
 						try:
 							self.sync_tbn_pipelines(time_tag_cur)
 						except ValueError:
@@ -737,7 +736,7 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
-	GSIZE = 1000
+	GSIZE = 2500
 	ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
 	                     nsrc=nroach, src0=roach0, max_payload_size=9000,
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),

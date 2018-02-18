@@ -837,12 +837,12 @@ class CorrelatorOp(object):
 					if not reset_sequence:
 						break
 
-def gen_chips_header(server, nchan, chan0, seq, gbe=0, nbeam=1, nservers=6):
+def gen_chips_header(server, nchan, chan0, seq, gbe=0, nservers=6):
 	return struct.pack('>BBBBBBHQ', 
 				    server, 
 				    gbe, 
 				    nchan,
-				    nbeam, 
+				    1, 
 				    0,
 				    nservers,
 				    chan0-nchan*(server-1), 
@@ -1232,7 +1232,7 @@ def main(argv):
 	bw_max    = obw/nserver/ntuning
 	
 	# TODO:  Figure out what to do with this resize
-	GSIZE = 1000
+	GSIZE = 500
 	ogulp_size = GSIZE *nchan_max*256*2
 	obuf_size  = tbf_buffer_secs*25000 *nchan_max*256*2
 	tbf_ring.resize(ogulp_size, obuf_size)
@@ -1257,15 +1257,13 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	## HACK for verification
-	#if hostname == 'adp3' and tuning == 0:
-	#	ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
-	#	                        tuning=tuning, ntime_gulp=GSIZE,
-	#	                        nchan_max=nchan_max, 
-	#	                        core=3 if tuning == 0 else 10, gpu=tuning))
-	#	ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-	#	                       npkt_gulp=1, 
-	#	                       core=3 if tuning == 0 else 10, gpu=tuning))
+	#ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
+	#                        tuning=tuning, ntime_gulp=GSIZE,
+	#                        nchan_max=nchan_max, 
+	#                        core=3 if tuning == 0 else 10, gpu=tuning))
+	#ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
+	#                       npkt_gulp=1, 
+	#                       core=3 if tuning == 0 else 10, gpu=tuning))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
