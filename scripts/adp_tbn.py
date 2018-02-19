@@ -162,7 +162,6 @@ class TEngineOp(object):
 		self.gain = 2
 		self.filt = 7#filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
 		self.nchan_out = FILTER2CHAN[self.filt]
-		self.phaseRot = 1
 		
 		#coeffs = np.array([-0.0179700,  0.0144130, -0.0111240, -0.0017506, 0.0254560, 
 		#                   -0.0581470,  0.0950000, -0.1290700,  0.1531900, 0.8380900, 
@@ -178,7 +177,7 @@ class TEngineOp(object):
 		                   -0.03218100,  0.00735870,  0.0040327, -0.0044913,  0.0017756,
 		                   -0.00021433, -3.2235e-05], dtype=np.float64)
 		
-		# Setup the FIR filter
+		# Setup the T-engine
 		if self.gpu != -1:
 			BFSetGPU(self.gpu)
 		## Metadata
@@ -188,7 +187,12 @@ class TEngineOp(object):
 		coeffs = np.repeat(coeffs, nstand*npol, axis=1)
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
-		                        
+		## Phase rotator state
+		phaseState = np.array((1,), dtype=np.complex64)
+		self.phaseState = BFArray(phaseState, space='cuda')
+		sampleCount = np.array((1,), dtype=np.int64)
+		self.sampleCount = BFArray(sampleCount, space='cuda')
+		
 	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_TBN_CONFIG
@@ -242,10 +246,11 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
-			self.phaseRot.shape += (1,1)
-			self.phaseRot = self.phaseRot.astype(np.complex64)
-			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseRot = phaseRot.astype(np.complex64)
+			self.phaseState[0] = phaseState
+			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			ACTIVE_TBN_CONFIG.set()
 			
@@ -264,10 +269,11 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out))
-			self.phaseRot.shape += (1,1)
-			self.phaseRot = self.phaseRot.astype(np.complex64)
-			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseRot = phaseRot.astype(np.complex64)
+			self.phaseState[0] = phaseState
+			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			return False
 			
@@ -306,6 +312,7 @@ class TEngineOp(object):
 				
 				ticksPerTime = int(FS) / int(CHAN_BW)
 				base_time_tag = iseq.time_tag
+				self.sampleCount[0] = 0
 				
 				ohdr = {}
 				ohdr['nstand']   = nstand
@@ -372,8 +379,9 @@ class TEngineOp(object):
 									bfft.execute(tdata, gdata, inverse=True)
 									
 								## Phase rotation
+								gdata = gdata.reshape((-1,nstand*npol))
+								BFMap("a(i,j) *= 1./16.*exp(g(0)*s(0))*b(i)" {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
 								gdata = gdata.reshape((-1,nstand,npol))
-								BFMap("a(i,j,k) *= 1./16.* b(i,0,0)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j','k'), shape=gdata.shape)
 								
 								## FIR filter
 								try:
@@ -399,9 +407,13 @@ class TEngineOp(object):
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
 							
+							## Update the sample counter
+							self.sampleCount[0] = self.sampleCount[0] + oshape[0]
+							
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
+								self.sampleCount[0] = 0
 								
 								### New output size/shape
 								ngulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*2	# 8+8 complex
@@ -452,7 +464,7 @@ def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
 	frame_num    = ((time_tag - time_tag0) // nframe_per_packet) % frame_num_wrap + 1 # Packet sequence no.
 	id_frame_num = idval << 24 | frame_num
 	assert( 0 <= cfreq < FS )
-	tuning_word  = int(cfreq / FS * 2**32)
+	tuning_word  = int(round(cfreq / FS * 2**32))	# This should already be on the DP frequency grid from the control software so we need to use round()
 	tbn_id       = (pol + NPOL*stand) + 1
 	gain         = gain
 	#if stand == 0 and pol == 0:

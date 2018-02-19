@@ -96,14 +96,13 @@ class CaptureOp(object):
 			'time_tag': time_tag,
 			'chan0':    chan0,
 			'nsrc':     nsrc,
-			'nchan':    nchan*nsrc, 
-			'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
-			'bw':       nchan*nsrc*CHAN_BW,
+			'nchan':    nchan*nsrc, 						# Each server since part of the bandwidth
+			'cfreq':    (chan0 + 0.5*(nchan*nsrc-1))*CHAN_BW,	# Each server since part of the bandwidth
+			'bw':       nchan*nsrc*CHAN_BW,				# Each server since part of the bandwidth
 			'nstand':   self.nbeam_max,
-			#'stand0':   src0*16, # TODO: Pass src0 to the callback too(?)
 			'npol':     2,
 			'complex':  True,
-			'nbit':     64
+			'nbit':     64 if self.nbeam_max == 1 else 32
 		}
 		print "******** CFREQ:", hdr['cfreq']
 		hdr_str = json.dumps(hdr)
@@ -167,7 +166,7 @@ class ReorderChannelsOp(object):
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
 				
-				if nstand == 1:
+				if ihdr['nbit'] == 64:
 					igulp_size = self.ntime_gulp*nchan*nstand*npol*16				# complex128
 				else:
 					igulp_size = self.ntime_gulp*nchan*nstand*npol*8				# complex64
@@ -196,7 +195,7 @@ class ReorderChannelsOp(object):
 							reserve_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							if nstand == 1:
+							if ihdr['nbit'] == 64:
 								idata = ispan.data_view(np.complex128).reshape(ishape)
 							else:
 								idata = ispan.data_view(np.complex64).reshape(ishape)
@@ -245,7 +244,6 @@ class TEngineOp(object):
 		self.gain = 7
 		self.filt = filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
 		self.nchan_out = FILTER2CHAN[self.filt]
-		self.phaseRot = 1.0
 		
 		coeffs = np.array([ 0.0111580, -0.0074330,  0.0085684, -0.0085984,  0.0070656, -0.0035905, 
 		                   -0.0020837,  0.0099858, -0.0199800,  0.0316360, -0.0443470,  0.0573270, 
@@ -254,7 +252,7 @@ class TEngineOp(object):
 		                   -0.0199800,  0.0099858, -0.0020837, -0.0035905,  0.0070656, -0.0085984,  
 		                    0.0085684, -0.0074330,  0.0111580], dtype=np.float64)
 		
-		# Setup the FIR filter
+		# Setup the T-engine
 		if self.gpu != -1:
 			BFSetGPU(self.gpu)
 		## Metadata
@@ -264,7 +262,12 @@ class TEngineOp(object):
 		coeffs = np.repeat(coeffs, nstand*npol, axis=1)
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
-		                         
+		## Phase rotator state
+		phaseState = np.array((1,), dtype=np.complex64)
+		self.phaseState = BFArray(phaseState, space='cuda')
+		sampleCount = np.array((1,), dtype=np.int64)
+		self.sampleCount = BFArray(sampleCount, space='cuda')
+		
 	#@ISC.logException
 	def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
 		global ACTIVE_DRX_CONFIG
@@ -328,9 +331,11 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
-			self.phaseRot = self.phaseRot.astype(np.complex64)
-			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseRot = phaseRot.astype(np.complex64)
+			self.phaseState[0] = phaseState
+			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			ACTIVE_DRX_CONFIG.set()
 			
@@ -349,9 +354,11 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			self.phaseRot = np.exp(-2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
-			self.phaseRot = self.phaseRot.astype(np.complex64)
-			self.phaseRot = BFAsArray(self.phaseRot, space='cuda')
+			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseRot = phaseRot.astype(np.complex64)
+			self.phaseState[0] = phaseState
+			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			return False
 			
@@ -391,6 +398,7 @@ class TEngineOp(object):
 				
 				ticksPerTime = int(FS) / int(CHAN_BW)
 				base_time_tag = iseq.time_tag
+				self.sampleCount[0] = 0
 				
 				ohdr = {}
 				ohdr['nstand']   = nstand
@@ -460,7 +468,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand*npol))
-								BFMap("a(i,j) *= b(i)", {'a':gdata, 'b':self.phaseRot}, axis_names=('i','j'), shape=gdata.shape)
+								BFMap("a(i,j) *= exp(g(0)*s(0))*b(i)" {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
 								gdata = gdata.reshape((-1,nstand,npol))
 								
 								## FIR filter
@@ -487,9 +495,13 @@ class TEngineOp(object):
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
 							
+							## Update the sample counter
+							self.sampleCount[0] = self.sampleCount[0] + oshape[0]
+							
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
+								self.sampleCount[0] = 0
 								
 								### New output size/shape
 								ngulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1               # 4+4 complex
@@ -539,7 +551,7 @@ def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
 	frame_num    = 0
 	id_frame_num = idval << 24 | frame_num
 	assert( 0 <= cfreq < FS )
-	tuning_word  = int(cfreq / FS * 2**32)
+	tuning_word  = int(round(cfreq / FS * 2**32))	# This should already be on the DP frequency grid from the control software so we need to use round()
 	#if stand == 0 and pol == 0:
 	#	print cfreq, bw, gain, time_tag, time_tag0
 	#	print nframe_per_sample, nframe_per_packet
