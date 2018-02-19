@@ -13,6 +13,7 @@ from bifrost.udp_transmit import UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
+from bifrost.ndarray import copy_array
 from bifrost.fft import Fft
 from bifrost.fir import Fir
 from bifrost.quantize import quantize as Quantize
@@ -263,9 +264,9 @@ class TEngineOp(object):
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
 		## Phase rotator state
-		phaseState = np.array((1,), dtype=np.complex64)
+		phaseState = np.array((0,), dtype=np.complex64)
 		self.phaseState = BFArray(phaseState, space='cuda')
-		sampleCount = np.array((1,), dtype=np.int64)
+		sampleCount = np.array((0,), dtype=np.int64)
 		self.sampleCount = BFArray(sampleCount, space='cuda')
 		
 	#@ISC.logException
@@ -334,7 +335,7 @@ class TEngineOp(object):
 			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
 			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			phaseRot = phaseRot.astype(np.complex64)
-			self.phaseState[0] = phaseState
+			copy_array(self.phaseState, np.array([phaseState,], dtype=np.complex64))
 			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			ACTIVE_DRX_CONFIG.set()
@@ -357,7 +358,7 @@ class TEngineOp(object):
 			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
 			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			phaseRot = phaseRot.astype(np.complex64)
-			self.phaseState[0] = phaseState
+			copy_array(self.phaseState, np.array([phaseState,], dtype=np.complex64))
 			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			return False
@@ -398,7 +399,8 @@ class TEngineOp(object):
 				
 				ticksPerTime = int(FS) / int(CHAN_BW)
 				base_time_tag = iseq.time_tag
-				self.sampleCount[0] = 0
+				sample_count = 0
+				copy_array(self.sampleCount, np.array([sample_count,], dtype=np.int64))
 				
 				ohdr = {}
 				ohdr['nstand']   = nstand
@@ -468,7 +470,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand*npol))
-								BFMap("a(i,j) *= exp(g(0)*s(0))*b(i)" {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
+								BFMap("a(i,j) *= exp(g(0)*s(0))*b(i)", {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
 								gdata = gdata.reshape((-1,nstand,npol))
 								
 								## FIR filter
@@ -496,12 +498,14 @@ class TEngineOp(object):
 							base_time_tag += self.ntime_gulp*ticksPerTime
 							
 							## Update the sample counter
-							self.sampleCount[0] = self.sampleCount[0] + oshape[0]
+							sample_count += oshape[0]
+							copy_array(self.sampleCount, np.array([sample_count,], dtype=np.int64))
 							
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True
-								self.sampleCount[0] = 0
+								sample_count = 0
+								copy_array(self.sampleCount, np.array([sample_count,], dtype=np.int64))
 								
 								### New output size/shape
 								ngulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1               # 4+4 complex
