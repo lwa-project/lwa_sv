@@ -38,7 +38,8 @@
 				"beam_count":        2,
 				"pipeline_idx":      0,
 				"tengine_idx":       0,
-				"recorder_idx":      0,
+				"tbf_recorder_idx":  0,
+				"cor_recorder_idx":  3,
 				"cpus":              [0, 2, 3, 4, 5],
 				"gpus":              [0]
 			}, 
@@ -47,7 +48,8 @@
 				"beam_count":        2,
 				"pipeline_idx":      1,
 				"tengine_idx":       1,
-				"recorder_idx":      0,
+				"tbf_recorder_idx":  0,
+				"cor_recorder_idx":  3,
 				"cpus":              [8, 9, 10, 11, 12],
 				"gpus":              [1]
 			}
@@ -141,6 +143,11 @@
 				},
 				{
 					"host":              "dr3", 
+					"port":              10000,
+					"max_bytes_per_sec": 104851000
+				},
+				{
+					"host":              "lasi", 
 					"port":              10000,
 					"max_bytes_per_sec": 104851000
 				}

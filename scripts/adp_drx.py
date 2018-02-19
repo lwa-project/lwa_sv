@@ -952,7 +952,7 @@ def gen_cor_header(stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
 
 class PacketizeOp(object):
 	# Note: Input data are: [time,beam,pol,iq]
-	def __init__(self, log, iring, osock, npkt_gulp=128, core=-1, gpu=-1):
+	def __init__(self, log, iring, osock, npkt_gulp=128, core=-1, gpu=-1, max_bytes_per_sec=None):
 		self.log   = log
 		self.iring = iring
 		self.sock  = osock
@@ -967,6 +967,10 @@ class PacketizeOp(object):
 		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
 		
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
+		
+		if max_bytes_per_sec is None:
+			max_bytes_per_sec = 104857600		# default to 100 MB/s
+		self.max_bytes_per_sec = max_bytes_per_sec
 		
 	def main(self):
 		global ACTIVE_COR_CONFIG
@@ -1019,6 +1023,8 @@ class PacketizeOp(object):
 					odata = odata.reshape(nchan,nstand,2,nstand,2)
 					odata = np.swapaxes(odata, 2, 3)
 					
+					bytesSent, bytesStart = 0.0, time.time()
+					
 					time_tag_cur = time_tag + ticksPerFrame
 					for i in xrange(nstand):
 						pkts = []
@@ -1037,6 +1043,9 @@ class PacketizeOp(object):
 						#	udt.sendmany(pkts)
 						#except Exception as e:
 						#	print 'Sending Error', str(e)
+						#
+						#while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
+						#	time.sleep(0.001)
 							
 						# HACK for verification
 						if os.path.getsize(filename) < 10*1024**3:
@@ -1175,12 +1184,18 @@ def main(argv):
 	pipeline_idx = drxConfig['pipeline_idx']
 	iaddr        = config['server']['data_ifaces'][pipeline_idx]
 	iport        = config['server']['data_ports' ][pipeline_idx]
-	## Network - data recorder
-	recorder_idx = drxConfig['recorder_idx']
+	## Network - TBF - data recorder
+	recorder_idx = drxConfig['tbf_recorder_idx']
 	recConfig    = config['recorder'][recorder_idx]
 	oaddr        = recConfig['host']
 	oport        = recConfig['port']
 	obw          = recConfig['max_bytes_per_sec']
+	## Network - COR - data recorder
+	recorder_idx = drxConfig['cor_recorder_idx']
+	recConfig    = config['recorder'][recorder_idx]
+	vaddr        = recConfig['host']
+	vport        = recConfig['port']
+	vbw          = recConfig['max_bytes_per_sec']
 	## Network - T engine
 	tengine_idx  = drxConfig['tengine_idx']
 	tngConfig    = config['tengine'][tengine_idx]
@@ -1195,8 +1210,9 @@ def main(argv):
 	gpus  = drxConfig['gpus']
 	
 	log.info("Src address:  %s:%i", iaddr, iport)
-	log.info("Dst address:  %s:%i", oaddr, oport)
-	log.info("Tng address:  %s:%i", taddr, tport)
+	log.info("TBF address:  %s:%i", oaddr, oport)
+	log.info("COR address:  %s:%i", vaddr, vport)
+	log.info("TNG address:  %s:%i", taddr, tport)
 	log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
 	log.info("Tunings:      %i (of %i)", tuning+1, ntuning)
 	log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
@@ -1220,16 +1236,17 @@ def main(argv):
 	osock = UDPSocket()
 	osock.connect(oaddr)
 	
+	vaddr = Address(vaddr, vport)
+	vsock = UDPSocket()
+	vsock.connect(vaddr)
+	
 	taddr = Address(taddr, tport)
 	tsock = UDPSocket()
 	tsock.connect(taddr)
 	
-	vaddr = Address("192.168.40.43", tport)
-	vsock = UDPSocket()
-	vsock.connect(vaddr)
-	
 	nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW/nserver))
-	bw_max    = obw/nserver/ntuning
+	tbf_bw_max    = obw/nserver/ntuning
+	cor_bw_max    = vbw/nserver/ntuning
 	
 	# TODO:  Figure out what to do with this resize
 	GSIZE = 500
@@ -1248,7 +1265,7 @@ def main(argv):
 	                           ntime_gulp=GSIZE, ntime_buf=int(25000*tbf_buffer_secs/2500)*2500,
 	                           tuning=tuning, nchan_max=nchan_max, 
 	                           core=cores.pop(0), 
-	                           max_bytes_per_sec=bw_max))
+	                           max_bytes_per_sec=tbf_bw_max))
 	ops.append(BeamformerOp(log=log, iring=capture_ring, oring=tengine_ring, 
 	                        tuning=tuning, ntime_gulp=GSIZE,
 	                        nchan_max=nchan_max, nbeam_max=nbeam, 
@@ -1263,7 +1280,8 @@ def main(argv):
 	#                        core=3 if tuning == 0 else 10, gpu=tuning))
 	#ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
 	#                       npkt_gulp=1, 
-	#                       core=3 if tuning == 0 else 10, gpu=tuning))
+	#                       core=3 if tuning == 0 else 10, gpu=tuning,
+	#                       max_bytes_per_sec=cor_bw_max)))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
