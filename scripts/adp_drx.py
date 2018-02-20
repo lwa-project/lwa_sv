@@ -291,7 +291,7 @@ class TriggeredDumpOp(object):
 		# HACK TESTING
 		dump_time_tag = time_tag
 		if dump_time_tag is None:
-			time_offset    = -2.4
+			time_offset    = -4.0
 			time_offset_s  = int(time_offset)
 			time_offset_us = int(round((time_offset-time_offset_s)*1e6))
 			time_offset    = datetime.timedelta(seconds=time_offset_s, microseconds=time_offset_us)
@@ -883,12 +883,13 @@ class RetransmitOp(object):
 			
 			self.log.info("Retransmit: Start of new sequence: %s", str(ihdr))
 			
-			chan0  = ihdr['chan0']
-			nchan  = ihdr['nchan']
-			nstand = ihdr['nstand']
-			npol   = ihdr['npol']
-			igulp_size = self.ntime_gulp*nchan*nstand*npol*8		# complex64
-			igulp_shape = (self.ntime_gulp,nchan,nstand,npol)
+			chan0   = ihdr['chan0']
+			nchan   = ihdr['nchan']
+			nstand  = ihdr['nstand']
+			npol    = ihdr['npol']
+			nstdpol = nstand * npol
+			igulp_size = self.ntime_gulp*nchan*nstdpol*8		# complex64
+			igulp_shape = (self.ntime_gulp,nchan,nstdpol)
 			
 			seq0 = ihdr['seq0']
 			seq = seq0
@@ -903,7 +904,7 @@ class RetransmitOp(object):
 					prev_time = curr_time
 					
 					idata = ispan.data_view(np.complex64).reshape(igulp_shape)
-					if self.nbeam_max == 1:
+					if nstdpol == 2:
 						pdata = idata.astype(np.complex128)
 					else:
 						pdata = idata
@@ -920,6 +921,7 @@ class RetransmitOp(object):
 						udt.sendmany(pkts)
 					except Exception as e:
 						pass
+						
 					seq += self.ntime_gulp
 					
 					curr_time = time.time()

@@ -633,7 +633,7 @@ class PacketizeOp(object):
 			soffset = toffset % int(ntime_pkt)
 			if soffset != 0:
 				soffset = ntime_pkt - soffset
-			boffset = soffset*self.nbeam_max*npol
+			boffset = soffset*nbeam*npol
 			print '!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
 			
 			time_tag += soffset*ticksPerSample				# Correct for offset
@@ -648,7 +648,7 @@ class PacketizeOp(object):
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
 					
-					shape = (-1,self.nbeam_max,npol)
+					shape = (-1,nbeam,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
@@ -661,7 +661,7 @@ class PacketizeOp(object):
 							pass
 							
 						pkts = []
-						for beam in xrange(self.nbeam_max):
+						for beam in xrange(nbeam):
 							for pol in xrange(npol):
 								pktdata = data[t:t+ntime_pkt,beam,pol]
 								hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -755,7 +755,7 @@ class SinglePacketizeOp(object):
 			soffset = toffset % int(ntime_pkt)
 			if soffset != 0:
 				soffset = ntime_pkt - soffset
-			boffset = soffset*self.nbeam_max*npol
+			boffset = soffset*nbeam*npol
 			print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
 			
 			time_tag += soffset*ticksPerSample				# Correct for offset
@@ -770,7 +770,7 @@ class SinglePacketizeOp(object):
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
 					
-					shape = (-1,self.nbeam_max,npol)
+					shape = (-1,nbeam,npol)
 					data = ispan.data_view(np.int8).reshape(shape)
 					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
@@ -882,7 +882,7 @@ class DualPacketizeOp(object):
 			soffset = toffset % int(ntime_pkt)
 			if soffset != 0:
 				soffset = ntime_pkt - soffset
-			boffset = soffset*self.nbeam_max*npol
+			boffset = soffset*nbeam*npol
 			print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
 			
 			time_tag += soffset*ticksPerSample				# Correct for offset
@@ -900,7 +900,7 @@ class DualPacketizeOp(object):
 				acquire_time = curr_time - prev_time
 				prev_time = curr_time
 				
-				shape = (-1,self.nbeam_max,npol)
+				shape = (-1,nbeam,npol)
 				data = ispan.data_view(np.int8).reshape(shape)
 				
 				try:

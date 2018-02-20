@@ -55,7 +55,7 @@
 			}
 	],
 	"tbf": {
-		"buffer_time_sec":  3.0
+		"buffer_time_sec":  5.0
 	},
 	"tbn": {
 		"capture_bandwidth": 200e3,
