@@ -703,6 +703,10 @@ class SinglePacketizeOp(object):
 		self.npkt_gulp = npkt_gulp
 		self.core = core
 		
+		assert(self.beam > 0)
+		assert(self.beam <= self.nbeam_max)
+		assert(self.npkt_gulp % 2 == 0)
+		
 		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
 		self.in_proclog   = ProcLog(type(self).__name__+"/in")
 		self.size_proclog = ProcLog(type(self).__name__+"/size")
@@ -763,6 +767,7 @@ class SinglePacketizeOp(object):
 			
 			prev_time = time.time()
 			with UDPTransmit(sock=self.sock, core=self.core) as udt:
+				pkts = []
 				for ispan in isequence.read(gulp_size, begin=boffset):
 					if ispan.size < gulp_size:
 						continue # Ignore final gulp
@@ -775,14 +780,14 @@ class SinglePacketizeOp(object):
 					
 					for t in xrange(0, ntime_gulp, ntime_pkt):
 						time_tag_cur = time_tag + int(t)*ticksPerSample
-						try:
-							self.sync_drx_pipelines(time_tag_cur)
-						except ValueError:
-							continue
-						except (socket.timeout, socket.error):
-							pass
+						#try:
+						#	self.sync_drx_pipelines(time_tag_cur)
+						#except ValueError:
+						#	continue
+						#except (socket.timeout, socket.error):
+						#	pass
 							
-						pkts = []
+						#pkts = []
 						for pol in xrange(npol):
 							pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
 							hdr = gen_drx_header(self.beam-1+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -793,12 +798,22 @@ class SinglePacketizeOp(object):
 							except Exception as e:
 								print 'Packing Error', str(e)
 								
-						try:
-							if ACTIVE_DRX_CONFIG.is_set():
-								if not self.tbfLock.is_set():
-									udt.sendmany(pkts)
-						except Exception as e:
-							print 'Sending Error', str(e)
+						if len(pkts) >= 4:
+							try:
+								self.sync_drx_pipelines(time_tag_cur)
+							except ValueError:
+								continue
+							except (socket.timeout, socket.error):
+								pass
+								
+							try:
+								if ACTIVE_DRX_CONFIG.is_set():
+									if not self.tbfLock.is_set():
+										udt.sendmany(pkts)
+							except Exception as e:
+								print 'Sending Error', str(e)
+								
+							pkts = []
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
@@ -1125,14 +1140,14 @@ def main(argv):
 	                     nchan_max=nchan_max, nbeam=nbeam, 
 	                     core=cores.pop(0), gpu=gpus.pop(0)))
 	if split_beam:
-		for beam in xrange(1):
+		for beam in xrange(nbeam):
 			raddr = Address(oaddr[beam], oport[beam])
 			rsock = UDPSocket()
 			rsock.connect(raddr)
 			ops.append(SinglePacketizeOp(log, tengine_ring,
 			                             osock=rsock,
 			                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
-			                             npkt_gulp=16, core=cores.pop(0)))
+			                             npkt_gulp=32, core=cores.pop(0)))
 	else:
 		oaddr = Address(oaddr, oport)
 		osock = UDPSocket()
