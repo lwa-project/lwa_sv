@@ -264,7 +264,7 @@ class TEngineOp(object):
 		coeffs.shape = (coeffs.shape[0],nstand,npol)
 		self.coeffs = BFArray(coeffs, space='cuda')
 		## Phase rotator state
-		phaseState = np.array((0,), dtype=np.complex64)
+		phaseState = np.array((0,), dtype=np.float64)
 		self.phaseState = BFArray(phaseState, space='cuda')
 		sampleCount = np.array((0,), dtype=np.int64)
 		self.sampleCount = BFArray(sampleCount, space='cuda')
@@ -332,10 +332,10 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
-			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseState = fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(-2j*np.pi*phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			phaseRot = phaseRot.astype(np.complex64)
-			copy_array(self.phaseState, np.array([phaseState,], dtype=np.complex64))
+			copy_array(self.phaseState, np.array([phaseState,], dtype=np.float64))
 			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			ACTIVE_DRX_CONFIG.set()
@@ -355,10 +355,10 @@ class TEngineOp(object):
 			if self.gpu != -1:
 				BFSetGPU(self.gpu)
 				
-			phaseState = -2j*np.pi*fDiff/(self.nchan_out*CHAN_BW)
-			phaseRot = np.exp(phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
+			phaseState = fDiff/(self.nchan_out*CHAN_BW)
+			phaseRot = np.exp(-2j*np.pi*phaseState*np.arange(self.ntime_gulp*self.nchan_out, dtype=np.float64))
 			phaseRot = phaseRot.astype(np.complex64)
-			copy_array(self.phaseState, np.array([phaseState,], dtype=np.complex64))
+			copy_array(self.phaseState, np.array([phaseState,], dtype=np.float64))
 			self.phaseRot = BFAsArray(phaseRot, space='cuda')
 			
 			return False
@@ -470,7 +470,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand*npol))
-								BFMap("a(i,j) *= exp(g(0)*s(0))*b(i)", {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
+								BFMap("a(i,j) *= exp(Complex<float>(0.0, -2*CUDART_PI*fmod(g(0)*s(0), 1.0)))*b(i)", {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
 								gdata = gdata.reshape((-1,nstand,npol))
 								
 								## FIR filter
