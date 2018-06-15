@@ -1275,6 +1275,7 @@ class MsgProcessor(ConsumerThread):
 		"""
 		
 		status = True
+		aligned = None
 		self.log.info("Starting ADC offset calibration")
 		
 		# Move the tone down to 30 MHz
@@ -1318,8 +1319,8 @@ class MsgProcessor(ConsumerThread):
 					status = False
 			return True
 		
-		# Tune to 30 MHz
-		freq = 30.1e6
+		# Tune to 34 MHz
+		freq = 34.1e6
 		shift_factor = 24
 		self.check_success(lambda: self.roaches.tune_drx(0, freq, shift_factor=shift_factor),
 		                   'Tuning DRX to the calibration tone',
@@ -1415,6 +1416,58 @@ class MsgProcessor(ConsumerThread):
 				else:
 					status &= False
 					
+				# Cleanup
+				_deleteFiles(filenames)
+				
+				# Check the roach board alignment
+				self.log.info("Checking FFT window alignment")
+				
+				self.check_success(lambda: self.roaches.tune_drx(0, freq),
+				                   'Checking FFT window alignment',
+				                    self.roaches.host)
+				time.sleep(20.0)
+				
+				# Run a TBF capture to check for roach board alignment
+				self.log.info("Triggering local TBF dump")
+				self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
+				tTrigger = time.time()
+				time.sleep(5.0)
+				
+				# Analyze
+				self.log.info("Checking FFT alignemnt")
+				filenames = _downloadFiles(tTrigger)
+				if len(filenames) >= 6 or 'FORCE' in arg:
+					# Verify the offsets
+					output = subprocess.check_output("python /home/adp/lwa_sv/scripts/checkRoachSync.py %s" % ' '.join(filenames), shell=True)
+					
+					# Load in the delays
+					output = output.split('\n')
+					offsets = []
+					for line in output:
+						#self.log.info('Log line - sync: %s', line.rstrip())
+						if line.startswith('roach'):
+							_, offset = line.split(None, 1)
+							offsets.append( int(offset, 10) )
+							
+					# Check
+					nZero = 0
+					for offset in offsets:
+						if offset == 0:
+							nZero += 1
+					nZero = max([nZero, 16-nZero])
+					self.log.info('There are %i roach boards in sync.', nZero)
+					if nZero == 16:
+						status &= True
+						aligned = True
+					else:
+						status &= False
+						aligned = False
+						
+				else:
+					self.log.warning("adc_cal alignment - downloaded only %i files", len(filenames))
+					for filename in filenames:
+						self.log.warning("  %s", filename)
+					status = False
 			else:
 				self.log.warning("adc_cal second pass - downloaded only %i files", len(filenames))
 				for filename in filenames:
@@ -1429,18 +1482,15 @@ class MsgProcessor(ConsumerThread):
 		# Cleanup
 		_deleteFiles(filenames)
 		
-		# Reset the FFT shift factor
-		self.check_success(lambda: self.roaches.tune_drx(0, freq),
-		                   'Resetting FFT shift factor to default',
-		                    self.roaches.host)
-		time.sleep(1.0)
-		
 		# Final report
 		if status:
 			self.log.info('Calibration succeeded')
 		else:
-			self.log.error('Calibration failed')
-			
+			if aligned is None:
+				self.log.error('Calibration failed')
+			else:
+				self.log.error('Roach boards out of sync')
+				
 		# Move the tone up to 95 MHz
 		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 95", shell=True)
 		
