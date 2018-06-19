@@ -856,6 +856,9 @@ class Roach2MonitorClient(object):
 		self.roach.configure_fengine(self.GBE_TBN, chan0, shift_factor=shift_factor)
 		return chan0
 		
+	def reset(self):
+		self.roach.reset(syncFunction=self.syncFunction)
+		
 	def start_processing(self):
 		self.roach.start_processing(syncFunction=self.syncFunction)
 		
@@ -1013,7 +1016,8 @@ class MsgProcessor(ConsumerThread):
 		             'SERVER_STARTUP_FAILED':      (0x09,'Server startup failed'),
 		             'SERVER_SHUTDOWN_FAILED':     (0x0A,'Server shutdown failed'), 
 		             'PIPELINE_STARTUP_FAILED':    (0x0B,'Pipeline startup failed'),
-		             'ADC_CALIBRATION_FAILED':     (0x0C,'ADC offset calibration failed')}
+		             'ADC_CALIBRATION_FAILED':     (0x0C,'ADC offset calibration failed'),
+		             'ROACH_FFT_SYNC_FAILED':      (0x0D,'Roach FFT window out of sync')}
 		code, msg = state_map[state]
 		self.state['lastlog'] = '%s: Finished with error' % cmd
 		self.state['status']  = 'ERROR'
@@ -1258,6 +1262,10 @@ class MsgProcessor(ConsumerThread):
 		
 		# Calibration
 		if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
+			if not self.roach_sync_test(arg):
+				if 'FORCE' not in arg: # Note: Also not in spec
+					return self.raise_error_state('INI', 'ROACH_FFT_SYNC_FAILED')
+					
 			if not self.adc_cal(arg):
 				if 'FORCE' not in arg: # Note: Also not in spec
 					return self.raise_error_state('INI', 'ADC_CALIBRATION_FAILED')
@@ -1268,6 +1276,112 @@ class MsgProcessor(ConsumerThread):
 		self.state['info'] = 'System calibrated and operating normally'
 		self.state['activeProcess'].pop()
 		return 0
+		
+	# Helper function - download files
+	def _download_tbf_files(self, tTrigger, nTunings, ageLimit=10.0, deleteAfterCopy=False):
+		filenames = []
+		for s in (1,2,3,4,5,6):
+			cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
+			latestTBF = subprocess.check_output(cmd, shell=True)
+			lines = latestTBF.split('\n')
+			for f,line in enumerate(lines):
+				if len(line) < 3:
+					continue
+					
+				try:
+					fields = line.split()
+					mtime, filename = float(fields[5]), fields[6]
+					print '!!', tTrigger, mtime, tTrigger - mtime
+					if abs(tTrigger - mtime) < ageLimit:
+						outname = '/data0/adc_cal_%i_%i' % (s, f+1)
+						subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
+						filenames.append( outname )
+						
+						if deleteAfterCopy:
+							subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
+							
+				except Exception as e:
+					self.log.info("ERROR: line %i - %s", f+1, str(e))
+
+		return filenames
+		
+	# Helper function - delete files
+	def _delete_tbf_files(self, filenames):
+		status = True
+		for filename in filenames:
+			try:
+				os.unlink(filename)
+			except OSError:
+				status = False
+		return True
+		
+	def roach_sync_test(self, arg=None):
+		"""
+		Roach board FFT window synchronization check.
+		"""
+		
+		status = True
+		self.log.info("Starting FFT window synchronization check")
+		
+		# Tune to 34 MHz
+		freq = 34.1e6
+		self.check_success(lambda: self.roaches.tune_drx(0, freq),
+		                   'Tuning DRX to the sky check frequency',
+		                    self.roaches.host)
+		time.sleep(20.0)
+		
+		# Run a TBF capture and save to disk
+		self.log.info("Triggering local TBF dump")
+		self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
+		tTrigger = time.time()
+		time.sleep(5.0)
+		
+		# Analyze
+		self.log.info("Analyzing TBF capture")
+		filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
+				
+		if len(filenames) >= 6 or 'FORCE' in arg:
+			# Verify the offsets
+			output = subprocess.check_output("python /home/adp/lwa_sv/scripts/checkRoachSync.py %s" % ' '.join(filenames), shell=True)
+			
+			# Load in the delays
+			output = output.split('\n')
+			offsets = []
+			for line in output:
+				#self.log.info('Log line - sync: %s', line.rstrip())
+				if line.startswith('roach'):
+					_, offset = line.split(None, 1)
+					offsets.append( int(offset, 10) )
+					
+			# Check
+			nZero = 0
+			for offset in offsets:
+				if offset == 0:
+					nZero += 1
+			nZero = max([nZero, 16-nZero])
+			self.log.info('There are %i roach boards in sync.', nZero)
+			if nZero == 16:
+				status &= True
+			else:
+				status &= False
+				
+		else:
+			self.log.warning("fft_sync_test - downloaded only %i files", len(filenames))
+			for filename in filenames:
+				self.log.warning("  %s", filename)
+			status = False
+			
+		# Final report
+		if status:
+			self.log.info('FFT windows in sync')
+		else:
+			if aligned is None:
+				self.log.error('Roach boards FFT windows in sync')
+			else:
+				self.log.error('Roach boards FFT windows out of sync')
+				
+		# Done
+		return status
 		
 	def adc_cal(self, arg=None):
 		"""
@@ -1281,46 +1395,8 @@ class MsgProcessor(ConsumerThread):
 		# Move the tone down to 30 MHz
 		subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 30", shell=True)
 		
-		# Helper function - download files
-		def _downloadFiles(tTrigger, nTunings=len(self.config['drx']), ageLimit=10.0, deleteAfterCopy=False):
-			filenames = []
-			for s in (1,2,3,4,5,6):
-				cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
-				latestTBF = subprocess.check_output(cmd, shell=True)
-				lines = latestTBF.split('\n')
-				for f,line in enumerate(lines):
-					if len(line) < 3:
-						continue
-						
-					try:
-						fields = line.split()
-						mtime, filename = float(fields[5]), fields[6]
-						print '!!', tTrigger, mtime, tTrigger - mtime
-						if abs(tTrigger - mtime) < ageLimit:
-							outname = '/data0/adc_cal_%i_%i' % (s, f+1)
-							subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
-							filenames.append( outname )
-							
-							if deleteAfterCopy:
-								subprocess.check_output("ssh adp%i 'rm -f %s'" % (s, filename), shell=True)
-								
-					except Exception as e:
-						self.log.info("ERROR: line %i - %s", f+1, str(e))
-
-			return filenames
-			
-		# Helper function - delete files
-		def _deleteFiles(filenames):
-			status = True
-			for filename in filenames:
-				try:
-					os.unlink(filename)
-				except OSError:
-					status = False
-			return True
-		
-		# Tune to 34 MHz
-		freq = 34.1e6
+		# Tune to 30 MHz
+		freq = 30.1e6
 		shift_factor = 24
 		self.check_success(lambda: self.roaches.tune_drx(0, freq, shift_factor=shift_factor),
 		                   'Tuning DRX to the calibration tone',
@@ -1335,7 +1411,7 @@ class MsgProcessor(ConsumerThread):
 		
 		# Analyze
 		self.log.info("Analyzing TBF capture")
-		filenames = _downloadFiles(tTrigger)
+		filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
 				
 		if len(filenames) >= 6 or 'FORCE' in arg:
 			# Solve for the delays
@@ -1376,7 +1452,7 @@ class MsgProcessor(ConsumerThread):
 			time.sleep(20.0)
 			
 			# Cleanup
-			_deleteFiles(filenames)
+			self._delete_tbf_files(filenames)
 			
 			# Check by running another TBF capture
 			self.log.info("Triggering local TBF dump")
@@ -1386,7 +1462,7 @@ class MsgProcessor(ConsumerThread):
 			
 			# Analyze
 			self.log.info("Verifying TBF capture")
-			filenames = _downloadFiles(tTrigger)
+			filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
 			if len(filenames) >= 6 or 'FORCE' in arg:
 				# Verify the delays
 				output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
@@ -1416,58 +1492,6 @@ class MsgProcessor(ConsumerThread):
 				else:
 					status &= False
 					
-				# Cleanup
-				_deleteFiles(filenames)
-				
-				# Check the roach board alignment
-				self.log.info("Checking FFT window alignment")
-				
-				self.check_success(lambda: self.roaches.tune_drx(0, freq),
-				                   'Checking FFT window alignment',
-				                    self.roaches.host)
-				time.sleep(20.0)
-				
-				# Run a TBF capture to check for roach board alignment
-				self.log.info("Triggering local TBF dump")
-				self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
-				tTrigger = time.time()
-				time.sleep(5.0)
-				
-				# Analyze
-				self.log.info("Checking FFT alignemnt")
-				filenames = _downloadFiles(tTrigger)
-				if len(filenames) >= 6 or 'FORCE' in arg:
-					# Verify the offsets
-					output = subprocess.check_output("python /home/adp/lwa_sv/scripts/checkRoachSync.py %s" % ' '.join(filenames), shell=True)
-					
-					# Load in the delays
-					output = output.split('\n')
-					offsets = []
-					for line in output:
-						#self.log.info('Log line - sync: %s', line.rstrip())
-						if line.startswith('roach'):
-							_, offset = line.split(None, 1)
-							offsets.append( int(offset, 10) )
-							
-					# Check
-					nZero = 0
-					for offset in offsets:
-						if offset == 0:
-							nZero += 1
-					nZero = max([nZero, 16-nZero])
-					self.log.info('There are %i roach boards in sync.', nZero)
-					if nZero == 16:
-						status &= True
-						aligned = True
-					else:
-						status &= False
-						aligned = False
-						
-				else:
-					self.log.warning("adc_cal alignment - downloaded only %i files", len(filenames))
-					for filename in filenames:
-						self.log.warning("  %s", filename)
-					status = False
 			else:
 				self.log.warning("adc_cal second pass - downloaded only %i files", len(filenames))
 				for filename in filenames:
@@ -1480,7 +1504,7 @@ class MsgProcessor(ConsumerThread):
 			status = False
 			
 		# Cleanup
-		_deleteFiles(filenames)
+		self._delete_tbf_files(filenames)
 		
 		# Final report
 		if status:
