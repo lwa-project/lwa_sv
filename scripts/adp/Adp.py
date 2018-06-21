@@ -1165,7 +1165,7 @@ class MsgProcessor(ConsumerThread):
 		utc_start = utc_now + datetime.timedelta(0, start_delay)
 		utc_init  = utc_start - datetime.timedelta(0, 1) # 1 sec before
 		utc_init_str  = utc_start.strftime(DATE_FORMAT)
-		utc_start = utc_start + datetime.timedelta(0, 2) # 2 sec after
+		utc_start = utc_start + datetime.timedelta(0, 3) # 3 sec after
 		utc_start_str = utc_start.strftime(DATE_FORMAT)
 		self.utc_start     = utc_start
 		self.utc_start_str = utc_start_str
@@ -1185,6 +1185,11 @@ class MsgProcessor(ConsumerThread):
 		                          self.roaches.host):
 			if 'FORCE' not in arg:
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+		if not self.check_success(lambda: self.roaches.start_processing(),
+                                          'Starting FPGA processing',
+                                          self.roaches.host):
+                        if 'FORCE' not in arg:
+                                return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
 		time.sleep(0.1)
 		self.log.info("Checking FPGA processing")
 		if not all(self.roaches.processing_started()):
@@ -1375,11 +1380,8 @@ class MsgProcessor(ConsumerThread):
 		if status:
 			self.log.info('FFT windows in sync')
 		else:
-			if aligned is None:
-				self.log.error('Roach boards FFT windows in sync')
-			else:
-				self.log.error('Roach boards FFT windows out of sync')
-				
+			self.log.error('Roach boards FFT windows out of sync')
+			
 		# Done
 		return status
 		
