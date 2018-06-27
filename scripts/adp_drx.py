@@ -19,6 +19,7 @@ from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
 from bifrost.linalg import LinAlg
+from bifrost import reduce as BFReduce
 from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
@@ -145,7 +146,8 @@ class CopyOp(object):
 				igulp_size = self.ntime_gulp*nchan*nstand*npol
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
-				self.iring.resize(igulp_size, igulp_size*10)
+				ishape = (self.ntime_gulp,nchan,nstand*npol)
+				self.iring.resize(igulp_size, igulp_size*20)
 				#self.oring.resize(ogulp_size)#, obuf_size)
 				
 				ticksPerTime = int(FS / CHAN_BW)
@@ -179,6 +181,29 @@ class CopyOp(object):
 									odata = ospan.data_view(np.uint8)	
 									BFMemCopy(odata, idata)
 									#print "COPY"
+									
+									## Lightning triggering code
+									#t0 = time.time()
+									#sdata = idata.reshape(ishape)
+									#sdata = sdata[:,:,[6,7, 224,225, 494,495]]                               
+									#sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
+									#try:
+									#	Unpack(sdata, udata)
+									#except NameError:
+									#	udata = BFArray(shape=sdata.shape, dtype=np.complex64)
+									#	Unpack(sdata, udata)
+									#pdata = udata.real*udata.real + udata.imag*udata.imag
+									#pdata = pdata.reshape(self.ntime_gulp,-1)
+									#pdata = pdata.mean(axis=1)
+									#m = pdata.max()
+									#s = np.argmax(pdata)
+									#try:
+									#	snr = m / n
+									#except NameError:
+									#	snr = 0
+									#n = pdata.std()
+									#if snr > 6:
+									#	print m, snr, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
 									
 							except IOError:
 								curr_time = time.time()
@@ -588,7 +613,7 @@ class BeamformerOp(object):
 							self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), self.tdata.transpose(1,2,0), 0.0, self.bdata)
 							
 							## Save and cleanup
-							odata[...] = self.bdata.copy(space='system').transpose(2,0,1)
+							odata[...] = self.bdata.copy(space='cuda_host').transpose(2,0,1)
 							
 						## Update the base time tag
 						base_time_tag += self.ntime_gulp*ticksPerTime
@@ -630,7 +655,7 @@ class CorrelatorOp(object):
 		self.nchan_max = nchan_max
 		self.configMessage = ISC.CORConfigurationClient(addr=('adp',5832))
 		self._pending = deque()
-		self.navg = 5*100
+		self.navg = 10*100
 		self.gain = 0
 		
 		# Setup the correlator
@@ -928,9 +953,9 @@ class RetransmitOp(object):
 					process_time = curr_time - prev_time
 					prev_time = curr_time
 					self.perf_proclog.update({'acquire_time': acquire_time, 
-										 'reserve_time': -1, 
-										 'process_time': process_time,})
-										 
+					                          'reserve_time': -1, 
+					                          'process_time': process_time,})
+					
 			del udt
 
 def gen_cor_header(stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
@@ -998,19 +1023,28 @@ class PacketizeOp(object):
 			nstand = ihdr['nstand']
 			npol   = ihdr['npol']
 			navg   = ihdr['navg']
+			gain   = ihdr['gain']
 			time_tag0 = iseq.time_tag
 			time_tag  = time_tag0
 			igulp_size = nchan*nstand*npol*nstand*npol*8
-			ishape = (nchan,nstand*npol,nstand*npol)
+			ishape = (nchan,nstand,npol,nstand,npol)
 			
+			ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
+			odata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='system')
+			bls = []
+			for i in xrange(nstand):
+				for j in xrange(i, nstand):
+					bls.append( (len(bls),(i,j)) )
+					
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
 			# HACK for verification
 			filename = '/data0/test_%s_%020i.cor' % (socket.gethostname(), time_tag0)#time_tag0
-			ofile = open(filename, 'wb')
+			#ofile = open(filename, 'wb')
 			
 			prev_time = time.time()
-			with UDPTransmit(sock=self.sock, core=self.core) as udt:
+			#with UDPTransmit(sock=self.sock, core=self.core) as udt:
+			with open(filename, 'wb') as ofile:
 				for ispan in iseq.read(igulp_size):
 					if ispan.size < igulp_size:
 						continue # Ignore final gulp
@@ -1019,61 +1053,65 @@ class PacketizeOp(object):
 					prev_time = curr_time
 					
 					idata = ispan.data_view(np.complex64).reshape(ishape)
-					ldata = idata.copy(space='cuda')
-					BFMap('a(i,j-1,j) = Complex<float>(a(i,j,j-1).real, -a(i,j,j-1).imag)', {'a':ldata}, axis_names=('i','j','k'), shape=ldata.shape)
-					odata = ldata.copy(space='system')
-					odata = odata.reshape(nchan,nstand,2,nstand,2)
-					odata = np.swapaxes(odata, 2, 3)
+					time.sleep(0.05)
+					copy_array(ldata, idata)
+					time.sleep(0.05)
+					copy_array(odata, ldata)
 					
 					bytesSent, bytesStart = 0.0, time.time()
 					
+					t0 = time.time()
 					time_tag_cur = time_tag + ticksPerFrame
-					for i in xrange(nstand):
-						pkts = []
-						for j in xrange(i, nstand):
-							pktdata = odata[:,j,i,:,:]
-							hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, 1)
-							try:
-								pkt = hdr + pktdata.tostring()
-								pkts.append( pkt )
-							except Exception as e:
-								print 'Packing Error', str(e)
-								
-						# HACK for verification
-						#try:
-						#	#if ACTIVE_COR_CONFIG.is_set():
-						#	udt.sendmany(pkts)
-						#except Exception as e:
-						#	print 'Sending Error', str(e)
-						#
-						#while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
-						#	time.sleep(0.001)
+					pkts = []
+					#pkts = ''
+					for k,(i,j) in bls:
+						pktdata = odata[:,j,:,i,:]
+						hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
+						try:
+							pkt = hdr + pktdata.tostring()
+							pkts.append( pkt )
+							#pkts += pkt
+						except Exception as e:
+							print 'Packing Error', str(e)
+						if k % 10 == 0:
+							time.sleep(100e-6)
 							
-						# HACK for verification
-						if os.path.getsize(filename) < 10*1024**3:
-							for pkt in pkts:
-								ofile.write(pkt)
-							ofile.flush()
-						else:
-							try:
-								ofile.close()
-							except:
-								pass
+					# HACK for verification
+					#try:
+					#	#if ACTIVE_COR_CONFIG.is_set():
+					#	udt.sendmany(pkts)
+					#except Exception as e:
+					#	print 'Sending Error', str(e)
+					#
+					#while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
+					#	time.sleep(0.001)
+						
+					# HACK for verification
+					if os.path.getsize(filename) < 10*1024**3:
+						for pkt in pkts:
+							ofile.write(pkt)
+						#ofile.write(pkts)
+						#ofile.flush()
+						print 'vis write', time.time()-t0
+					else:
+						try:
+							ofile.close()
+						except:
+							pass
 					time_tag += ticksPerFrame
-			
+					
 					curr_time = time.time()
 					process_time = curr_time - prev_time
 					prev_time = curr_time
 					self.perf_proclog.update({'acquire_time': acquire_time, 
-										 'reserve_time': -1, 
-										 'process_time': process_time,})
-										 
-			del udt
+					                          'reserve_time': -1, 
+					                          'process_time': process_time,})
+					
+			#del udt
 			
-			try:
-				ofile.close()
-			except:
-				pass
+			del ldata
+			del odata
+			del bls
 
 def get_utc_start(shutdown_event=None):
 	got_utc_start = False
@@ -1227,9 +1265,9 @@ def main(argv):
 	isock.bind(iaddr)
 	isock.timeout = 0.5
 	
-	capture_ring = Ring(name="capture-%i" % tuning)
+	capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
 	tbf_ring     = Ring(name="buffer-%i" % tuning)
-	tengine_ring = Ring(name="tengine-%i" % tuning)
+	tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
 	vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
 	
 	tbf_buffer_secs = int(round(config['tbf']['buffer_time_sec']))
@@ -1276,14 +1314,14 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	#ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
-	#                        tuning=tuning, ntime_gulp=GSIZE,
-	#                        nchan_max=nchan_max, 
-	#                        core=3 if tuning == 0 else 10, gpu=tuning))
-	#ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-	#                       npkt_gulp=1, 
-	#                       core=3 if tuning == 0 else 10, gpu=tuning,
-	#                       max_bytes_per_sec=cor_bw_max)))
+	ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
+	                        tuning=tuning, ntime_gulp=GSIZE,
+	                        nchan_max=nchan_max, 
+	                        core=3 if tuning == 0 else 10, gpu=tuning))
+	ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
+	                       npkt_gulp=1, 
+	                       core=3 if tuning == 0 else 10, gpu=tuning,
+	                       max_bytes_per_sec=cor_bw_max))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
