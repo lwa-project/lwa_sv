@@ -330,8 +330,7 @@ class TriggeredDumpOp(object):
 		ntime_dump = int(round(time_tag_to_seq_float(samples)))
 		
 		print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
-		if not local:
-			self.tbfLock.set()
+		self.tbfLock.set()
 		with self.iring.open_sequence_at(dump_time_tag, guarantee=True) as iseq:
 			time_tag0 = iseq.time_tag
 			ihdr = json.loads(iseq.header.tostring())
@@ -404,7 +403,7 @@ class TriggeredDumpOp(object):
 			ofile.close()
 		if not local:
 			del udt
-			self.tbfLock.clear()
+		self.tbfLock.clear()
 		print "TBF DUMP COMPLETE - average rate was %.3f MB/s" % (bytesSent/(time.time()-bytesStart)/1024**2,)
 
 class BeamformerOp(object):
