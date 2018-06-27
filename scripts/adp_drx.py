@@ -982,10 +982,11 @@ def gen_cor_header(stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
 
 class PacketizeOp(object):
 	# Note: Input data are: [time,beam,pol,iq]
-	def __init__(self, log, iring, osock, npkt_gulp=128, core=-1, gpu=-1, max_bytes_per_sec=None):
+	def __init__(self, log, iring, osock, tuning=0, nchan_max=256, nroach=16, npkt_gulp=128, core=-1, gpu=-1, max_bytes_per_sec=None):
 		self.log   = log
 		self.iring = iring
 		self.sock  = osock
+		self.tuning = tuning
 		self.npkt_gulp = npkt_gulp
 		self.core = core
 		self.gpu = gpu
@@ -998,11 +999,29 @@ class PacketizeOp(object):
 		
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
 		
+		self.nchan_max = nchan_max
+		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		if max_bytes_per_sec is None:
 			max_bytes_per_sec = 104857600		# default to 100 MB/s
 		self.max_bytes_per_sec = max_bytes_per_sec
 		
-		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+		# Setup the packetizer
+		if self.gpu != -1:
+			BFSetGPU(self.gpu)
+		## Metadata
+		nchan = self.nchan_max
+		nstand, npol = nroach*16, 2
+		self.bls = []
+		for i in xrange(nstand):
+			for j in xrange(i, nstand):
+				self.bls.append( (len(self.bls),(i,j)) )
+		## Decimation
+		self.chan_decim = 1
+		ochan = nchan / self.chan_decim
+		## Intermidiate arrays
+		## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
+		self.ldata = BFArray(shape=(ochan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
+		self.odata = BFArray(shape=(ochan,nstand,npol,nstand,npol), dtype=np.complex64, space='system')
 		
 	def main(self):
 		global ACTIVE_COR_CONFIG
@@ -1025,26 +1044,20 @@ class PacketizeOp(object):
 			#print 'PacketizeOp', ihdr
 			chan0  = ihdr['chan0']
 			nchan  = ihdr['nchan']
+			ochan  = nchan / self.chan_decim
 			nstand = ihdr['nstand']
 			npol   = ihdr['npol']
 			navg   = ihdr['navg']
 			gain   = ihdr['gain']
 			time_tag0 = iseq.time_tag
 			time_tag  = time_tag0
-			igulp_size = nchan*nstand*npol*nstand*npol*8
-			ishape = (nchan,nstand,npol,nstand,npol)
+			igulp_size = ochan*nstand*npol*nstand*npol*8
+			ishape = (ochan,nstand,npol,nstand,npol)
 			
-			ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
-			odata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='system')
-			bls = []
-			for i in xrange(nstand):
-				for j in xrange(i, nstand):
-					bls.append( (len(bls),(i,j)) )
-					
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
 			# HACK for verification
-			filename = '/data0/test_%s_%020i.cor' % (socket.gethostname(), time_tag0)#time_tag0
+			filename = '/data0/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag0)#time_tag0
 			#ofile = open(filename, 'wb')
 			
 			prev_time = time.time()
@@ -1061,9 +1074,9 @@ class PacketizeOp(object):
 					
 					idata = ispan.data_view(np.complex64).reshape(ishape)
 					time.sleep(0.05)
-					copy_array(ldata, idata)
+					copy_array(self.ldata, idata)
 					time.sleep(0.05)
-					copy_array(odata, ldata)
+					copy_array(self.odata, self.ldata)
 					
 					bytesSent, bytesStart = 0.0, time.time()
 					
@@ -1071,8 +1084,8 @@ class PacketizeOp(object):
 					time_tag_cur = time_tag + ticksPerFrame
 					pkts = []
 					#pkts = ''
-					for k,(i,j) in bls:
-						pktdata = odata[:,j,:,i,:]
+					for k,(i,j) in self.bls:
+						pktdata = self.odata[:,j,:,i,:]
 						hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
 						try:
 							pkt = hdr + pktdata.tostring()
@@ -1115,10 +1128,6 @@ class PacketizeOp(object):
 					                          'process_time': process_time,})
 					
 			#del udt
-			
-			del ldata
-			del odata
-			del bls
 
 def get_utc_start(shutdown_event=None):
 	got_utc_start = False
@@ -1326,7 +1335,7 @@ def main(argv):
 	                        nchan_max=nchan_max, 
 	                        core=3 if tuning == 0 else 10, gpu=tuning))
 	ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-	                       npkt_gulp=1, 
+	                       tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
 	                       core=3 if tuning == 0 else 10, gpu=tuning,
 	                       max_bytes_per_sec=cor_bw_max))
 	
