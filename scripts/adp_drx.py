@@ -654,6 +654,7 @@ class CorrelatorOp(object):
 		
 		self.nchan_max = nchan_max
 		self.configMessage = ISC.CORConfigurationClient(addr=('adp',5832))
+		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		self._pending = deque()
 		self.navg = 10*100
 		self.gain = 0
@@ -805,6 +806,8 @@ class CorrelatorOp(object):
 						for ispan in iseq_spans:
 							if ispan.size < igulp_size:
 								continue # Ignore final gulp
+							if self.tbfLock.is_set():
+								continue
 							curr_time = time.time()
 							acquire_time = curr_time - prev_time
 							prev_time = curr_time
@@ -999,6 +1002,8 @@ class PacketizeOp(object):
 			max_bytes_per_sec = 104857600		# default to 100 MB/s
 		self.max_bytes_per_sec = max_bytes_per_sec
 		
+		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+		
 	def main(self):
 		global ACTIVE_COR_CONFIG
 		
@@ -1048,6 +1053,8 @@ class PacketizeOp(object):
 				for ispan in iseq.read(igulp_size):
 					if ispan.size < igulp_size:
 						continue # Ignore final gulp
+					if self.tbfLock.is_set():
+						continue
 					curr_time = time.time()
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
