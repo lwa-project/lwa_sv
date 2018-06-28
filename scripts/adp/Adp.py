@@ -1253,11 +1253,12 @@ class MsgProcessor(ConsumerThread):
 		self.log.info("Initializing DRX")
 		self.roaches[0].roach.wait_for_pps()
 		for tuning in xrange(len(self.config['drx'])):
-			if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=20e6),
+			if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=34.1e6),
 			                          'Initializing DRX - %i' % tuning,
 			                          self.roaches.host):
 				if 'FORCE' not in arg:
 					return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
+					
 		for tuning in xrange(len(self.config['drx'])):
 			if not all(self.roaches.drx_data_enabled(tuning)):
 				return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')

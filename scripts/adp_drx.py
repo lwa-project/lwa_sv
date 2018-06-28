@@ -41,6 +41,8 @@ from collections import deque
 
 ACTIVE_COR_CONFIG = threading.Event()
 
+TBF_CPU_CORE_LOCK = threading.Event()
+
 __version__    = "0.2"
 __date__       = '$LastChangedDate: 2016-08-09 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -281,6 +283,8 @@ class TriggeredDumpOp(object):
 		self.max_bytes_per_sec = max_bytes_per_sec
 		
 	def main(self):
+		global TBF_CPU_CORE_LOCK
+		
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
 							 'core0': cpu_affinity.get_core(),})
@@ -298,9 +302,12 @@ class TriggeredDumpOp(object):
 				
 			print "Trigger: New trigger received: %s" % str(config)
 			try:
+				TBF_CPU_CORE_LOCK.set()
 				self.dump(samples=config[1], mask=config[2], local=config[3])
-			except RuntimeError as e:
+			except Exception as e:
 				print "Error on TBF dump: %s" % str(e)
+			finally:
+				TBF_CPU_CORE_LOCK.clear()
 		print "Writing ended, TBFOp exiting"
 		
 	def dump(self, samples, time_tag=None, mask=None, local=False):
@@ -330,7 +337,8 @@ class TriggeredDumpOp(object):
 		ntime_dump = int(round(time_tag_to_seq_float(samples)))
 		
 		print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
-		self.tbfLock.set()
+		if not local:
+			self.tbfLock.set()
 		with self.iring.open_sequence_at(dump_time_tag, guarantee=True) as iseq:
 			time_tag0 = iseq.time_tag
 			ihdr = json.loads(iseq.header.tostring())
@@ -403,7 +411,7 @@ class TriggeredDumpOp(object):
 			ofile.close()
 		if not local:
 			del udt
-		self.tbfLock.clear()
+			self.tbfLock.clear()
 		print "TBF DUMP COMPLETE - average rate was %.3f MB/s" % (bytesSent/(time.time()-bytesStart)/1024**2,)
 
 class BeamformerOp(object):
@@ -653,7 +661,6 @@ class CorrelatorOp(object):
 		
 		self.nchan_max = nchan_max
 		self.configMessage = ISC.CORConfigurationClient(addr=('adp',5832))
-		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		self._pending = deque()
 		self.navg = 10*100
 		self.gain = 0
@@ -746,6 +753,8 @@ class CorrelatorOp(object):
 			
 	#@ISC.logException
 	def main(self):
+		global TBF_CPU_CORE_LOCK
+		
 		cpu_affinity.set_core(self.core)
 		if self.gpu != -1:
 			BFSetGPU(self.gpu)
@@ -784,12 +793,12 @@ class CorrelatorOp(object):
 				
 				self.oring.resize(ogulp_size)
 				
-				nAccumulate = 0
-				
 				prev_time = time.time()
 				iseq_spans = iseq.read(igulp_size)
 				while not self.iring.writing_ended():
 					reset_sequence = False
+					
+					nAccumulate = 0
 					
 					navg_seq = self.navg * int(CHAN_BW/100.0)
 					navg_seq = int(navg_seq / self.ntime_gulp) * self.ntime_gulp
@@ -805,46 +814,48 @@ class CorrelatorOp(object):
 						for ispan in iseq_spans:
 							if ispan.size < igulp_size:
 								continue # Ignore final gulp
-							if self.tbfLock.is_set():
-								continue
 							curr_time = time.time()
 							acquire_time = curr_time - prev_time
 							prev_time = curr_time
 							
-							## Setup and load
-							idata = ispan.data_view(np.uint8).reshape(ishape)
-							if ochan != nchan:
-								idata = idata[:,:ochan,:]
-								
-							## Fix the type
-							bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
-							
-							## Copy
-							copy_array(self.tdata, bfidata)
-							
-							## Unpack
-							Unpack(self.tdata, self.udata)
-							
-							## Correlate
-							cscale = gain_act if nAccumulate else 0.0
-							self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
-							nAccumulate += self.ntime_gulp
-							
-							curr_time = time.time()
-							process_time = curr_time - prev_time
-							prev_time = curr_time
-							
-							## Dump?
-							if nAccumulate == navg_seq:
-								with oseq.reserve(ogulp_size) as ospan:
-									odata = ospan.data_view(np.complex64).reshape(oshape)
+							if not TBF_CPU_CORE_LOCK.is_set():
+								## Setup and load
+								idata = ispan.data_view(np.uint8).reshape(ishape)
+								if ochan != nchan:
+									idata = idata[:,:ochan,:]
 									
-									odata[...] = self.cdata
-								nAccumulate = 0
-							curr_time = time.time()
-							reserve_time = curr_time - prev_time
-							prev_time = curr_time
-							
+								## Fix the type
+								bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+								
+								## Copy
+								copy_array(self.tdata, bfidata)
+								
+								## Unpack
+								Unpack(self.tdata, self.udata)
+								
+								## Correlate
+								cscale = gain_act if nAccumulate else 0.0
+								self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
+								nAccumulate += self.ntime_gulp
+								
+								curr_time = time.time()
+								process_time = curr_time - prev_time
+								prev_time = curr_time
+								
+								## Dump?
+								if nAccumulate == navg_seq:
+									with oseq.reserve(ogulp_size) as ospan:
+										odata = ospan.data_view(np.complex64).reshape(oshape)
+										
+										odata[...] = self.cdata
+									nAccumulate = 0
+								curr_time = time.time()
+								reserve_time = curr_time - prev_time
+								prev_time = curr_time
+							else:
+								reserve_time = 0.0
+								process_time = 0.0
+								
 							## Update the base time tag
 							base_time_tag += self.ntime_gulp*ticksPerTime
 							
@@ -999,7 +1010,6 @@ class PacketizeOp(object):
 		self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
 		
 		self.nchan_max = nchan_max
-		self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
 		if max_bytes_per_sec is None:
 			max_bytes_per_sec = 104857600		# default to 100 MB/s
 		self.max_bytes_per_sec = max_bytes_per_sec
@@ -1065,8 +1075,6 @@ class PacketizeOp(object):
 				for ispan in iseq.read(igulp_size):
 					if ispan.size < igulp_size:
 						continue # Ignore final gulp
-					if self.tbfLock.is_set():
-						continue
 					curr_time = time.time()
 					acquire_time = curr_time - prev_time
 					prev_time = curr_time
@@ -1093,7 +1101,7 @@ class PacketizeOp(object):
 						except Exception as e:
 							print 'Packing Error', str(e)
 						if k % 10 == 0:
-							time.sleep(100e-6)
+							time.sleep(200e-6)
 							
 					# HACK for verification
 					#try:
@@ -1329,14 +1337,14 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
-	                        tuning=tuning, ntime_gulp=GSIZE,
-	                        nchan_max=nchan_max, 
-	                        core=3 if tuning == 0 else 10, gpu=tuning))
-	ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-	                       tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
-	                       core=3 if tuning == 0 else 10, gpu=tuning,
-	                       max_bytes_per_sec=cor_bw_max))
+	#ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
+	#                        tuning=tuning, ntime_gulp=GSIZE,
+	#                        nchan_max=nchan_max, 
+	#                        core=3 if tuning == 0 else 10, gpu=tuning))
+	#ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
+	#                       tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
+	#                       core=3 if tuning == 0 else 10, gpu=tuning,
+	#                       max_bytes_per_sec=cor_bw_max))
 	
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
