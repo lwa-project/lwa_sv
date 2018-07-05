@@ -210,16 +210,10 @@ class CopyOp(object):
 										s = np.argmax(pdata)
 										n = pdata.std()
 										
-										print pdata.mean(), n, '->', m, '@', s, '==', m/n
-										#try:
-										#	snr = m / n
-										#except NameError:
-										#	snr = 0
-										#n = pdata.std()
-										#if snr > 6:
-										#	print m, snr, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
-										#	#self.internal_trigger(base_time_tag+s*ticksPerTime)
-										
+										if m > 40:
+											self.internal_trigger(base_time_tag+s*ticksPerTime)
+											print m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
+											
 							except IOError:
 								curr_time = time.time()
 								reserve_time = curr_time - prev_time
