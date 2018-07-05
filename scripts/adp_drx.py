@@ -206,11 +206,10 @@ class CopyOp(object):
 										pdata = pdata.reshape(self.ntime_gulp,-1)
 										pdata = pdata.mean(axis=1)
 										
-										m = pdata.max()
 										s = np.argmax(pdata)
-										n = pdata.std()
+										m = pdata[s]
 										
-										if m > 40:
+										if m > 95:
 											self.internal_trigger(base_time_tag+s*ticksPerTime)
 											print m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
 											
