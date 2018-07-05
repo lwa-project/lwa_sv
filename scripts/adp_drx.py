@@ -1119,7 +1119,7 @@ class PacketizeOp(object):
 								
 							if len(pkts) == 64:
 								# HACK for verification
-								if os.path.getsize(filename) < 10*1024**3:
+								if os.path.getsize(filename) < 30*1024**3:
 									for pkt in pkts:
 										ofile.write(pkt)
 									#ofile.write(pkts)
