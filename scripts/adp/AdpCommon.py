@@ -42,6 +42,7 @@ TBF_NCHAN_PER_PKT   = 12
 NFRAME_PER_SPECTRUM = int(FS) // int(CHAN_BW) # 7840
 #PIPELINE_HOSTS   = ['adp%i' % (i/2+1) for i in xrange(NPIPELINE)]
 #SERVER_HOSTS     = ['adp%i' % (i+1) for i in xrange(NSERVER)]
+TRIGGERING_ACTIVE_FILE = '/home/adp/triggering_active'
 
 def input2standpol(i):
 	stand = i // NPOL

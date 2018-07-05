@@ -977,6 +977,7 @@ class MsgProcessor(ConsumerThread):
 		
 		self.start_synchronizer_thread()
 		self.start_lock_thread()
+		self.start_internal_trigger_thread()
 		
 	def start_synchronizer_thread(self):
 		self.tbn_sync_server = MCS2.SynchronizerServer()
@@ -1001,6 +1002,24 @@ class MsgProcessor(ConsumerThread):
 		except AttributeError:
 			pass
 			
+	def internal_trigger_callback(self, timestamp):
+		if os.path.exists(TRIGGERING_ACTIVE_FILE):
+			self.log.info('Processing internal trigger at %.6fs', 1.0*timestamp/FS)
+			# Wait 1 second to make sure the data is in the buffer
+			time.sleep(1.0)
+			# Dump 250 ms of data locally from both tunings, starting 50 ms prior to the trigger
+			self.messenger.trigger(timestamp-9800000, 49000000, 3, local=True)
+			
+	def start_internal_trigger_thread(self):
+		self.internal_trigger_server = ISC.InternalTriggerProcessor(5836, callback=self.internal_trigger_callback)
+		self.run_internal_trigger_thread = threading.Thread(target=self.internal_trigger_server.run)
+		self.run_internal_trigger_thread.start()
+		
+	def stop_internal_trigger_thread(self):
+		self.internal_trigger_server.shutdown()
+		self.run_internal_trigger_thread.join()
+		del self.internal_trigger_server
+		
 	def uptime(self):
 		# Returns no. secs since data processing began (during INI)
 		if self.utc_start is None:
@@ -1115,6 +1134,12 @@ class MsgProcessor(ConsumerThread):
 		time.sleep(3)
 		self.log.info("Starting Lock thread")
 		self.start_lock_thread()
+		
+		self.log.info("Stopping Internal Trigger thread")
+		self.stop_internal_trigger_thread()
+		time.sleep(3)
+		self.log.info("Starting Internal Trigger thread")
+		self.start_internal_trigger_thread()
 		
 		# Note: Must do this to ensure pipelines wait for the new UTC_START
 		self.utc_start     = None
@@ -1771,6 +1796,7 @@ class MsgProcessor(ConsumerThread):
 		self.shutdown_event.set()
 		self.stop_synchronizer_thread()
 		self.stop_lock_thread()
+		self.stop_internal_trigger_thread()
 		# Propagate shutdown to downstream consumers
 		self.msg_queue.put(ConsumerThread.STOP)
 		if not self.thread_pool.wait(self.shutdown_timeout):

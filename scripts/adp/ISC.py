@@ -15,13 +15,14 @@ import numpy
 import binascii
 import threading
 from uuid import uuid4
+from collections import deque
 
 
-__version__ = '0.2'
+__version__ = '0.3'
 __revision__ = '$Rev$'
 __all__ = ['PipelineMessageServer', 'StartTimeClient', 'TriggerClient', 'TBNConfigurationClient',
-		 'DRXConfigurationClient', 'BAMConfigurationClient', 'CORConfigurationClient', 
-		 'PipelineSynchronizationServer',  'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient', '__version__', '__revision__', '__all__']
+           'DRXConfigurationClient', 'BAMConfigurationClient', 'CORConfigurationClient', 
+           'PipelineSynchronizationServer',  'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient', '__version__', '__revision__', '__all__']
 
 
 import sys
@@ -34,7 +35,7 @@ except ImportError:
 	import StringIO
 
 
-from AdpCommon import DATE_FORMAT
+from AdpCommon import DATE_FORMAT, FS
 
 
 def logException(func):
@@ -124,7 +125,7 @@ class PipelineMessageServer(object):
 		  * the delays as a 1-D numpy array
 		  * the gains as a 3-D numpy array
 		  * the tuning number this update applied to
-		  * the subslot in which the configuation is the implemented
+		  * the subslot in which the configuration is implemented
 		"""
 		
 		bDelays = binascii.hexlify( delays.tostring() )
@@ -137,7 +138,7 @@ class PipelineMessageServer(object):
 		  * the integration time in units of subslots
 		  * the tuning number the update applies to
 		  * the gain
-		  * the subslot in which the configuation is the implemented
+		  * the subslot in which the configuration is implemented
 		"""
 		
 		self.socket.send('COR %i %i %i %i' % (navg, tuning, gain, subslot))
@@ -341,10 +342,10 @@ class CORConfigurationClient(PipelineMessageClient):
 			return False
 		else:
 			# Unpack
-			fields = msg.split(None, 3)
-			navg = int(fields[0], 10)
-			tuning = int(fields[1], 10)
-			gain = int(fields[2], 10)
+			fields  = msg.split(None, 3)
+			navg    = int(fields[0], 10)
+			tuning  = int(fields[1], 10)
+			gain    = int(fields[2], 10)
 			subslot = int(fields[3], 10)
 			return navg, tuning, gain, subslot
 
@@ -675,3 +676,131 @@ class PipelineEventClient(object):
 			self.context.destroy()
 			
 		return status
+
+
+class InternalTrigger(object):
+	"""
+	Class for signaling that a potentially interesting event has occurred.  
+	This is sent to the InternalTrigger server for validation.  This is 
+	implemented using 0MQ in a PUSH/PULL scheme.
+	"""
+	
+	def __init__(self, id=None, addr=('adp', 5836), context=None):
+		# Create the context
+		if context is not None:
+			self.context = context
+			self.newContext = False
+		else:
+			self.context = zmq.Context()
+			self.newContext = True
+			
+		# Create the socket and configure it
+		self.socket = self.context.socket(zmq.PUSH)
+		if id is None:
+			id = uuid4()
+		self.socket.setsockopt(zmq.IDENTITY, str(id))
+		self.socket.setsockopt(zmq.LINGER, 10)
+		self.socket.connect('tcp://%s:%i' % addr)
+		
+		# Save the ID
+		self.id = self.socket.getsockopt(zmq.IDENTITY)
+		
+	def __call__(self, timestamp):
+		"""
+		Send the event's timestamp as a DP/ADP timestamp value, i.e., 
+		int(UNIX time * 196e6).
+		"""
+		
+		self.socket.send('%s %s' % (self.id, str(timestamp)))
+		
+	def close(self):
+		"""
+		Leave the triggering pool and close out the client.
+		"""
+		
+		self.socket.close()
+		if self.newContext:
+			self.context.destroy()
+
+
+class InternalTriggerProcessor(object):
+	"""
+	Class to gather triggers from various InternalTrigger clients, validate 
+	them, and actually act on the trigger.
+	"""
+	
+	def __init__(self, port=5836, coincidence_window=5e-4, min_coincident=6, deadtime=10.0, callback=None, context=None):
+		# Set the port to use
+		self.port = port
+		
+		# Set the coincidence window time limit (window size used to determine 
+		# if the triggers occurred at the same time)
+		self.coincidence_window = int(float(coincidence_window)*FS)
+		
+		# Set the minimum number of coincident events within the time window to 
+		# accept as real events
+		self.min_coincident = int(min_coincident)
+		
+		# Set the deadtime (required downtime between valid triggers) and 
+		# callback (function to call on a valid trigger)
+		self.deadtime = int(float(deadtime)*FS)
+		self.callback = callback
+		
+		# Create the context
+		if context is not None:
+			self.context = context
+			self.newContext = False
+		else:
+			self.context = zmq.Context()
+			self.newContext = True
+			
+		# Create the event list
+		self.events = {}
+		
+		# Setup the thread control
+		self.shutdown_event = threading.Event()
+		
+	def shutdown(self):
+		self.shutdown_event.set()
+		
+	def run(self):
+		tLast = 0
+		
+		# Create the socket and configure it
+		self.socket = self.context.socket(zmq.PULL)
+		self.socket.setsockopt(zmq.LINGER, 10)
+		self.socket.bind('tcp://*:%i' % self.port)
+		
+		while not self.shutdown_event.is_set():
+			# Get an event and parse it out
+			try:
+				msg = self.socket.recv(flags=zmq.NOBLOCK)
+				id, timestamp = msg.split(None, 1)
+				timestamp = int(timestamp, 10)
+			except zmq.error.ZMQError:
+				continue
+				
+			# Ignore events that occurring during the mandatory deadtime
+			if timestamp - tLast < self.deadtime:
+				continue
+				
+			# Store the event
+			self.events[id] = timestamp
+			
+			# Validate the event(s)
+			count = len(self.events)
+			newest = max(self.events.values())
+			oldest = min(self.events.values())
+			diff = newest - oldest
+			if count >= self.min_coincident and diff <= self.coincidence_window:
+				## Looks like we have an event, update the state and send the 
+				## trigger out
+				tLast = newest
+				self.events.clear()
+				if self.callback is not None:
+					self.callback(oldest)
+					
+		# Close out the socket
+		self.socket.close()
+		if self.newContext:
+			self.context.destroy()

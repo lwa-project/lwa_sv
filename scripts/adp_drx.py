@@ -129,6 +129,8 @@ class CopyOp(object):
 		self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
 		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 		
+		self.internal_trigger = ISC.InternalTrigger()
+		
 	def main(self):
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
@@ -142,6 +144,7 @@ class CopyOp(object):
 				
 				self.log.info("Copy: Start of new sequence: %s", str(ihdr))
 				
+				chan0  = ihdr['chan0']
 				nchan  = ihdr['nchan']
 				nstand = ihdr['nstand']
 				npol   = ihdr['npol']
@@ -155,6 +158,12 @@ class CopyOp(object):
 				ticksPerTime = int(FS / CHAN_BW)
 				base_time_tag = iseq.time_tag
 				
+				clear_to_trigger = False
+				if chan0*CHAN_BW > 60e6:
+					clear_to_trigger = True
+				to_keep = [6,7, 224,225, 494,495]
+				udata = BFArray(shape=(self.ntime_gulp, nchan, len(to_keep)), dtype=np.complex64)
+					
 				ohdr = ihdr.copy()
 				
 				prev_time = time.time()
@@ -184,29 +193,33 @@ class CopyOp(object):
 									BFMemCopy(odata, idata)
 									#print "COPY"
 									
-									## Lightning triggering code
-									#t0 = time.time()
-									#sdata = idata.reshape(ishape)
-									#sdata = sdata[:,:,[6,7, 224,225, 494,495]]                               
-									#sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
-									#try:
-									#	Unpack(sdata, udata)
-									#except NameError:
-									#	udata = BFArray(shape=sdata.shape, dtype=np.complex64)
-									#	Unpack(sdata, udata)
-									#pdata = udata.real*udata.real + udata.imag*udata.imag
-									#pdata = pdata.reshape(self.ntime_gulp,-1)
-									#pdata = pdata.mean(axis=1)
-									#m = pdata.max()
-									#s = np.argmax(pdata)
-									#try:
-									#	snr = m / n
-									#except NameError:
-									#	snr = 0
-									#n = pdata.std()
-									#if snr > 6:
-									#	print m, snr, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
-									
+									# Internal triggering code
+									if clear_to_trigger:
+										t0 = time.time()
+										sdata = idata.reshape(ishape)
+										sdata = sdata[:,:,to_keep]                               
+										sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
+										
+										Unpack(sdata, udata)
+										
+										pdata = udata.real*udata.real + udata.imag*udata.imag
+										pdata = pdata.reshape(self.ntime_gulp,-1)
+										pdata = pdata.mean(axis=1)
+										
+										m = pdata.max()
+										s = np.argmax(pdata)
+										n = pdata.std()
+										
+										print pdata.mean(), n, '->', m, '@', s, '==', m/n
+										#try:
+										#	snr = m / n
+										#except NameError:
+										#	snr = 0
+										#n = pdata.std()
+										#if snr > 6:
+										#	print m, snr, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
+										#	#self.internal_trigger(base_time_tag+s*ticksPerTime)
+										
 							except IOError:
 								curr_time = time.time()
 								reserve_time = curr_time - prev_time
@@ -303,14 +316,14 @@ class TriggeredDumpOp(object):
 			print "Trigger: New trigger received: %s" % str(config)
 			try:
 				TBF_CPU_CORE_LOCK.set()
-				self.dump(samples=config[1], mask=config[2], local=config[3])
+				self.dump(time_tag=config[0], samples=config[1], mask=config[2], local=config[3])
 			except Exception as e:
 				print "Error on TBF dump: %s" % str(e)
 			finally:
 				TBF_CPU_CORE_LOCK.clear()
 		print "Writing ended, TBFOp exiting"
 		
-	def dump(self, samples, time_tag=None, mask=None, local=False):
+	def dump(self, samples, time_tag=0, mask=None, local=False):
 		if mask is None:
 			mask = 0b11
 		if (mask >> self.tuning) & 1 == 0:
@@ -322,7 +335,7 @@ class TriggeredDumpOp(object):
 		
 		# HACK TESTING
 		dump_time_tag = time_tag
-		if dump_time_tag is None:
+		if (dump_time_tag == 0 and local) or not local:
 			time_offset    = -4.0
 			time_offset_s  = int(time_offset)
 			time_offset_us = int(round((time_offset-time_offset_s)*1e6))
@@ -660,7 +673,9 @@ class CorrelatorOp(object):
 		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 		
 		self.nchan_max = nchan_max
-		self.configMessage = ISC.CORConfigurationClient(addr=('adp',5832))
+		def null_config():
+			return None
+		self.configMessage = null_config#ISC.CORConfigurationClient(addr=('adp',5832))
 		self._pending = deque()
 		self.navg = 10*100
 		self.gain = 0
@@ -762,6 +777,8 @@ class CorrelatorOp(object):
 							 'core0': cpu_affinity.get_core(),
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
+		
+		time.sleep(60)
 		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
@@ -1020,17 +1037,12 @@ class PacketizeOp(object):
 		## Metadata
 		nchan = self.nchan_max
 		nstand, npol = nroach*16, 2
-		self.bls = []
-		for i in xrange(nstand):
-			for j in xrange(i, nstand):
-				self.bls.append( (len(self.bls),(i,j)) )
 		## Decimation
 		self.chan_decim = 1
 		ochan = nchan / self.chan_decim
 		## Intermidiate arrays
 		## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
 		self.ldata = BFArray(shape=(ochan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
-		self.odata = BFArray(shape=(ochan,nstand,npol,nstand,npol), dtype=np.complex64, space='system')
 		
 	def main(self):
 		global ACTIVE_COR_CONFIG
@@ -1065,6 +1077,8 @@ class PacketizeOp(object):
 			
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
+			rate_limit = (7.7*10/(navg*0.01-0.5)) * 1024**2
+			
 			# HACK for verification
 			filename = '/data0/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag0)#time_tag0
 			#ofile = open(filename, 'wb')
@@ -1080,51 +1094,55 @@ class PacketizeOp(object):
 					prev_time = curr_time
 					
 					idata = ispan.data_view(np.complex64).reshape(ishape)
+					
+					t0 = time.time()
 					time.sleep(0.05)
 					copy_array(self.ldata, idata)
 					time.sleep(0.05)
-					copy_array(self.odata, self.ldata)
+					odata = self.ldata.copy(space='system').transpose(3,1,0,4,2)
 					
 					bytesSent, bytesStart = 0.0, time.time()
 					
-					t0 = time.time()
 					time_tag_cur = time_tag + ticksPerFrame
 					pkts = []
 					#pkts = ''
-					for k,(i,j) in self.bls:
-						pktdata = self.odata[:,j,:,i,:]
-						hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
-						try:
-							pkt = hdr + pktdata.tostring()
-							pkts.append( pkt )
-							#pkts += pkt
-						except Exception as e:
-							print 'Packing Error', str(e)
-						if k % 10 == 0:
-							time.sleep(200e-6)
-							
+					for i in xrange(nstand):
+						for j in xrange(i,nstand):
+							pktdata = odata[i,j,:,:,:]
+							hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
+							try:
+								pkt = hdr + pktdata.tostring()
+								pkts.append( pkt )
+								#pkts += pkt
+							except Exception as e:
+								print 'Packing Error', str(e)
+								
+							if len(pkts) == 64:
+								# HACK for verification
+								if os.path.getsize(filename) < 10*1024**3:
+									for pkt in pkts:
+										ofile.write(pkt)
+									#ofile.write(pkts)
+									#ofile.flush()
+								else:
+									try:
+										ofile.close()
+									except:
+										pass
+								bytesSent += sum([len(p) for p in pkts])
+								while bytesSent/(time.time()-bytesStart) >= rate_limit:
+									time.sleep(0.001)
+								pkts = []
+								
+					print 'vis write', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2
+					
 					# HACK for verification
 					#try:
 					#	#if ACTIVE_COR_CONFIG.is_set():
 					#	udt.sendmany(pkts)
 					#except Exception as e:
 					#	print 'Sending Error', str(e)
-					#
-					#while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
-					#	time.sleep(0.001)
-						
-					# HACK for verification
-					if os.path.getsize(filename) < 10*1024**3:
-						for pkt in pkts:
-							ofile.write(pkt)
-						#ofile.write(pkts)
-						#ofile.flush()
-						print 'vis write', time.time()-t0
-					else:
-						try:
-							ofile.close()
-						except:
-							pass
+					
 					time_tag += ticksPerFrame
 					
 					curr_time = time.time()
@@ -1337,15 +1355,18 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	#ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
-	#                        tuning=tuning, ntime_gulp=GSIZE,
-	#                        nchan_max=nchan_max, 
-	#                        core=3 if tuning == 0 else 10, gpu=tuning))
-	#ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-	#                       tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
-	#                       core=3 if tuning == 0 else 10, gpu=tuning,
-	#                       max_bytes_per_sec=cor_bw_max))
-	
+	if socket.gethostname() == 'adp3' and tuning == 0:
+		ccore = ops[2].core
+		pcore = ccore
+		ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
+		                        tuning=tuning, ntime_gulp=GSIZE,
+		                        nchan_max=nchan_max, 
+		                        core=ccore, gpu=tuning))
+		ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
+		                       tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
+		                       core=pcore, gpu=tuning,
+		                       max_bytes_per_sec=cor_bw_max))
+		
 	threads = [threading.Thread(target=op.main) for op in ops]
 	
 	log.info("Launching %i thread(s)", len(threads))
