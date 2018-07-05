@@ -163,7 +163,7 @@ class CopyOp(object):
 					clear_to_trigger = True
 				to_keep = [6,7, 224,225, 494,495]
 				udata = BFArray(shape=(self.ntime_gulp, nchan, len(to_keep)), dtype=np.complex64)
-					
+				
 				ohdr = ihdr.copy()
 				
 				prev_time = time.time()
@@ -209,7 +209,7 @@ class CopyOp(object):
 										s = np.argmax(pdata)
 										m = pdata[s]
 										
-										if m > 95:
+										if m > 11.5:
 											self.internal_trigger(base_time_tag+s*ticksPerTime)
 											print m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
 											
