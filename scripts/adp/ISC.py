@@ -685,7 +685,7 @@ class InternalTrigger(object):
 	implemented using 0MQ in a PUSH/PULL scheme.
 	"""
 	
-	def __init__(self, id=None, addr=('adp', 5836), context=None):
+	def __init__(self, id=None, addr=('adp', 5835), context=None):
 		# Create the context
 		if context is not None:
 			self.context = context
@@ -729,7 +729,7 @@ class InternalTriggerProcessor(object):
 	them, and actually act on the trigger.
 	"""
 	
-	def __init__(self, port=5836, coincidence_window=5e-4, min_coincident=6, deadtime=10.0, callback=None, context=None):
+	def __init__(self, port=5835, coincidence_window=5e-4, min_coincident=6, deadtime=15.0, callback=None, context=None):
 		# Set the port to use
 		self.port = port
 		
@@ -774,7 +774,7 @@ class InternalTriggerProcessor(object):
 		while not self.shutdown_event.is_set():
 			# Get an event and parse it out
 			try:
-				msg = self.socket.recv(flags=zmq.NOBLOCK)
+				msg = self.socket.recv()
 				id, timestamp = msg.split(None, 1)
 				timestamp = int(timestamp, 10)
 			except zmq.error.ZMQError:

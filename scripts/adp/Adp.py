@@ -1011,11 +1011,15 @@ class MsgProcessor(ConsumerThread):
 			self.messageServer.trigger(timestamp-9800000, 49000000, 3, local=True)
 			
 	def start_internal_trigger_thread(self):
-		self.internal_trigger_server = ISC.InternalTriggerProcessor(5836, callback=self.internal_trigger_callback)
+		self.internal_trigger_server = ISC.InternalTriggerProcessor(callback=self.internal_trigger_callback)
 		self.run_internal_trigger_thread = threading.Thread(target=self.internal_trigger_server.run)
 		self.run_internal_trigger_thread.start()
 		
 	def stop_internal_trigger_thread(self):
+		try:
+			os.unlink(TRIGGERING_ACTIVE_FILE)
+		except OSError:
+			pass
 		self.internal_trigger_server.shutdown()
 		self.run_internal_trigger_thread.join()
 		del self.internal_trigger_server

@@ -73,20 +73,23 @@ def main(args):
 		pass
 		
 	elif config['enable']:
-		try:
-			fh = open(TRIGGERING_ACTIVE_FILE, 'w')
-			fh.write("%s" % time.time())
-			fh.close()
-			active = True
-		except IOError:
-			pass
+		if not active:
+			try:
+				fh = open(TRIGGERING_ACTIVE_FILE, 'w')
+				fh.write("%s" % time.time())
+				fh.close()
+				active = True
+			except IOError:
+				pass
+				
 	else:
-		try:
-			os.unlink(TRIGGERING_ACTIVE_FILE)
-			active = False
-		except OSError:
-			pass
-			
+		if active:
+			try:
+				os.unlink(TRIGGERING_ACTIVE_FILE)
+				active = False
+			except OSError:
+				pass
+				
 	print "ADP Triggering: %s" % ('enabled' if active else 'disabled',)
 
 
