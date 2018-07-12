@@ -771,35 +771,42 @@ class InternalTriggerProcessor(object):
 		self.socket.setsockopt(zmq.LINGER, 10)
 		self.socket.bind('tcp://*:%i' % self.port)
 		
+		# Setup the poller
+		self.poller = zmq.Poller()
+		self.poller.register(self.socket, zmq.POLLIN)
+		
 		while not self.shutdown_event.is_set():
 			# Get an event and parse it out
-			try:
-				msg = self.socket.recv()
-				id, timestamp = msg.split(None, 1)
-				timestamp = int(timestamp, 10)
-			except zmq.error.ZMQError:
-				continue
-				
-			# Ignore events that occurring during the mandatory deadtime
-			if timestamp - tLast < self.deadtime:
-				continue
-				
-			# Store the event
-			self.events[id] = timestamp
-			
-			# Validate the event(s)
-			count = len(self.events)
-			newest = max(self.events.values())
-			oldest = min(self.events.values())
-			diff = newest - oldest
-			if count >= self.min_coincident and diff <= self.coincidence_window:
-				## Looks like we have an event, update the state and send the 
-				## trigger out
-				tLast = newest
-				self.events.clear()
-				if self.callback is not None:
-					self.callback(oldest)
+			msg = dict(self.poller.poll(5000))
+			if msg:
+				if msg.get(self.socket) == zmq.POLLIN:
+					msg = self.socket.recv(zmq.NOBLOCK)
+					try:
+						id, timestamp = msg.split(None, 1)
+						timestamp = int(timestamp, 10)
+					except ValueError:
+						continue
+						
+					# Ignore events that occurring during the mandatory deadtime
+					if timestamp - tLast < self.deadtime:
+						continue
+						
+					# Store the event
+					self.events[id] = timestamp
 					
+					# Validate the event(s)
+					count = len(self.events)
+					newest = max(self.events.values())
+					oldest = min(self.events.values())
+					diff = newest - oldest
+					if count >= self.min_coincident and diff <= self.coincidence_window:
+						## Looks like we have an event, update the state and send the 
+						## trigger out
+						tLast = newest
+						self.events.clear()
+						if self.callback is not None:
+							self.callback(oldest)
+							
 		# Close out the socket
 		self.socket.close()
 		if self.newContext:
