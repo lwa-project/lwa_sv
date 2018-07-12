@@ -1348,7 +1348,7 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	if socket.gethostname() == 'adp3' and tuning == 0:
+	if socket.gethostname() in ('adp3', 'adp4') and tuning == 0:
 		ccore = ops[2].core
 		pcore = ccore
 		ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
