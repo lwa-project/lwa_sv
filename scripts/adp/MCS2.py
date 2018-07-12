@@ -355,7 +355,7 @@ class SynchronizerGroup(object):
 					self.socks[i].close()
 					del self.socks[i]
 					continue
-				tags.append( int(tag_msg[len('TAG:'):], 10) )
+				tags.append( int(tag_msg[4:22], 10) )
 				i += 1
 				
 			# Elect tag0, the reference time tag
@@ -395,7 +395,7 @@ class SynchronizerGroup(object):
 							e = tag_msg
 							self.log("WARNING: Synchronizer (2d): Unexpected message %s client %i: %s" % (self.group, i, e))
 							continue
-						tags[i] = int(tag_msg[4:], 10)
+						tags[i] = int(tag_msg[4:22], 10)
 						#print "Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0)
 						
 					## Evaluate the latest batch of timetags
