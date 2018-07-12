@@ -968,7 +968,7 @@ class RetransmitOp(object):
 					try:
 						udt.sendmany(pkts)
 					except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+						print type(self).__name__, 'Sending Error', str(e)
 						
 					seq += self.ntime_gulp
 					
