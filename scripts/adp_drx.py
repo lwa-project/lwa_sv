@@ -397,7 +397,7 @@ class TriggeredDumpOp(object):
 							pkt = hdr + pktdata.tostring()
 							pkts.append( pkt )
 						except Exception as e:
-								print 'Packing Error', str(e)
+								print type(self).__name__, 'Packing Error', str(e)
 								
 					if local:
 						for pkt in pkts:
@@ -409,7 +409,7 @@ class TriggeredDumpOp(object):
 							udt.sendmany(pkts)
 							bytesSent += sum([len(p) for p in pkts])
 						except Exception as e:
-							print 'Sending Error', str(e)
+							print type(self).__name__, 'Sending Error', str(e)
 							
 						while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
 							time.sleep(0.001)
@@ -968,7 +968,7 @@ class RetransmitOp(object):
 					try:
 						udt.sendmany(pkts)
 					except Exception as e:
-						pass
+                        print type(self).__name__, 'Sending Error', str(e)
 						
 					seq += self.ntime_gulp
 					
@@ -1108,7 +1108,7 @@ class PacketizeOp(object):
 								pkts.append( pkt )
 								#pkts += pkt
 							except Exception as e:
-								print 'Packing Error', str(e)
+								print type(self).__name__, 'Packing Error', str(e)
 								
 							if len(pkts) == 64:
 								# HACK for verification
@@ -1134,7 +1134,7 @@ class PacketizeOp(object):
 					#	#if ACTIVE_COR_CONFIG.is_set():
 					#	udt.sendmany(pkts)
 					#except Exception as e:
-					#	print 'Sending Error', str(e)
+					#	print type(self).__name__, 'Sending Error', str(e)
 					
 					time_tag += ticksPerFrame
 					

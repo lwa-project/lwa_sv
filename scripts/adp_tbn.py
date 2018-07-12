@@ -581,13 +581,13 @@ class PacketizeOp(object):
 									pkt = hdr + pktdata.tostring()
 									pkts.append( pkt )
 								except Exception as e:
-									print 'Packing Error', str(e)
+									print type(self).__name__, 'Packing Error', str(e)
 									
 						try:
 							if ACTIVE_TBN_CONFIG.is_set():
 								udt.sendmany(pkts)
 						except Exception as e:
-							print 'Sending Error', str(e)
+							print type(self).__name__, 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
@@ -595,9 +595,9 @@ class PacketizeOp(object):
 					process_time = curr_time - prev_time
 					prev_time = curr_time
 					self.perf_proclog.update({'acquire_time': acquire_time, 
-										 'reserve_time': -1, 
-										 'process_time': process_time,})
-										 
+					                          'reserve_time': -1, 
+					                          'process_time': process_time,})
+					
 			del udt
 
 def get_utc_start(shutdown_event=None):
@@ -745,7 +745,6 @@ def main(argv):
 	isock.bind(iaddr)
 	
 	capture_ring = Ring(name="capture")
-	unpack_ring = Ring(name="unpack")
 	tengine_ring = Ring(name="tengine")
 	
 	oaddr = Address(oaddr, oport)

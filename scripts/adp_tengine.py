@@ -426,9 +426,7 @@ class TEngineOp(object):
 					
 					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
-							#print 'ITER', ispan.size < igulp_size, base_time_tag
 							if ispan.size < igulp_size:
-								print 'skip'
 								continue # Ignore final gulp
 							curr_time = time.time()
 							acquire_time = curr_time - prev_time
@@ -599,7 +597,7 @@ class PacketizeOp(object):
 		
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
-							 'core0': cpu_affinity.get_core(),})
+		                          'core0': cpu_affinity.get_core(),})
 		
 		ntime_pkt     = DRX_NSAMPLE_PER_PKT
 		ntime_gulp    = self.npkt_gulp * ntime_pkt
@@ -670,14 +668,14 @@ class PacketizeOp(object):
 									pkt = hdr + pktdata.tostring()
 									pkts.append( pkt )
 								except Exception as e:
-									print 'Packing Error', str(e)
+									print type(self).__name__, 'Packing Error', str(e)
 									
 						try:
 							if ACTIVE_DRX_CONFIG.is_set():
 								if not self.tbfLock.is_set():
 									udt.sendmany(pkts)
 						except Exception as e:
-							print 'Sending Error', str(e)
+							print type(self).__name__, 'Sending Error', str(e)
 							
 					time_tag += int(ntime_gulp)*ticksPerSample
 					
@@ -685,9 +683,9 @@ class PacketizeOp(object):
 					process_time = curr_time - prev_time
 					prev_time = curr_time
 					self.perf_proclog.update({'acquire_time': acquire_time, 
-										 'reserve_time': -1, 
-										 'process_time': process_time,})
-										 
+					                          'reserve_time': -1, 
+					                          'process_time': process_time,})
+					
 			del udt
 
 class SinglePacketizeOp(object):
@@ -725,7 +723,7 @@ class SinglePacketizeOp(object):
 		
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
-							 'core0': cpu_affinity.get_core(),})
+		                          'core0': cpu_affinity.get_core(),})
 		
 		ntime_pkt     = DRX_NSAMPLE_PER_PKT
 		ntime_gulp    = self.npkt_gulp * ntime_pkt
@@ -796,7 +794,7 @@ class SinglePacketizeOp(object):
 								pkt = hdr + pktdata.tostring()
 								pkts.append( pkt )
 							except Exception as e:
-								print 'Packing Error', str(e)
+								print type(self).__name__, 'Packing Error', str(e)
 								
 						if len(pkts) >= 4:
 							try:
@@ -811,7 +809,7 @@ class SinglePacketizeOp(object):
 									if not self.tbfLock.is_set():
 										udt.sendmany(pkts)
 							except Exception as e:
-								print 'Sending Error', str(e)
+								print type(self).__name__, 'Sending Error', str(e)
 								
 							pkts = []
 							
@@ -821,9 +819,9 @@ class SinglePacketizeOp(object):
 					process_time = curr_time - prev_time
 					prev_time = curr_time
 					self.perf_proclog.update({'acquire_time': acquire_time, 
-										 'reserve_time': -1, 
-										 'process_time': process_time,})
-										 
+					                          'reserve_time': -1, 
+					                          'process_time': process_time,})
+					
 			del udt
 
 def izip(*iterables):
@@ -863,7 +861,7 @@ class DualPacketizeOp(object):
 		
 		cpu_affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
-							 'core0': cpu_affinity.get_core(),})
+		                          'core0': cpu_affinity.get_core(),})
 		
 		ntime_pkt     = DRX_NSAMPLE_PER_PKT
 		ntime_gulp    = self.npkt_gulp * ntime_pkt
@@ -938,7 +936,7 @@ class DualPacketizeOp(object):
 							pkt0 = hdr0 + pktdata0.tostring()
 							pkts0.append( pkt0 )
 						except Exception as e:
-							print 'Packing Error', str(e)
+							print type(self).__name__, 'Packing Error0', str(e)
 						## Second beam
 						pktdata1 = data[t:t+ntime_pkt,1,pol]
 						hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -947,7 +945,7 @@ class DualPacketizeOp(object):
 							pkt1 = hdr1 + pktdata1.tostring()
 							pkts1.append( pkt1 )
 						except Exception as e:
-							print 'Packing Error', str(e)
+							print type(self).__name__, 'Packing Error1', str(e)
 							
 					try:
 						if ACTIVE_DRX_CONFIG.is_set():
@@ -955,7 +953,7 @@ class DualPacketizeOp(object):
 								udt0.sendmany(pkts0)
 								udt1.sendmany(pkts1)
 					except Exception as e:
-						print 'Sending Error', str(e)
+						print type(self).__name__, 'Sending Error', str(e)
 						
 				time_tag += int(ntime_gulp)*ticksPerSample
 				
@@ -965,9 +963,9 @@ class DualPacketizeOp(object):
 				process_time = curr_time - prev_time
 				prev_time = curr_time
 				self.perf_proclog.update({'acquire_time': acquire_time, 
-									 'reserve_time': -1, 
-									 'process_time': process_time,})
-									 
+				                          'reserve_time': -1, 
+				                          'process_time': process_time,})
+				
 			del udt0
 			del udt1
 
