@@ -1071,7 +1071,6 @@ class PacketizeOp(object):
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
 			rate_limit = (7.7*10/(navg*0.01-0.5)) * 1024**2
-			ticks_per_file = 3600*FS
 			
 			reset_sequence = True
 			
@@ -1157,8 +1156,8 @@ class PacketizeOp(object):
 					                          'reserve_time': -1, 
 					                          'process_time': process_time,})
 					
-					# Reset to move on to the next output file
-					if time_tag - file_time_tag >= ticks_per_file:
+					# Reset to move on to the next output file at the start of each hour
+					if int(round(time_tag/FS)) % 3600 == 0:
 						reset_sequence = True
 						break
 						
