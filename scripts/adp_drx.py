@@ -1071,15 +1071,27 @@ class PacketizeOp(object):
 			ticksPerFrame = int(round(navg*0.01*FS))
 			
 			rate_limit = (7.7*10/(navg*0.01-0.5)) * 1024**2
+			ticks_per_file = 3600*FS
 			
-			# HACK for verification
-			filename = '/data0/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag0)#time_tag0
-			#ofile = open(filename, 'wb')
+			reset_sequence = True
 			
 			prev_time = time.time()
-			#with UDPTransmit(sock=self.sock, core=self.core) as udt:
-			with open(filename, 'wb') as ofile:
-				for ispan in iseq.read(igulp_size):
+			iseq_spans = iseq.read(igulp_size)
+			while not self.iring.writing_ended():
+				# HACK for verification
+				if reset_sequence:
+					try:
+						ofile.close()
+					except:
+						pass
+						
+					filename = '/data1/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag)
+					ofile = open(filename, 'wb')
+					file_time_tag = time_tag*1
+					
+				reset_sequence = False
+				
+				for ispan in iseq_spans:
 					if ispan.size < igulp_size:
 						continue # Ignore final gulp
 					curr_time = time.time()
@@ -1145,6 +1157,14 @@ class PacketizeOp(object):
 					                          'reserve_time': -1, 
 					                          'process_time': process_time,})
 					
+					# Reset to move on to the next output file
+					if time_tag - file_time_tag >= ticks_per_file:
+						reset_sequence = True
+						break
+						
+				# Reset to move on to the next input sequence?
+				if not reset_sequence:
+					break
 			#del udt
 
 def get_utc_start(shutdown_event=None):
@@ -1348,7 +1368,7 @@ def main(argv):
 	                        tuning=tuning, ntime_gulp=50,
 	                        nbeam_max=nbeam, 
 	                        core=cores.pop(0)))
-	if socket.gethostname() in ('adp3', 'adp4') and tuning == 0:
+	if tuning == 0:
 		ccore = ops[2].core
 		pcore = ccore
 		ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
