@@ -1069,6 +1069,7 @@ class PacketizeOp(object):
 			ishape = (ochan,nstand,npol,nstand,npol)
 			
 			ticksPerFrame = int(round(navg*0.01*FS))
+			tInt = int(round(navg*0.01))
 			
 			rate_limit = (7.7*10/(navg*0.01-0.5)) * 1024**2
 			
@@ -1123,23 +1124,17 @@ class PacketizeOp(object):
 								
 							if len(pkts) == 64:
 								# HACK for verification
-								if os.path.getsize(filename) < 30*1024**3:
-									for pkt in pkts:
-										ofile.write(pkt)
-									#ofile.write(pkts)
-									#ofile.flush()
-								else:
-									try:
-										ofile.close()
-									except:
-										pass
+								for pkt in pkts:
+									ofile.write(pkt)
+									
 								bytesSent += sum([len(p) for p in pkts])
 								while bytesSent/(time.time()-bytesStart) >= rate_limit:
 									time.sleep(0.001)
 								pkts = []
 								
-					print 'vis write', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2
-					
+					if time.time()-t0 > tInt:
+						print 'WARNING: vis write', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2
+						
 					# HACK for verification
 					#try:
 					#	#if ACTIVE_COR_CONFIG.is_set():
@@ -1157,7 +1152,7 @@ class PacketizeOp(object):
 					                          'process_time': process_time,})
 					
 					# Reset to move on to the next output file at the start of each hour
-					if int(round(time_tag/FS)) % 3600 == 0:
+					if int(round(time_tag/FS)) % 3600 < tInt:
 						reset_sequence = True
 						break
 						
