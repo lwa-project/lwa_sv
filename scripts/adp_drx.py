@@ -1070,6 +1070,7 @@ class PacketizeOp(object):
 			
 			ticksPerFrame = int(round(navg*0.01*FS))
 			tInt = int(round(navg*0.01))
+			tBail = navg*0.01 - 0.2
 			
 			rate_limit = (7.7*10/(navg*0.01-0.5)) * 1024**2
 			
@@ -1106,7 +1107,7 @@ class PacketizeOp(object):
 					time.sleep(0.05)
 					odata = self.ldata.copy(space='system').transpose(3,1,0,4,2)
 					
-					bytesSent, bytesStart = 0.0, time.time()
+					bytesSent, bytesStart = 0, time.time()
 					
 					time_tag_cur = time_tag + ticksPerFrame
 					pkts = []
@@ -1132,9 +1133,10 @@ class PacketizeOp(object):
 									time.sleep(0.001)
 								pkts = []
 								
-					if time.time()-t0 > tInt:
-						print 'WARNING: vis write', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2
-						
+						if time.time()-t0 > tBail:
+							print 'WARNING: vis write bail', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2, '->', time.time()
+							break
+							
 					# HACK for verification
 					#try:
 					#	#if ACTIVE_COR_CONFIG.is_set():
