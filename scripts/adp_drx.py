@@ -106,11 +106,12 @@ class CaptureOp(object):
 		del capture
 
 class CopyOp(object):
-	def __init__(self, log, iring, oring, ntime_gulp=2500,# ntime_buf=None,
+	def __init__(self, log, iring, oring, tuning=0, ntime_gulp=2500,# ntime_buf=None,
 	             guarantee=True, core=-1):
 		self.log = log
 		self.iring = iring
 		self.oring = oring
+		self.tuning = tuning
 		self.ntime_gulp = ntime_gulp
 		#if ntime_buf is None:
 		#	ntime_buf = self.ntime_gulp*3
@@ -159,7 +160,7 @@ class CopyOp(object):
 				base_time_tag = iseq.time_tag
 				
 				clear_to_trigger = False
-				if chan0*CHAN_BW > 60e6:
+				if chan0*CHAN_BW > 60e6 and self.tuning == 1:
 					clear_to_trigger = True
 				to_keep = [6,7, 224,225, 494,495]
 				udata = BFArray(shape=(self.ntime_gulp, nchan, len(to_keep)), dtype=np.complex64)
@@ -1349,7 +1350,7 @@ def main(argv):
 	                     buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
 	                     utc_start=utc_start_dt))
 	ops.append(CopyOp(log, capture_ring, tbf_ring,
-	                  ntime_gulp=GSIZE, #ntime_buf=25000*tbf_buffer_secs,
+	                  tuning=tuning, ntime_gulp=GSIZE, #ntime_buf=25000*tbf_buffer_secs,
 	                  guarantee=False, core=cores.pop(0)))
 	ops.append(TriggeredDumpOp(log=log, osock=osock, iring=tbf_ring, 
 	                           ntime_gulp=GSIZE, ntime_buf=int(25000*tbf_buffer_secs/2500)*2500,
