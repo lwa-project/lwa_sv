@@ -55,7 +55,7 @@ class AdpRoach(object):
 			try:
 				out = subprocess.check_output(cmd_line)
 			except subprocess.CalledProcessError as e:
-				raise RuntimeError("Firmware programming on %s failed: %s" % (self.hostname(), str(e)))
+				raise RuntimeError("Firmware programming on %s failed: %s" % (self.hostname, str(e)))
 			time.sleep(1.0) # Note: Problems arose when this was set to only 0.1s
 			try:
 				ok, _ = self.check_serdes()
