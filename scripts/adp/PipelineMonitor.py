@@ -174,6 +174,9 @@ class BifrostPipeline(object):
         self.pid = pid
         self.command = _get_command_line(self.pid)
         
+    def is_alive(self):
+        return False if _get_command_line(self.pid) == '' else True
+        
     def _has_block(self, block):
         curr = self._get_state()
         return True if block in curr else False
@@ -312,6 +315,9 @@ class BifrostRemotePipeline(BifrostPipeline):
         except OSError:
             pass
             
+    def is_alive(self):
+        return False if _get_command_line(self.pid, host=self.host) == '' else True
+        
     def _update_state(self):
         if not hasattr(self, '_state'):
             self._state = {}
@@ -355,9 +361,9 @@ class BifrostRemotePipeline(BifrostPipeline):
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
     for pipe in pipes.pipelines():
-        print pipe, pipe.command, pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
+        print pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
     
     pipes = BifrostPipelines()
     for pipe in pipes.pipelines():
-        print pipe, pipe.command, pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
+        print pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
         
