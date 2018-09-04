@@ -27,25 +27,8 @@ import struct
 import subprocess
 import datetime
 import zmq
-# TODO: This caused weird hangs when launching on two servers, so I
-#         moved it into the local function as a WAR.
-## Note: paramiko must be pip installed (it's also included with fabric)
-#import paramiko # For ssh'ing into roaches to call reboot
 import threading
 import socket # For socket.error
-
-#from paramiko import py3compat
-## dirty hack to fix threading import lock (issue 104) by preloading module
-#py3compat.u("dirty hack")
-#import paramiko
-##''.decode('utf-8')  # dirty fix
-
-#_hack_ssh = paramiko.SSHClient()
-#_hack_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-#try:
-#	_hack_ssh.connect("127.0.0.1", timeout=0.001)
-#except:
-#	pass
 
 __version__    = "0.2"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -664,38 +647,6 @@ class AdpServerMonitorClient(object):
         #self.log.info("SSHPASS DONE: " + ret)
         #self.log.info("Command executed: "+ret)
         return ret
-        #return True
-        #import paramiko
-        #''.decode('utf-8')  # dirty fix
-        #py3compat.u("dirty hack")
-        #ssh = paramiko.SSHClient()
-        #ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #ssh.connect(self.host,
-        #            username=self.config['server']['username'],
-        #            password=self.config['server']['password'],
-        #            timeout=timeout)
-        #cmd += '; exit'
-        #self.log.info("Executing "+cmd+" on "+self.host)
-        #ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd)
-        #self.log.info("Closing SSH")
-        #ssh_stdin.close()
-        #ssh_stdout.close()
-        #ssh_stderr.close()
-        #ssh.close()
-        #del ssh
-        password = self.config['server']['password']
-        #try:
-        self.log.info("RUNNING SSHPASS " + cmd)
-        ret = subprocess.check_output(['sshpass', '-p', password,
-                                       'ssh', '-o', 'StrictHostKeyChecking=no',
-                                       'root@'+self.host] +
-                                      cmd.split())
-        #ret = subprocess.check_output(['sshpass -p %s ssh root@%s %s' %
-            #                               (password, self.host, cmd)],
-            #                              shell=True)
-        self.log.info("SSHPASS DONE: " + ret)
-        #except subprocess.CalledProcessError:
-        #	raise RuntimeError("Server command '%s' failed" % cmd)
         
     def can_ssh(self):
         try:
@@ -727,17 +678,7 @@ class Roach2MonitorClient(object):
         if not reboot:
             self.roach.unprogram()
             return
-        # Note: paramiko must be pip installed (it's also included with fabric)
-        #import paramiko # For ssh'ing into roaches to call reboot
-        #ssh = paramiko.SSHClient()
-        #ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #ssh.connect(self.host,
-        #            username=self.config['roach']['username'],
-        #            password=self.config['roach']['password'],
-        #            timeout=5.)
-        #ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('reboot')
-        #ssh_stdout.read()
-        ## Note: This requires ssh authorized_keys to have been set up
+        
         password = self.config['roach']['password']
         try:
             subprocess.check_output(['sshpass', '-p', password,
@@ -901,9 +842,6 @@ class MsgProcessor(ConsumerThread):
     def __init__(self, config, log,
                 max_process_time=1.0, ncmd_save=4, dry_run=False):
         ConsumerThread.__init__(self)
-        
-        # HACK WAR for super nasty bug in Paramiko (threads during import)
-        #import paramiko # For ssh'ing into roaches to call reboot
         
         self.config           = config
         self.log              = log
