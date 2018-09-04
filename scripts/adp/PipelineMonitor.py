@@ -6,6 +6,9 @@ import os
 import copy
 import glob
 import time
+import shutil
+import tempfile
+import subprocess
 
 BIFROST_STATS_BASE_DIR = '/dev/shm/bifrost/'
 
@@ -59,7 +62,7 @@ def load_by_filename(filename):
     return contents
 
 # From bifrost so that we don't need to import it for the control software
-def load_by_pid(pid, include_rings=False):
+def load_by_pid(pid, include_rings=False, path=BIFROST_STATS_BASE_DIR):
     """
     Function to read in and parse all ProcLog files associated with a given 
     process ID.  The contents of these files are returned as a collection of
@@ -68,10 +71,9 @@ def load_by_pid(pid, include_rings=False):
         ProcLog name
            entry name
     """
-
-
+    
     # Make sure we have a directory to load from
-    baseDir = os.path.join('/dev/shm/bifrost/', str(pid))
+    baseDir = os.path.join(path, str(pid))
     if not os.path.isdir(baseDir):
         raise RuntimeError("Cannot find log directory associated with PID %s" % pid)
 
@@ -102,7 +104,7 @@ def load_by_pid(pid, include_rings=False):
     # Done
     return contents
 
-def _get_command_line(pid):
+def _get_command_line(pid, host="localhost"):
     """
     Given a PID, use the /proc interface to get the full command line for 
     the process.  Return an empty string if the PID doesn't have an entry in
@@ -110,14 +112,22 @@ def _get_command_line(pid):
     """
 
     cmd = ''
-
-    try:
-        with open('/proc/%i/cmdline' % pid, 'r') as fh:
-            cmd = fh.read()
+    
+    if host == "localhost":
+        try:
+            with open('/proc/%i/cmdline' % pid, 'r') as fh:
+                cmd = fh.read()
+                cmd = cmd.replace('\0', ' ')
+                fh.close()
+        except IOError:
+            pass
+    else:
+        try:
+            cmd = subprocess.check_output(['ssh', host, "cat /proc/%i/cmdline" % pid])
             cmd = cmd.replace('\0', ' ')
-            fh.close()
-    except IOError:
-        pass
+            cmd = "%s:%s" % (host, cmd)
+        except subprocess.CalledProcessError:
+            pass
     return cmd
 
 class BifrostPipelines(object):
@@ -126,8 +136,18 @@ class BifrostPipelines(object):
     bifrost pipelines running on a machine.
     """
     
+    def __init__(self, host="localhost"):
+        self.host = host
+    
     def pipeline_pids(self):
-        pidDirs = glob.glob(os.path.join(BIFROST_STATS_BASE_DIR, '*'))
+        if self.host == "localhost":
+            pidDirs = glob.glob(os.path.join(BIFROST_STATS_BASE_DIR, '*'))
+        else:
+            try:
+                pidDirs = subprocess.check_output(['ssh', self.host, "ls -1 %s" % BIFROST_STATS_BASE_DIR])
+            except subprocess.CalledProcessError:
+                pidDirs = '\n'
+            pidDirs = pidDirs.split('\n')[:-1]                           
         pidDirs.sort()
         
         pids = []
@@ -139,7 +159,10 @@ class BifrostPipelines(object):
         return len(self.pipeline_pids())
         
     def pipelines(self):
-        return [BifrostPipeline(pid) for pid in self.pipeline_pids()]
+        if self.host == "localhost":
+            return [BifrostPipeline(pid) for pid in self.pipeline_pids()]
+        else:
+            return [BifrostRemotePipeline(self.host, pid) for pid in self.pipeline_pids()]
 
 class BifrostPipeline(object):
     """
@@ -218,7 +241,6 @@ class BifrostPipeline(object):
             time.sleep(10)
             self._update_state()
             prev, curr = self._get_last_state(), self._get_state()
-            print "->", tNow, curr[block]['time'],  prev[block]['time']
             
         # Compute the rate
         t0, metric0 = prev[block]['time'], prev[block][metric]
@@ -275,8 +297,66 @@ class BifrostPipeline(object):
         """
         
         return self._get_loss('udp_capture', snapshot=snapshot)
+
+class BifrostRemotePipeline(BifrostPipeline):
+    def __init__(self, host, pid):
+        super(BifrostRemotePipeline, self).__init__(pid)
+        self.host = host
+        self.command = _get_command_line(self.pid, host=self.host)
+        self._dir_name = tempfile.mkdtemp(suffix='.%s' % self.host, prefix='pipeline-')
+        self.command = _get_command_line(self.pid, host=self.host)
         
+    def __del__(self):
+        try:
+            shutil.rmtree(self._dir_name)
+        except OSError:
+            pass
+            
+    def _update_state(self):
+        if not hasattr(self, '_state'):
+            self._state = {}
+        self._last_state = copy.deepcopy(self._state)
+        
+        try:
+            log = subprocess.check_output(['rsync', '-e ssh', '-avH', '--delete-during', 
+                                           "%s:%s" % (self.host, os.path.join(BIFROST_STATS_BASE_DIR, str(self.pid))), 
+                                           self._dir_name])
+        except subprocess.CalledProcessError:
+            pass
+            
+        contents = load_by_pid(self.pid, path=self._dir_name)
+        
+        for block in contents.keys():
+            if block[:3] != 'udp':
+                continue
+                
+            t = time.time()
+            try:
+                log     = contents[block]['stats']
+                good    = log['ngood_bytes']
+                missing = log['nmissing_bytes']
+                invalid = log['ninvalid_bytes']
+                late    = log['nlate_bytes']
+                nvalid  = log['nvalid']
+            except KeyError:
+                good, missing, invalid, late, nvalid = 0, 0, 0, 0, 0
+                
+            try:
+                self._state[block]
+            except KeyError:
+                self._state[block] = {}
+            self._state[block] = {'time'   : t, 
+                                  'good'   : good, 
+                                  'missing': missing, 
+                                  'invalid': invalid, 
+                                  'late'   : late, 
+                                  'nvalid' : nvalid}
+                                  
 if __name__ == "__main__":
+    pipes = BifrostPipelines('adp1')
+    for pipe in pipes.pipelines():
+        print pipe, pipe.command, pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
+    
     pipes = BifrostPipelines()
     for pipe in pipes.pipelines():
         print pipe, pipe.command, pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
