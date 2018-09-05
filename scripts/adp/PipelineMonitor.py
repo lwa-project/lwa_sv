@@ -251,7 +251,7 @@ class BifrostPipeline(object):
         # Compute the rate
         t0, metric0 = prev[block]['time'], prev[block][metric]
         t1, metric1 = curr[block]['time'], curr[block][metric]
-        return (metric1-metric0)/(t1-t0)
+        return max([0.0, (metric1-metric0)/(t1-t0)])
         
     def rx_rate(self):
         """
