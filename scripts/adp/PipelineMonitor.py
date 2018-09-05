@@ -123,7 +123,8 @@ def _get_command_line(pid, host="localhost"):
             pass
     else:
         try:
-            cmd = subprocess.check_output(['ssh', host, "cat /proc/%i/cmdline" % pid])
+            cmd = subprocess.check_output(['ssh', host, "cat /proc/%i/cmdline" % pid], 
+                                          stderr=subprocess.STDOUT)
             cmd = cmd.replace('\0', ' ')
             cmd = "%s:%s" % (host, cmd)
         except subprocess.CalledProcessError:
@@ -144,7 +145,8 @@ class BifrostPipelines(object):
             pidDirs = glob.glob(os.path.join(BIFROST_STATS_BASE_DIR, '*'))
         else:
             try:
-                pidDirs = subprocess.check_output(['ssh', self.host, "ls -1 %s" % BIFROST_STATS_BASE_DIR])
+                pidDirs = subprocess.check_output(['ssh', self.host, "ls -1 %s" % BIFROST_STATS_BASE_DIR], 
+                                                  stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError:
                 pidDirs = '\n'
             pidDirs = pidDirs.split('\n')[:-1]                           
@@ -152,7 +154,10 @@ class BifrostPipelines(object):
         
         pids = []
         for pidDir in pidDirs:
-            pids.append( int(os.path.basename(pidDir), 10) )
+            try:
+                pids.append( int(os.path.basename(pidDir), 10) )
+            except ValueError:
+                pass
         return pids
         
     def pipeline_count(self):
@@ -184,24 +189,20 @@ class BifrostPipeline(object):
     def _get_state(self):
         if not hasattr(self, '_state'):
             self._update_state()
-            self._update_state()
             
         return self._state
         
     def _get_last_state(self):
-        if not hasattr(self, '_state'):
-            self._update_state()
+        if not hasattr(self, '_last_state'):
             self._update_state()
             
         return self._last_state
         
     def _update_state(self):
-        if not hasattr(self, '_state'):
-            self._state = {}
-        self._last_state = copy.deepcopy(self._state)
         
         contents = load_by_pid(self.pid)
         
+        new_state = {}
         for block in contents.keys():
             if block[:3] != 'udp':
                 continue
@@ -217,16 +218,18 @@ class BifrostPipeline(object):
             except KeyError:
                 good, missing, invalid, late, nvalid = 0, 0, 0, 0, 0
                 
-            try:
-                self._state[block]
-            except KeyError:
-                self._state[block] = {}
-            self._state[block] = {'time'   : t, 
-                                  'good'   : good, 
-                                  'missing': missing, 
-                                  'invalid': invalid, 
-                                  'late'   : late, 
-                                  'nvalid' : nvalid}
+            new_state[block] = {'time'   : t, 
+                                'good'   : good, 
+                                'missing': missing, 
+                                'invalid': invalid, 
+                                'late'   : late, 
+                                'nvalid' : nvalid}
+            
+        try:
+            self._last_state = self._state
+        except AttributeError:
+            self._last_state = new_state
+        self._state = new_state
 
     def _get_rate(self, block, metric):
         # Make sure we have the block we are asked to report on 
@@ -237,7 +240,7 @@ class BifrostPipeline(object):
         # know what is going on
         tNow = time.time()
         prev, curr = self._get_last_state(), self._get_state()
-        if tNow - prev[block]['time'] > 30.0:
+        if tNow - curr[block]['time'] > 30.0:
             self._update_state()
             prev, curr = self._get_last_state(), self._get_state()
         if curr[block]['time'] - prev[block]['time'] < 10.0:
@@ -273,7 +276,7 @@ class BifrostPipeline(object):
         # know what is going on
         tNow = time.time()
         prev, curr = self._get_last_state(), self._get_state()
-        if tNow - prev[block]['time'] > 30.0:
+        if tNow - curr[block]['time'] > 30.0:
             self._update_state()
             prev, curr = self._get_last_state(), self._get_state()
         if curr[block]['time'] - prev[block]['time'] < 10.0:
@@ -319,19 +322,18 @@ class BifrostRemotePipeline(BifrostPipeline):
         return False if _get_command_line(self.pid, host=self.host) == '' else True
         
     def _update_state(self):
-        if not hasattr(self, '_state'):
-            self._state = {}
-        self._last_state = copy.deepcopy(self._state)
         
         try:
-            log = subprocess.check_output(['rsync', '-e ssh', '-avH', '--delete-during', 
+            log = subprocess.check_output(['rsync', '-e ssh', '-avH', '--delete-during', '--delete-missing-args', 
                                            "%s:%s" % (self.host, os.path.join(BIFROST_STATS_BASE_DIR, str(self.pid))), 
-                                           self._dir_name])
+                                           self._dir_name], 
+                                          stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
             pass
             
         contents = load_by_pid(self.pid, path=self._dir_name)
         
+        new_state = {}
         for block in contents.keys():
             if block[:3] != 'udp':
                 continue
@@ -347,16 +349,18 @@ class BifrostRemotePipeline(BifrostPipeline):
             except KeyError:
                 good, missing, invalid, late, nvalid = 0, 0, 0, 0, 0
                 
-            try:
-                self._state[block]
-            except KeyError:
-                self._state[block] = {}
-            self._state[block] = {'time'   : t, 
-                                  'good'   : good, 
-                                  'missing': missing, 
-                                  'invalid': invalid, 
-                                  'late'   : late, 
-                                  'nvalid' : nvalid}
+            new_state[block] = {'time'   : t, 
+                                'good'   : good, 
+                                'missing': missing, 
+                                'invalid': invalid, 
+                                'late'   : late, 
+                                'nvalid' : nvalid}
+            
+        try:
+            self._last_state = self._state
+        except AttributeError:
+            self._last_state = new_state
+        self._state = new_state
                                   
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
