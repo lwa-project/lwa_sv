@@ -6,6 +6,7 @@ from AdpLogging import *
 
 import MCS2
 from DeviceMonitor import ROACH2Device
+from PipelineMonitor import BifrostPipelines
 from ConsumerThread import ConsumerThread
 from SequenceDict import SequenceDict
 from ThreadPool import ThreadPool
@@ -21,7 +22,7 @@ from Queue import Queue
 import numpy as np
 import time
 import math
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import struct
 import subprocess
@@ -122,8 +123,9 @@ class Tbn(SlotCommandProcessor):
             self.start(cmd.freq, cmd.filt, cmd.gain)
             
     def stop(self):
-        self.log.info("Stopping TBN")
+        self.log.info("Stopping TBN data")
         self.roaches.disable_tbn_data()
+        self.cur_freq = self.cur_filt = self.cur_gain = 0
         self.log.info("TBN stopped")
         return 0
 
@@ -188,6 +190,10 @@ class Drx(SlotCommandProcessor):
         self.log.info("Stopping DRX data")
         self.roaches.disable_drx_data(0)
         self.roaches.disable_drx_data(1)
+        self.cur_freq = [0]*self.ntuning
+        self.cur_filt = [0]*self.ntuning
+        self.cur_gain = [0]*self.ntuning
+        self.log.info("DRX stopped")
         return 0
 
 
@@ -904,10 +910,9 @@ class MsgProcessor(ConsumerThread):
         self.run_execute_thread.daemon = True
         self.run_execute_thread.start()
         
-        # TODO: This causes INI to lock up on a call to self.roaches.host!
-        #self.run_monitor_thread = threading.Thread(target=self.run_monitor)
-        #self.run_monitor_thread.daemon = True
-        #self.run_monitor_thread.start()
+        self.run_monitor_thread = threading.Thread(target=self.run_monitor)
+        self.run_monitor_thread.daemon = True
+        self.run_monitor_thread.start()
         
         self.run_failsafe_thread = threading.Thread(target=self.run_failsafe)
         self.run_failsafe_thread.daemon = True
@@ -1629,28 +1634,188 @@ class MsgProcessor(ConsumerThread):
             
     def run_monitor(self):
         self.log.info("Starting monitor thread")
-        while not self.shutdown_event.is_set():
-            """
-            roach_drx_link_status = self.roaches.roach.check_link(0)
-            roach_tbn_link_status = self.roaches.roach.check_link(1)
-            drx_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_drx_link_status])
-            tbn_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_tbn_link_status])
-            if not all(roach_drx_link_status):
-                self.log.warning("DRX gbe link failure: " + drx_link_str)
-            if not all(roach_tbn_link_status):
-                self.log.warning("TBN gbe link failure: " + tbn_link_str)
-            """
-            roach_overflow_status = self.roaches.roach.check_overflow()
-            drx_overflow = [stat[0] for stat in roach_overflow_status]
-            tbn_overflow = [stat[1] for stat in roach_overflow_status]
-            drx_overflow_str = ''.join([('.','x')[bool(stat)] for stat in drx_overflow])
-            tbn_overflow_str = ''.join([('.','x')[bool(stat)] for stat in tbn_overflow])
-            if any(drx_overflow):
-                self.log.warning("DRX fifo overflow: " + drx_overflow_str)
-            if any(tbn_overflow):
-                self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
+        
+        # Assumes that we are running on the headnode, which should always be true
+        pipelines = OrderedDict()
+        pipelines['localhost'] = BifrostPipelines('localhost').pipelines()
+        for server in self.servers:
+            host = server.host.replace('-data', '')
+            pipelines[host] = BifrostPipelines(host).pipelines()
             
-            time.sleep(30)
+        # Needed to figure out when to ignore the T-engine output
+        tbf_lock = ISC.PipelineEventClient(addr=('adp',5834))
+        
+        # A little state to see if we need to re-check hosts for what pipelines are running
+        recheck_host = []
+        
+        # Go!
+        n_tunings = len(self.config['drx'])
+        n_servers = len(self.config['servers-data'])
+        while not self.shutdown_event.is_set():
+            ## A little more state
+            problems_found = False
+            
+            ## Check the servers
+            found = {'drx':[], 'tbn':[], 'tengine':[]}
+            for host in pipelines:
+                ### Basic information about what to expect
+                n_expected = n_tunings if host == 'localhost' else (n_tunings + 1)
+                
+                ### Check to see if our view of which pipelines are running has changed
+                refresh = False if len(pipelines[host]) == n_expected else True
+                for pipeline in pipelines[host]:
+                    if not pipeline.is_alive():
+                        refresh = True
+                        break
+                if refresh:
+                    del pipelines[host]
+                    pipelines[host] = BifrostPipelines(host).pipelines()
+                    
+                ### Loop over the pipelines
+                for pipeline in pipelines[host]:
+                    name = pipeline.command
+                    side = 1 if name.find('--tuning 1') != -1 else 0
+                    loss = pipeline.rx_loss()
+                    txbw = pipeline.tx_rate()
+                    
+                    if name.find('drx') != -1:
+                        ptype = 'DRX'
+                        found['drx'].append( (host,name,side,loss,txbw) )
+                    elif name.find('tbn') != -1:
+                        ptype = 'TBN'
+                        found['tbn'].append( (host,name,side,loss,txbw) )
+                    elif name.find('tengine') != -1:
+                        ptype = 'T-Engine'
+                        found['tengine'].append( (host,name,side,loss,txbw) )
+                    else:
+                        pass
+                        
+            ## Make sure we have everything we need
+            ### T-engines
+            total_tengine_bw = {0:0, 1:0}
+            for host,name,side,loss,txbw in found['tengine']:
+                total_tengine_bw[side] += txbw
+                if loss > 0.01:    # >1% packet loss
+                    problems_found = True
+                    msg = "%s, T-Engine-%i has an instantaneous RX loss of %.1f%%" % (host, side, loss*100.0)
+                    if self.state['status'] != 'ERROR':
+                        self.state['lastlog'] = msg
+                        self.state['status'] = 'WARNING'
+                        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                    self.log.warning(msg)
+                if txbw < 100*1024:   # <100 kB/s TX rate
+                        problems_found = True
+                        msg = "%s, T-Engine-%i has an instantaneous TX rate of %i B/s" % (host, side, txbw)
+                        if self.state['status'] != 'ERROR':
+                            self.state['lastlog'] = msg
+                            self.state['status'] = 'WARNING'
+                            self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                        self.log.warning(msg)
+            for side in xrange(n_tunings):
+                if self.drx.cur_freq[side] > 0 and not tbf_lock.is_set() and total_tengine_bw[side] == 0:
+                    problems_found = True
+                    msg = "T-Engine-%i has aninstantaneous TX rate of %i B/s" % (side, total_tengine_bw[side])
+                    self.state['lastlog'] = msg
+                    self.state['status']  = 'ERROR'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                    self.log.error(msg)
+            if len(found['tengine']) != n_tunings:
+                problems_found = True
+                msg = "Found %i T-Engines instead of %i" % (len(found['tengine']), n_tunings)
+                self.state['lastlog'] = msg
+                self.state['status']  = 'ERROR'
+                self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                self.log.error(msg)
+                
+            ### DRX pipelines
+            total_drx_bw = {0:0, 1:0}
+            for host,name,side,loss,txbw in found['drx']:
+                total_drx_bw[side] += txbw
+                if loss > 0.01:    # >1% packet loss
+                    problems_found = True
+                    msg = "%s, DRX-%i has an instantaneous RX loss of %.1f%%" % (host, side, loss*100.0)
+                    if self.state['status'] != 'ERROR':
+                        self.state['lastlog'] = msg
+                        self.state['status'] = 'WARNING'
+                        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                    self.log.warning(msg)
+            for side in xrange(n_tunings):
+            	if self.drx.cur_freq[side] > 0 and total_drx_bw[side] == 0:
+                    problems_found = True
+                    msg = "DRX-%i has aninstantaneous TX rate of %i B/s" % (side, total_drx_bw[side])
+                    self.state['lastlog'] = msg
+                    self.state['status']  = 'ERROR'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                    self.log.error(msg)
+            if len(found['drx']) != n_tunings*n_servers:
+                problems_found = True
+                msg = "Found %i DRX pipelines instead of %i" % (len(found['drx']), n_tunings*n_servers)
+                if self.state['status'] != 'ERROR':
+                    self.state['lastlog'] = msg
+                    self.state['status']  = 'WARNING'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                self.log.warning(msg)
+                
+            ### TBN pipelines
+            total_tbn_bw = 0
+            for host,name,side,loss,txbw in found['tbn']:
+                total_tbn_bw += txbw
+                if loss > 0.01:    # >1% packet loss
+                    problems_found = True
+                    msg = "%s, TBN has an instantaneous RX loss of %.1f%%" % (host, loss*100.0)
+                    if self.state['status'] != 'ERROR':
+                        self.state['lastlog'] = msg
+                        self.state['status'] = 'WARNING'
+                        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                    self.log.warning(msg)
+            if self.tbn.cur_freq >0 and total_tbn_bw == 0:
+                problems_found = True
+                msg = "TBN has aninstantaneous TX rate of %i B/s" % (side, total_tbn_bw)
+                self.state['lastlog'] = msg
+                self.state['status']  = 'ERROR'
+                self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                self.log.error(msg)
+            if len(found['tbn']) != n_servers:
+                problems_found = True
+                msg = "Found %i TBN pipelines instead of %i" % (len(found['tbn']), n_servers)
+                if self.state['status'] != 'ERROR':
+                    self.state['lastlog'] = msg
+                    self.state['status']  = 'WARNING'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
+                self.log.warning(msg)
+                
+            ## Check the roach boards
+            if True:
+                """
+                roach_drx_link_status = self.roaches.roach.check_link(0)
+                roach_tbn_link_status = self.roaches.roach.check_link(1)
+                drx_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_drx_link_status])
+                tbn_link_str = ''.join([('x','.')[bool(stat)] for stat in roach_tbn_link_status])
+                if not all(roach_drx_link_status):
+                    self.log.warning("DRX gbe link failure: " + drx_link_str)
+                if not all(roach_tbn_link_status):
+                    self.log.warning("TBN gbe link failure: " + tbn_link_str)
+                """
+                
+                roach_overflow_status = self.roaches.roach.check_overflow()
+                drx_overflow = [stat[0] for stat in roach_overflow_status]
+                tbn_overflow = [stat[1] for stat in roach_overflow_status]
+                drx_overflow_str = ''.join([('.','x')[bool(stat)] for stat in drx_overflow])
+                tbn_overflow_str = ''.join([('.','x')[bool(stat)] for stat in tbn_overflow])
+                if any(drx_overflow):
+                    self.log.warning("DRX fifo overflow: " + drx_overflow_str)
+                if any(tbn_overflow):
+                    self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
+                    
+            if not problems_found and self.state['status'] == 'WARNING':
+                msg = 'Warning condition(s) cleared'
+                self.state['lastlog'] = msg
+                self.state['status']  = 'NORMAL'
+                self.state['info']    = msg
+                self.log.info(msg)
+                
+            self.log.info("Monitor OK")
+            time.sleep(self.config['monitor_interval'])
             
     def run_failsafe(self):
         self.log.info("Starting failsafe thread")
@@ -1678,10 +1843,11 @@ class MsgProcessor(ConsumerThread):
                 else:
                     self.sht()
             elif roach_temps_max > self.config['roach']['temperature_warning']:
-                self.state['lastlog'] = 'Temperature warning (BOARD)' % cmd
-                self.state['status']  = 'WARNING'
-                self.state['info']    = '%s! 0x%02X! %s' % ('BOARD_TEMP_MAX', 0x01,
-                                                            'Board temperature warning')
+                if self.status['status'] != 'ERROR':
+                    self.state['lastlog'] = 'Temperature warning (BOARD)' % cmd
+                    self.state['status']  = 'WARNING'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('BOARD_TEMP_MAX', 0x01,
+                                                                'Board temperature warning')
             if server_temps_max > self.config['server']['temperature_shutdown']:
                 self.state['lastlog'] = 'Temperature shutdown (SERVER)' % cmd
                 self.state['status']  = 'ERROR'
@@ -1692,10 +1858,11 @@ class MsgProcessor(ConsumerThread):
                 else:
                     self.sht()
             elif server_temps_max > self.config['server']['temperature_warning']:
-                self.state['lastlog'] = 'Temperature warning (SERVER)' % cmd
-                self.state['status']  = 'WARNING'
-                self.state['info']    = '%s! 0x%02X! %s' % ('SERVER_TEMP_MAX', 0x01,
-                                                            'Server temperature warning')
+                if self.state['status'] != 'ERROR':
+                    self.state['lastlog'] = 'Temperature warning (SERVER)' % cmd
+                    self.state['status']  = 'WARNING'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SERVER_TEMP_MAX', 0x01,
+                                                                'Server temperature warning')
             self.log.info("Failsafe OK")
             time.sleep(self.config['failsafe_interval'])
             
@@ -1746,9 +1913,9 @@ class MsgProcessor(ConsumerThread):
         self.run_execute_thread.join(self.shutdown_timeout)
         if self.run_execute_thread.isAlive():
             self.log.warning("run_execute thread still exists and will be killed")
-        #self.run_monitor_thread.join(self.shutdown_timeout)
-        #if self.run_monitor_thread.isAlive():
-        #    self.log.warning("run_monitor thread still exists and will be killed")
+        self.run_monitor_thread.join(self.shutdown_timeout)
+        if self.run_monitor_thread.isAlive():
+            self.log.warning("run_monitor thread still exists and will be killed")
         print self.name, "shutdown"
         
     def process_msg(self, msg, process_func):

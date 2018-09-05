@@ -1,5 +1,6 @@
 {
     "shutdown_timeout":  5.0,
+    "monitor_interval": 300.0,
     "failsafe_interval": 180.0,
     "mcs": {
         "headnode": {
