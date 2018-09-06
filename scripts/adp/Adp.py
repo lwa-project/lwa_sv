@@ -1650,7 +1650,7 @@ class MsgProcessor(ConsumerThread):
         tbf_lock = ISC.PipelineEventClient(addr=('adp',5834))
         
         # A little state to see if we need to re-check hosts
-        force_recheck = False
+        force_recheck = False if self.ready else True
         
         # Go!
         n_tunings = len(self.config['drx'])
@@ -1818,12 +1818,16 @@ class MsgProcessor(ConsumerThread):
                         self.state['info']    = msg
                         self.log.info(msg)
                 force_recheck = False
+                
+                self.log.info("Monitor OK")
+                time.sleep(self.config['monitor_interval'])
+                
             else:
                 force_recheck = True
                 
-            self.log.info("Monitor OK")
-            time.sleep(self.config['monitor_interval'])
-            
+                self.log.info("Monitor SKIP")
+                time.sleep(30)
+                
     def run_failsafe(self):
         self.log.info("Starting failsafe thread")
         while not self.shutdown_event.is_set():
