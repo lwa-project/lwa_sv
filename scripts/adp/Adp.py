@@ -1765,7 +1765,7 @@ class MsgProcessor(ConsumerThread):
                             self.state['status'] = 'WARNING'
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
-                if self.tbn.cur_freq >0 and total_tbn_bw == 0:
+                if self.tbn.cur_freq > 0 and total_tbn_bw == 0:
                     problems_found = True
                     msg = "TBN -- TX rate of %i B/s" % (side, total_tbn_bw)
                     self.state['lastlog'] = msg
@@ -1782,7 +1782,7 @@ class MsgProcessor(ConsumerThread):
                     self.log.warning(msg)
                     
                 ## Check the roach boards
-                if True:
+                if False:
                     """
                     roach_drx_link_status = self.roaches.roach.check_link(0)
                     roach_tbn_link_status = self.roaches.roach.check_link(1)
