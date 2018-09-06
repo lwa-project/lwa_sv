@@ -327,7 +327,7 @@ class BifrostRemotePipeline(BifrostPipeline):
     def _update_state(self):
         
         try:
-            log = subprocess.check_output(['rsync', '-e ssh', '-avH', '--delete-during', '--delete-missing-args', 
+            log = subprocess.check_output(['rsync', '-e ssh', '-avH', '--min-size=1', '--delete-during', '--delete-missing-args', 
                                            "%s:%s" % (self.host, os.path.join(BIFROST_STATS_BASE_DIR, str(self.pid))), 
                                            self._dir_name], 
                                           stderr=subprocess.STDOUT)

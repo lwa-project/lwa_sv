@@ -1662,7 +1662,7 @@ class MsgProcessor(ConsumerThread):
             if self.ready:
                 ## Check the servers
                 found = {'drx':[], 'tbn':[], 'tengine':[]}
-                for host in pipelines:
+                for host in list(pipelines.keys()):
                     ### Basic information about what to expect
                     n_expected = n_tunings if host == 'localhost' else (n_tunings + 1)
                     
@@ -1684,13 +1684,10 @@ class MsgProcessor(ConsumerThread):
                         txbw = pipeline.tx_rate()
                         
                         if name.find('drx') != -1:
-                            ptype = 'DRX'
                             found['drx'].append( (host,name,side,loss,txbw) )
                         elif name.find('tbn') != -1:
-                            ptype = 'TBN'
                             found['tbn'].append( (host,name,side,loss,txbw) )
                         elif name.find('tengine') != -1:
-                            ptype = 'T-Engine'
                             found['tengine'].append( (host,name,side,loss,txbw) )
                         else:
                             pass
@@ -1812,10 +1809,10 @@ class MsgProcessor(ConsumerThread):
                         self.state['info']    = msg
                         self.log.info(msg)
                     elif self.state['status'] == 'ERROR' and self.state['info'].find('0x0E') != -1:
-                        msg = 'Pipeline error condition(s) cleared'
+                        msg = 'Pipeline error condition(s) cleared, dropping back to warning'
                         self.state['lastlog'] = msg
                         self.state['status']  = 'WARNING'
-                        self.state['info']    = msg
+                        self.state['info']    = '%s! 0x%02X! %s' % ('WARNING', 0x0E, msg)
                         self.log.info(msg)
                 force_recheck = False
                 
