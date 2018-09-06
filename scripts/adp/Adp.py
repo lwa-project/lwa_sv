@@ -92,15 +92,18 @@ class Tbn(SlotCommandProcessor):
         self.roaches = roaches
         self.cur_freq = self.cur_filt = self.cur_gain = 0
         
-    def tune(self, freq=38.00e6, filt=1, gain=1):
+    def tune(self, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
         
         self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
         rets = self.roaches.tune_tbn(freq)
-        self.cur_freq = freq
-        self.cur_filt = filt
-        self.cur_gain = gain
+        
+        if not internal:
+            self.cur_freq = freq
+            self.cur_filt = filt
+            self.cur_gain = gain
+            
         return rets
         
     def start(self, freq=59.98e6, filt=1, gain=1):
@@ -153,17 +156,18 @@ class Drx(SlotCommandProcessor):
         self.cur_filt = [0]*self.ntuning
         self.cur_gain = [0]*self.ntuning
         
-    def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1):
+    def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
         
         self.log.info("Tuning DRX %i: freq=%f,filt=%i,gain=%i" % (tuning,freq,filt,gain))
         rets = self.roaches.tune_drx(tuning, freq)
         
-        self.cur_freq[tuning] = freq
-        self.cur_filt[tuning] = filt
-        self.cur_gain[tuning] = gain
-        
+        if not internal:
+            self.cur_freq[tuning] = freq
+            self.cur_filt[tuning] = filt
+            self.cur_gain[tuning] = gain
+            
         return rets
         
     def start(self, tuning=0, freq=59.98e6, filt=1, gain=1):
@@ -1223,7 +1227,7 @@ class MsgProcessor(ConsumerThread):
         self.log.info("Initializing DRX")
         self.roaches[0].roach.wait_for_pps()
         for tuning in xrange(len(self.config['drx'])):
-            if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=34.1e6),
+            if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=34.1e6, internal=True),
                                       'Initializing DRX - %i' % tuning,
                                       self.roaches.host):
                 if 'FORCE' not in arg:
@@ -1645,8 +1649,8 @@ class MsgProcessor(ConsumerThread):
         # Needed to figure out when to ignore the T-engine output
         tbf_lock = ISC.PipelineEventClient(addr=('adp',5834))
         
-        # A little state to see if we need to re-check hosts for what pipelines are running
-        recheck_host = []
+        # A little state to see if we need to re-check hosts
+        force_recheck = False
         
         # Go!
         n_tunings = len(self.config['drx'])
@@ -1668,7 +1672,7 @@ class MsgProcessor(ConsumerThread):
                         if not pipeline.is_alive():
                             refresh = True
                             break
-                    if refresh:
+                    if refresh or force_recheck:
                         del pipelines[host]
                         pipelines[host] = BifrostPipelines(host).pipelines()
                         
@@ -1813,7 +1817,10 @@ class MsgProcessor(ConsumerThread):
                         self.state['status']  = 'WARNING'
                         self.state['info']    = msg
                         self.log.info(msg)
-                        
+                force_recheck = False
+            else:
+                force_recheck = True
+                
             self.log.info("Monitor OK")
             time.sleep(self.config['monitor_interval'])
             
