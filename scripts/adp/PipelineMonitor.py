@@ -199,8 +199,11 @@ class BifrostPipeline(object):
         return self._last_state
         
     def _update_state(self):
-        
-        contents = load_by_pid(self.pid)
+       
+        try: 
+            contents = load_by_pid(self.pid)
+        except RuntimeError:
+            contents = {}
         
         new_state = {}
         for block in contents.keys():
@@ -232,26 +235,26 @@ class BifrostPipeline(object):
         self._state = new_state
 
     def _get_rate(self, block, metric):
-        # Make sure we have the block we are asked to report on 
-        if not self._has_block(block):
-            return 0
-            
-        # Make sure the data are current and enough time has passed that we 
-        # know what is going on
-        tNow = time.time()
-        prev, curr = self._get_last_state(), self._get_state()
-        if tNow - curr[block]['time'] > 30.0:
-            self._update_state()
+        try:
+            # Make sure the data are current and enough time has passed that we 
+            # know what is going on
+            tNow = time.time()
             prev, curr = self._get_last_state(), self._get_state()
-        if curr[block]['time'] - prev[block]['time'] < 10.0:
-            time.sleep(10)
-            self._update_state()
-            prev, curr = self._get_last_state(), self._get_state()
-            
-        # Compute the rate
-        t0, metric0 = prev[block]['time'], prev[block][metric]
-        t1, metric1 = curr[block]['time'], curr[block][metric]
-        return max([0.0, (metric1-metric0)/(t1-t0)])
+            if tNow - curr[block]['time'] > 30.0:
+                self._update_state()
+                prev, curr = self._get_last_state(), self._get_state()
+            if curr[block]['time'] - prev[block]['time'] < 10.0:
+                time.sleep(10)
+                self._update_state()
+                prev, curr = self._get_last_state(), self._get_state()
+                
+            # Compute the rate
+            t0, metric0 = prev[block]['time'], prev[block][metric]
+            t1, metric1 = curr[block]['time'], curr[block][metric]
+            rate = max([0.0, (metric1-metric0)/(t1-t0)])
+        except KeyError:
+            rate = 0.0
+        return rate
         
     def rx_rate(self):
         """
@@ -268,33 +271,33 @@ class BifrostPipeline(object):
         return self._get_rate('udp_transmit', 'good')
         
     def _get_loss(self, block, snapshot=True):
-        # Make sure we have the block we are asked to report on 
-        if not self._has_block(block):
-            return 0
-            
-        # Make sure the data are current and enough time has passed that we 
-        # know what is going on
-        tNow = time.time()
-        prev, curr = self._get_last_state(), self._get_state()
-        if tNow - curr[block]['time'] > 30.0:
-            self._update_state()
-            prev, curr = self._get_last_state(), self._get_state()
-        if curr[block]['time'] - prev[block]['time'] < 10.0:
-            time.sleep(10)
-            self._update_state()
-            prev, curr = self._get_last_state(), self._get_state()
-            
-        # Compute the loss
-        if snapshot:
-            good0, missing0 = prev[block]['good'], prev[block]['missing']
-        else:
-            good0, missing0 = 0, 0
-        good1, missing1 = curr[block]['good'], curr[block]['missing']
         try:
-            loss = (missing1-missing0)/float(good1-good0 + missing1-missing0)
-        except ZeroDivisionError:
+            # Make sure the data are current and enough time has passed that we 
+            # know what is going on
+            tNow = time.time()
+            prev, curr = self._get_last_state(), self._get_state()
+            if tNow - curr[block]['time'] > 30.0:
+                self._update_state()
+                prev, curr = self._get_last_state(), self._get_state()
+            if curr[block]['time'] - prev[block]['time'] < 10.0:
+                time.sleep(10)
+                self._update_state()
+                prev, curr = self._get_last_state(), self._get_state()
+                
+            # Compute the loss
+            if snapshot:
+                good0, missing0 = prev[block]['good'], prev[block]['missing']
+            else:
+                good0, missing0 = 0, 0
+            good1, missing1 = curr[block]['good'], curr[block]['missing']
+            try:
+                loss = (missing1-missing0)/float(good1-good0 + missing1-missing0)
+            except ZeroDivisionError:
+                loss = 0.0
+            loss = max([0.0, min([loss, 1.0])])
+        except KeyError:
             loss = 0.0
-        return max([0.0, min([loss, 1.0])])
+        return loss
         
     def rx_loss(self, snapshot=True):
         """
@@ -330,9 +333,12 @@ class BifrostRemotePipeline(BifrostPipeline):
                                           stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
             pass
+           
+        try: 
+            contents = load_by_pid(self.pid, path=self._dir_name)
+        except RuntimeError:
+            contents = {}
             
-        contents = load_by_pid(self.pid, path=self._dir_name)
-        
         new_state = {}
         for block in contents.keys():
             if block[:3] != 'udp':

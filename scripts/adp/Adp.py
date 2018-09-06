@@ -903,6 +903,7 @@ class MsgProcessor(ConsumerThread):
         self.state['lastlog'] = ('Welcome to ADP S/N %s, version %s' %
                                 (self.serial_number, self.version))
         self.state['activeProcess'] = []
+        self.ready = False
         
         self.shutdown_event = threading.Event()
         
@@ -1012,6 +1013,7 @@ class MsgProcessor(ConsumerThread):
     def ini(self, arg=None):
         start_time = time.time()
         # Note: Return value from this function is not used
+        self.ready = False
         self.state['activeProcess'].append('INI')
         self.state['status'] = 'BOOTING'
         self.state['info']   = 'Running INI sequence'
@@ -1249,6 +1251,7 @@ class MsgProcessor(ConsumerThread):
                     return self.raise_error_state('INI', 'ADC_CALIBRATION_FAILED')
                     
         self.log.info("INI finished in %.3f s", time.time() - start_time)
+        self.ready = True
         self.state['lastlog'] = 'INI finished in %.3f s' % (time.time() - start_time)
         self.state['status']  = 'NORMAL'
         self.state['info'] = 'System calibrated and operating normally'
@@ -1499,6 +1502,7 @@ class MsgProcessor(ConsumerThread):
     def sht(self, arg=''):
         # TODO: Consider allowing specification of 'only servers' or 'only boards'
         start_time = time.time()
+        self.ready = False
         self.state['activeProcess'].append('SHT')
         self.state['status'] = 'SHUTDWN'
         # TODO: Use self.check_success here like in ini()
@@ -1650,8 +1654,13 @@ class MsgProcessor(ConsumerThread):
         
         # Go!
         n_tunings = len(self.config['drx'])
-        n_servers = len(self.config['servers-data'])
+        n_servers = len(self.config['host']['servers-data'])
         while not self.shutdown_event.is_set():
+            if not self.ready:
+                self.log.info('Monitor SKIP')
+                time.sleep(self.config['monitor_interval'])
+		continue
+                
             ## A little more state
             problems_found = False
             
@@ -1703,14 +1712,6 @@ class MsgProcessor(ConsumerThread):
                         self.state['status'] = 'WARNING'
                         self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
                     self.log.warning(msg)
-                if txbw < 100*1024:   # <100 kB/s TX rate
-                        problems_found = True
-                        msg = "%s, T-Engine-%i has an instantaneous TX rate of %i B/s" % (host, side, txbw)
-                        if self.state['status'] != 'ERROR':
-                            self.state['lastlog'] = msg
-                            self.state['status'] = 'WARNING'
-                            self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0B, msg)
-                        self.log.warning(msg)
             for side in xrange(n_tunings):
                 if self.drx.cur_freq[side] > 0 and not tbf_lock.is_set() and total_tengine_bw[side] == 0:
                     problems_found = True
@@ -1807,7 +1808,7 @@ class MsgProcessor(ConsumerThread):
                 if any(tbn_overflow):
                     self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
                     
-            if not problems_found and self.state['status'] == 'WARNING':
+            if not problems_found and (self.state['status'] == 'WARNING' or (self.state['status'] == 'ERROR' and self.state['info'].find('0x0B') != -1)):
                 msg = 'Warning condition(s) cleared'
                 self.state['lastlog'] = msg
                 self.state['status']  = 'NORMAL'
