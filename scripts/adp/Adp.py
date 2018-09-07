@@ -1694,6 +1694,9 @@ class MsgProcessor(ConsumerThread):
                             
                 ## Make sure we have everything we need
                 ### T-engines
+                if not self.ready:
+                    ## Deal with the system shutting down in the middle of a poll
+                    continue
                 total_tengine_bw = {0:0, 1:0}
                 for host,name,side,loss,txbw in found['tengine']:
                     total_tengine_bw[side] += txbw
@@ -1722,6 +1725,9 @@ class MsgProcessor(ConsumerThread):
                     self.log.error(msg)
                     
                 ### DRX pipelines
+                if not self.ready:
+                    ## Deal with the system shutting down in the middle of a poll
+                    continue
                 total_drx_bw = {0:0, 1:0}
                 for host,name,side,loss,txbw in found['drx']:
                     total_drx_bw[side] += txbw
@@ -1751,6 +1757,9 @@ class MsgProcessor(ConsumerThread):
                     self.log.warning(msg)
                     
                 ### TBN pipelines
+                if not self.ready:
+                    ## Deal with the system shutting down in the middle of a poll
+                    continue
                 total_tbn_bw = 0
                 for host,name,side,loss,txbw in found['tbn']:
                     total_tbn_bw += txbw
@@ -1764,7 +1773,7 @@ class MsgProcessor(ConsumerThread):
                         self.log.warning(msg)
                 if self.tbn.cur_freq > 0 and total_tbn_bw == 0:
                     problems_found = True
-                    msg = "TBN -- TX rate of %i B/s" % (side, total_tbn_bw)
+                    msg = "TBN -- TX rate of %i B/s" % total_tbn_bw
                     self.state['lastlog'] = msg
                     self.state['status']  = 'ERROR'
                     self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
@@ -1779,6 +1788,9 @@ class MsgProcessor(ConsumerThread):
                     self.log.warning(msg)
                     
                 ## Check the roach boards
+                if not self.ready:
+                    ## Deal with the system shutting down in the middle of a poll
+                    continue
                 if False:
                     """
                     roach_drx_link_status = self.roaches.roach.check_link(0)
@@ -1801,6 +1813,10 @@ class MsgProcessor(ConsumerThread):
                     if any(tbn_overflow):
                         self.log.warning("TBN fifo overflow: " + tbn_overflow_str)
                         
+                ## De-assert anything that we can de-assert
+                if not self.ready:
+                    ## Deal with the system shutting down in the middle of a poll
+                    continue
                 if not problems_found:
                     if self.state['status'] == 'WARNING':
                         msg = 'Warning condition(s) cleared'

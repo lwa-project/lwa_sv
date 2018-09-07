@@ -251,7 +251,10 @@ class BifrostPipeline(object):
             # Compute the rate
             t0, metric0 = prev[block]['time'], prev[block][metric]
             t1, metric1 = curr[block]['time'], curr[block][metric]
-            rate = max([0.0, (metric1-metric0)/(t1-t0)])
+            ## Catch for a peculiarity for how udp_trasmit is used in ADP
+            if metric0 > metric1:
+                metric0 = 0
+            rate = (metric1-metric0)/(t1-t0)
         except KeyError:
             rate = 0.0
         return rate
