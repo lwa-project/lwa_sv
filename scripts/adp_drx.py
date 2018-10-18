@@ -153,7 +153,7 @@ class CopyOp(object):
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
 				ishape = (self.ntime_gulp,nchan,nstand*npol)
-				self.iring.resize(igulp_size, igulp_size*30)
+				self.iring.resize(igulp_size, igulp_size*20)
 				#self.oring.resize(ogulp_size)#, obuf_size)
 				
 				ticksPerTime = int(FS / CHAN_BW)
@@ -1120,7 +1120,7 @@ class PacketizeOp(object):
 					
 					bytesSent, bytesStart = 0, time.time()
 					
-					time_tag_cur = time_tag + ticksPerFrame
+					time_tag_cur = time_tag + 0*ticksPerFrame
 					pkts = []
 					#pkts = ''
 					for i in xrange(nstand):
