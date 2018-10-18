@@ -153,7 +153,7 @@ class CopyOp(object):
 				ogulp_size = igulp_size
 				#obuf_size  = 5*25000*nchan*nstand*npol
 				ishape = (self.ntime_gulp,nchan,nstand*npol)
-				self.iring.resize(igulp_size, igulp_size*20)
+				self.iring.resize(igulp_size, igulp_size*30)
 				#self.oring.resize(ogulp_size)#, obuf_size)
 				
 				ticksPerTime = int(FS / CHAN_BW)
@@ -822,12 +822,14 @@ class CorrelatorOp(object):
 					gain_act = 1.0 / 2**self.gain / navg_seq
 					navg = navg_seq / int(CHAN_BW/100.0)
 					
-					ohdr['time_tag'] = base_time_tag
-					ohdr['navg']     = navg
-					ohdr['gain']     = self.gain
-					ohdr_str = json.dumps(ohdr)
+					navg_mod_value = navg_seq * int(FS) / int(CHAN_BW)
 					
-					navg_mod_value = int(navg/100)*int(FS)
+					ohdr['time_tag']  = base_time_tag
+					ohdr['start_tag'] = int(base_time_tag / navg_mod_value) * navg_mod_value
+					ohdr['navg']      = navg
+					ohdr['gain']      = self.gain
+					ohdr_str = json.dumps(ohdr)
+					print '->', '@', 'cor', ohdr['time_tag'], 'vs', ohdr['start_tag']
 					
 					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
@@ -1072,7 +1074,7 @@ class PacketizeOp(object):
 			npol   = ihdr['npol']
 			navg   = ihdr['navg']
 			gain   = ihdr['gain']
-			time_tag0 = iseq.time_tag
+			time_tag0 = ihdr['start_tag'] #iseq.time_tag
 			time_tag  = time_tag0
 			igulp_size = ochan*nstand*npol*nstand*npol*8
 			ishape = (ochan,nstand,npol,nstand,npol)
