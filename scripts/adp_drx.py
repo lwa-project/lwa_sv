@@ -772,8 +772,6 @@ class CorrelatorOp(object):
 							 'ngpu': 1,
 							 'gpu0': BFGetGPU(),})
 		
-		time.sleep(60)
-		
 		with self.oring.begin_writing() as oring:
 			for iseq in self.iring.read(guarantee=self.guarantee):
 				ihdr = json.loads(iseq.header.tostring())
@@ -793,8 +791,16 @@ class CorrelatorOp(object):
 				ishape = (self.ntime_gulp,nchan,nstand*npol)
 				oshape = (ochan,nstand*npol,nstand*npol)
 				
+				# Figure out where we need to be in the buffer to be at a second boundary
 				ticksPerTime = int(FS) / int(CHAN_BW)
-				base_time_tag = iseq.time_tag
+				toffset = iseq.time_tag % int(FS)
+				soffset = toffset * int(CHAN_BW) / int(FS)
+				if soffset != 0:
+					soffset = int(CHAN_BW) - soffset
+				boffset = soffset * nchan*nstand*npol
+				print '!!', '@', 'cor', iseq.time_tag, toffset, '->', soffset, ' and ', boffset
+				
+				base_time_tag = iseq.time_tag + soffset*ticksPerTime		# Correct for offset
 				
 				ohdr = ihdr.copy()
 				ohdr['nchan'] = ochan
@@ -805,7 +811,7 @@ class CorrelatorOp(object):
 				self.oring.resize(ogulp_size)
 				
 				prev_time = time.time()
-				iseq_spans = iseq.read(igulp_size)
+				iseq_spans = iseq.read(igulp_size, begin=boffset)
 				while not self.iring.writing_ended():
 					reset_sequence = False
 					
@@ -821,6 +827,8 @@ class CorrelatorOp(object):
 					ohdr['gain']     = self.gain
 					ohdr_str = json.dumps(ohdr)
 					
+					navg_mod_value = int(navg/100)*int(FS)
+					
 					with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
 						for ispan in iseq_spans:
 							if ispan.size < igulp_size:
@@ -828,6 +836,9 @@ class CorrelatorOp(object):
 							curr_time = time.time()
 							acquire_time = curr_time - prev_time
 							prev_time = curr_time
+							
+							## Pre-update the base time tag - we need this so that we can dump at the right times
+							base_time_tag += self.ntime_gulp*ticksPerTime
 							
 							if not TBF_CPU_CORE_LOCK.is_set():
 								## Setup and load
@@ -854,7 +865,7 @@ class CorrelatorOp(object):
 								prev_time = curr_time
 								
 								## Dump?
-								if nAccumulate == navg_seq:
+								if base_time_tag % navg_mod_value == 0:
 									with oseq.reserve(ogulp_size) as ospan:
 										odata = ospan.data_view(np.complex64).reshape(oshape)
 										
@@ -867,9 +878,6 @@ class CorrelatorOp(object):
 								reserve_time = 0.0
 								process_time = 0.0
 								
-							## Update the base time tag
-							base_time_tag += self.ntime_gulp*ticksPerTime
-							
 							## Check for an update to the configuration
 							if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
 								reset_sequence = True

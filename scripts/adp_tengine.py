@@ -626,6 +626,7 @@ class PacketizeOp(object):
 			time_tag  = time_tag0
 			gulp_size = ntime_gulp*nbeam*npol
 			
+			# Figure out where we need to be in the buffer to be at a frame boundary
 			ticksPerSample = int(FS) // int(bw)
 			toffset = int(time_tag0) // ticksPerSample
 			soffset = toffset % int(ntime_pkt)
@@ -752,6 +753,7 @@ class SinglePacketizeOp(object):
 			time_tag  = time_tag0
 			gulp_size = ntime_gulp*nbeam*npol
 			
+			# Figure out where we need to be in the buffer to be at a frame boundary
 			ticksPerSample = int(FS) // int(bw)
 			toffset = int(time_tag0) // ticksPerSample
 			soffset = toffset % int(ntime_pkt)
@@ -890,6 +892,7 @@ class DualPacketizeOp(object):
 			time_tag  = time_tag0
 			gulp_size = ntime_gulp*nbeam*npol
 			
+			# Figure out where we need to be in the buffer to be at a frame boundary
 			ticksPerSample = int(FS) // int(bw)
 			toffset = int(time_tag0) // ticksPerSample
 			soffset = toffset % int(ntime_pkt)
