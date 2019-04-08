@@ -74,7 +74,7 @@ $(ETHERS_CONF): ./ethers network
 configure_ethers: $(ETHERS_CONF)
 
 .PHONY: configure_rclocal
-$(RCLOCAL_CONF): ../rc.local
+$(RCLOCAL_CONF): ./rc.local
 	cp $< $@
 
 .PHONY: ssh
