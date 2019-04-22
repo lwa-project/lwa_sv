@@ -1729,8 +1729,10 @@ class MsgProcessor(ConsumerThread):
                     ## Deal with the system shutting down in the middle of a poll
                     continue
                 total_drx_bw = {0:0, 1:0}
+                total_drx_inactive = {0:0, 1:0}
                 for host,name,side,loss,txbw in found['drx']:
                     total_drx_bw[side] += txbw
+                    total_drx_inactive[side] += (1 if txbw == 0 else 0)
                     if loss > 0.01:    # >1% packet loss
                         problems_found = True
                         msg = "%s, DRX-%i -- RX loss of %.1f%%" % (host, side, loss*100.0)
@@ -1740,7 +1742,7 @@ class MsgProcessor(ConsumerThread):
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
                 for side in xrange(n_tunings):
-                    if self.drx.cur_freq[side] > 0 and total_drx_bw[side] == 0:
+                    if self.drx.cur_freq[side] > 0 and total_drx_inactive[side] > 0:
                         problems_found = True
                         msg = "DRX-%i -- TX rate of %i B/s" % (side, total_drx_bw[side])
                         self.state['lastlog'] = msg
@@ -1761,8 +1763,10 @@ class MsgProcessor(ConsumerThread):
                     ## Deal with the system shutting down in the middle of a poll
                     continue
                 total_tbn_bw = 0
+                total_tbn_inactive = 0
                 for host,name,side,loss,txbw in found['tbn']:
                     total_tbn_bw += txbw
+                    total_tbn_inactive += (1 if txbw == 0 else 0)
                     if loss > 0.01:    # >1% packet loss
                         problems_found = True
                         msg = "%s, TBN -- RX loss of %.1f%%" % (host, loss*100.0)
@@ -1771,7 +1775,7 @@ class MsgProcessor(ConsumerThread):
                             self.state['status'] = 'WARNING'
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
-                if self.tbn.cur_freq > 0 and total_tbn_bw == 0:
+                if self.tbn.cur_freq > 0 and total_tbn_inactive > 0:
                     problems_found = True
                     msg = "TBN -- TX rate of %i B/s" % total_tbn_bw
                     self.state['lastlog'] = msg
@@ -2194,6 +2198,17 @@ class MsgProcessor(ConsumerThread):
             elif mode.startswith('BEAM'):
                 self.state['lastlog'] = "UNIMPLEMENTED STP request"
                 exit_status = -1 # TODO: Implement this
+                ## Get the beam
+                #beam = int(mode[4:], 10)
+                ## Build a dummy BAM command that is all zeros for delay/gain on request beam
+                #msg.data = struct.pack('>H', beam)
+                #msg.data += '\x00'*(1024+2048+2)
+                ## Set tuning 1 and send
+                #msg.data[-2] = struct.pack('>B', 1)
+                #exit_status = self.bam.process_command(msg)
+                ## Change to tuning 2 and send again
+                #msg.data[-2] = struct.pack('>B', 2)
+                #exit_status |= self.bam.process_command(msg)
             elif mode == 'COR':
                 self.state['lastlog'] = "UNIMPLEMENTED STP request"
                 exit_status = -1 # TODO: Implement this
