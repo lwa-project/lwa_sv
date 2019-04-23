@@ -468,7 +468,7 @@ class TEngineOp(object):
 									
 								## Phase rotation
 								gdata = gdata.reshape((-1,nstand*npol))
-								BFMap("a(i,j) *= exp(Complex<float>(0.0, -2*CUDART_PI*fmod(g(0)*s(0), 1.0)))*b(i)", {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape)
+								BFMap("a(i,j) *= exp(Complex<float>(0.0, -2*BF_PI_F*fmod(g(0)*s(0), 1.0)))*b(i)", {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, axis_names=('i','j'), shape=gdata.shape, extra_code="#define BF_PI_F 3.141592654f")
 								gdata = gdata.reshape((-1,nstand,npol))
 								
 								## FIR filter
