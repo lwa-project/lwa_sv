@@ -1323,7 +1323,7 @@ class MsgProcessor(ConsumerThread):
                 
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Verify the offsets
-            output = subprocess.check_output("python /home/adp/lwa_sv/scripts/checkRoachSync.py %s" % ' '.join(filenames), shell=True)
+            output = subprocess.check_output("python /home/adp/lwa_sv/scripts/check_roach_sync.py %s" % ' '.join(filenames), shell=True)
             
             # Load in the delays
             output = output.split('\n')
@@ -1393,7 +1393,7 @@ class MsgProcessor(ConsumerThread):
                 
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Solve for the delays
-            output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
+            output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
             
             # Load in the delays
             output = output.split('\n')
