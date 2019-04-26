@@ -1375,7 +1375,10 @@ def main(argv):
                             core=cores.pop(0)))
     if tuning == 0:
         ccore = ops[2].core
-        pcore = ccore
+        try:
+            pcore = cores.pop(0)
+        except IndexError:
+            pcore = ccore
         ops.append(CorrelatorOp(log=log, iring=capture_ring, oring=vis_ring, 
                                 tuning=tuning, ntime_gulp=GSIZE,
                                 nchan_max=nchan_max, 

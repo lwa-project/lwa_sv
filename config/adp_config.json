@@ -41,7 +41,7 @@
                 "tengine_idx":       0,
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  3,
-                "cpus":              [0, 2, 3, 4, 5],
+                "cpus":              [0, 2, 3, 4, 5, 6],
                 "gpus":              [0]
             }, 
             {
@@ -51,7 +51,7 @@
                 "tengine_idx":       1,
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  3,
-                "cpus":              [8, 9, 10, 11, 12],
+                "cpus":              [8, 9, 10, 11, 12, 14],
                 "gpus":              [1]
             }
     ],
@@ -62,7 +62,7 @@
         "capture_bandwidth": 200e3,
         "pipeline_idx":      2,
         "recorder_idx":      2,
-        "cpus":              [1, 13, 14, 15],
+        "cpus":              [1, 13, 13],
         "gpus":              [1]
     },
     "fst": {
