@@ -1443,7 +1443,7 @@ class MsgProcessor(ConsumerThread):
             filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
             if len(filenames) >= 6 or 'FORCE' in arg:
                 # Verify the delays
-                output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrateADCDelays.py %s" % ' '.join(filenames), shell=True)
+                output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
                 
                 # Load in the delays
                 output = output.split('\n')
