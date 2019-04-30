@@ -828,20 +828,6 @@ class SinglePacketizeOp(object):
                     
             del udt
 
-class FirstPacketizeOp(SinglePacketizeOp):
-    """
-    Dummy class so that we can get better statistics for the packetizer op.
-    """
-    
-    pass
-
-class SecondPacketizeOp(SinglePacketizeOp):
-    """
-    Dummy class so that we can get better statistics for the packetizer op.
-    """
-    
-    pass
-
 def izip(*iterables):
     while True:
         yield [it.next() for it in iterables]
@@ -1157,14 +1143,14 @@ def main(argv):
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))
     if split_beam:
-        for beam,spo in zip(range(nbeam), (FirstPacketizeOp,SecondPacketizeOp)):
+        for beam in xrange(nbeam):
             raddr = Address(oaddr[beam], oport[beam])
             rsock = UDPSocket()
             rsock.connect(raddr)
-            ops.append(spo(log, tengine_ring,
-                           osock=rsock,
-                           nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
-                           npkt_gulp=32, core=cores.pop(0)))
+            ops.append(SinglePacketizeOp(log, tengine_ring,
+                                         osock=rsock,
+                                         nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
+                                         npkt_gulp=32, core=cores.pop(0)))
     else:
         oaddr = Address(oaddr, oport)
         osock = UDPSocket()
