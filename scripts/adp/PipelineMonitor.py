@@ -271,7 +271,9 @@ class BifrostPipeline(object):
         Get the current transmit rate in B/s.
         """
         
-        return self._get_rate('udp_transmit', 'good')
+        rate = self._get_rate('udp_transmit', 'good')
+        rate += self._get_rate('udp_transmit_2', 'good')
+        return rate
         
     def _get_loss(self, block, snapshot=True):
         try:
