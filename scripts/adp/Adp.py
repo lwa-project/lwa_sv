@@ -1711,7 +1711,7 @@ class MsgProcessor(ConsumerThread):
                 for side in xrange(n_tunings):
                     if self.drx.cur_freq[side] > 0 and not tbf_lock.is_set() and total_tengine_bw[side] == 0:
                         problems_found = True
-                        msg = "T-Engine-%i -- TX rate of %i B/s" % (side, total_tengine_bw[side])
+                        msg = "T-Engine-%i -- TX rate of %.1f MB/s" % (side, total_tengine_bw[side]/1024.0**2)
                         self.state['lastlog'] = msg
                         self.state['status']  = 'ERROR'
                         self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
@@ -1744,7 +1744,7 @@ class MsgProcessor(ConsumerThread):
                 for side in xrange(n_tunings):
                     if self.drx.cur_freq[side] > 0 and total_drx_inactive[side] > 0:
                         problems_found = True
-                        msg = "DRX-%i -- TX rate of %i B/s" % (side, total_drx_bw[side])
+                        msg = "DRX-%i -- TX rate of %.1f MB/s" % (side, total_drx_bw[side]/1024.0**2)
                         self.state['lastlog'] = msg
                         self.state['status']  = 'ERROR'
                         self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
@@ -1777,7 +1777,7 @@ class MsgProcessor(ConsumerThread):
                         self.log.warning(msg)
                 if self.tbn.cur_freq > 0 and total_tbn_inactive > 0:
                     problems_found = True
-                    msg = "TBN -- TX rate of %i B/s" % total_tbn_bw
+                    msg = "TBN -- TX rate of %.1f MB/s" % (total_tbn_bw/1024.0**2,)
                     self.state['lastlog'] = msg
                     self.state['status']  = 'ERROR'
                     self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
