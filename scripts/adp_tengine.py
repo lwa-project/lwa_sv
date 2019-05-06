@@ -1150,14 +1150,25 @@ def main(argv):
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))
     if split_beam:
-        for beam in xrange(nbeam):
-            raddr = Address(oaddr[beam], oport[beam])
-            rsock = UDPSocket()
-            rsock.connect(raddr)
-            ops.append(SinglePacketizeOp(log, tengine_ring,
-                                         osock=rsock,
-                                         nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
-                                         npkt_gulp=32, core=cores.pop(0)))
+        if True:
+            for beam in xrange(nbeam):
+                raddr = Address(oaddr[beam], oport[beam])
+                rsock = UDPSocket()
+                rsock.connect(raddr)
+                ops.append(SinglePacketizeOp(log, tengine_ring,
+                                             osock=rsock,
+                                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
+                                             npkt_gulp=32, core=cores.pop(0)))
+        else:
+            rsocks = []
+            for beam in xrange(nbeam):
+                raddr = Address(oaddr[beam], oport[beam])
+                rsocks.append(UDPSocket())
+                rsocks[-1].connect(raddr)
+            ops.append(DualPacketizeOp(log, tengine_ring,
+                                       osocks=rsocks,
+                                       nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
+                                       npkt_gulp=32, core=cores.pop(0)))
     else:
         oaddr = Address(oaddr, oport)
         osock = UDPSocket()
