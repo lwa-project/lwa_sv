@@ -906,11 +906,10 @@ class DualPacketizeOp(object):
             time_tag += soffset*ticksPerSample                  # Correct for offset
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
             
-            gulp_count = time_tag // 10 // ntime_gulp
-            
             prev_time = time.time()
             udt0 = UDPTransmit(sock=self.socks[0], core=self.core)
             udt1 = UDPTransmit(sock=self.socks[1], core=self.core)
+            pkts0, pkts1 = [], []
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
                     continue # Ignore final gulp
@@ -921,17 +920,16 @@ class DualPacketizeOp(object):
                 shape = (-1,nbeam,npol)
                 data = ispan.data_view(np.int8).reshape(shape)
                 
-                try:
-                    self.sync_drx_pipelines(gulp_count)
-                except ValueError:
-                    pass
-                except (socket.timeout, socket.error):
-                    pass
-                    
                 for t in xrange(0, ntime_gulp, ntime_pkt):
                     time_tag_cur = time_tag + int(t)*ticksPerSample
-                    
-                    pkts0, pkts1 = [], []
+                    #try:
+                    #    self.sync_drx_pipelines(time_tag_cur)
+                    #except ValueError:
+                    #    pass
+                    #except (socket.timeout, socket.error):
+                    #    pass
+                        
+                    #pkts0, pkts1 = [], []
                     for pol in xrange(npol):
                         ## First beam
                         pktdata0 = data[t:t+ntime_pkt,0,pol]
@@ -941,7 +939,8 @@ class DualPacketizeOp(object):
                             pkt0 = hdr0 + pktdata0.tostring()
                             pkts0.append( pkt0 )
                         except Exception as e:
-                            print type(self).__name__, 'Packing Error0', str(e)
+                            print type(self).__name__, 'Packing Error - beam 0', str(e)
+                            
                         ## Second beam
                         pktdata1 = data[t:t+ntime_pkt,1,pol]
                         hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
@@ -950,19 +949,27 @@ class DualPacketizeOp(object):
                             pkt1 = hdr1 + pktdata1.tostring()
                             pkts1.append( pkt1 )
                         except Exception as e:
-                            print type(self).__name__, 'Packing Error1', str(e)
+                            print type(self).__name__, 'Packing Error - beam 1', str(e)
                             
-                    try:
-                        if ACTIVE_DRX_CONFIG.is_set():
-                            if not self.tbfLock.is_set():
-                                udt0.sendmany(pkts0)
-                                udt1.sendmany(pkts1)
-                    except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                    if len(pkts0) >= 4:
+                        try:
+                            self.sync_drx_pipelines(time_tag_cur)
+                        except ValueError:
+                            continue
+                        except (socket.timeout, socket.error):
+                            pass
+                            
+                        try:
+                            if ACTIVE_DRX_CONFIG.is_set():
+                                if not self.tbfLock.is_set():
+                                    udt0.sendmany(pkts0)
+                                    udt1.sendmany(pkts1)
+                        except Exception as e:
+                            print type(self).__name__, 'Sending Error', str(e)
+                            
+                        pkts0, pkts1 = [], []
                         
                 time_tag += int(ntime_gulp)*ticksPerSample
-                
-                gulp_count += ticksPerSample // 10
                 
                 curr_time = time.time()
                 process_time = curr_time - prev_time
