@@ -847,10 +847,10 @@ class CorrelatorOp(object):
                                     idata = idata[:,:ochan,:]
                                     
                                 ## Fix the type
-                                bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                                wcidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                                 
                                 ## Copy
-                                copy_array(self.tdata, bfidata)
+                                copy_array(self.tdata, wcidata)
                                 
                                 ## Unpack
                                 Unpack(self.tdata, self.udata)
