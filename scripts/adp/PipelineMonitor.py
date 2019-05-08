@@ -291,7 +291,13 @@ class BifrostPipeline(object):
                 self._update_state()
                 prev, curr = self._get_last_state(), self._get_state()
             if curr[block]['time'] - prev[block]['time'] < 10.0:
-                time.sleep(10)
+                time.sleep(max([1, 10 - (curr[block]['time'] - prev[block]['time'])]))
+                self._update_state()
+                prev, curr = self._get_last_state(), self._get_state()
+                
+            # Re-check if things look strange
+            if prev[block][metric] >= curr[block][metric]:
+                time.sleep(1)
                 self._update_state()
                 prev, curr = self._get_last_state(), self._get_state()
                 
