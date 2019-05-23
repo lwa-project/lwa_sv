@@ -1005,10 +1005,10 @@ class RetransmitOp(object):
                     
         del udt
 
-def gen_cor_header(stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
+def gen_cor_header(server, stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
     sync_word    = 0xDEC0DE5C
     idval        = 0x02
-    frame_num    = 0
+    frame_num    = server
     id_frame_num = idval << 24 | frame_num
     #if stand == 0 and pol == 0:
     #    print cfreq, bw, gain, time_tag, time_tag0
@@ -1043,6 +1043,7 @@ class PacketizeOp(object):
         
         self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
         
+        self.server = int(socket.gethostname().replace('adp', '0'), 10)
         self.nchan_max = nchan_max
         if max_bytes_per_sec is None:
             max_bytes_per_sec = 104857600        # default to 100 MB/s
@@ -1136,7 +1137,7 @@ class PacketizeOp(object):
                     for i in xrange(nstand):
                         for j in xrange(i,nstand):
                             pktdata = odata[i,j,:,:,:]
-                            hdr = gen_cor_header(i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
+                            hdr = gen_cor_header(self.server, i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
                             try:
                                 pkt = hdr + pktdata.tostring()
                                 pkts.append( pkt )
