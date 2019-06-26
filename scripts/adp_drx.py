@@ -1008,7 +1008,7 @@ class RetransmitOp(object):
 def gen_cor_header(server, stand0, stand1, chan0, time_tag, time_tag0, navg, gain):
     sync_word    = 0xDEC0DE5C
     idval        = 0x02
-    frame_num    = server
+    frame_num    = 1536 + server        # HACK: Hardcoded for six servers (6<<8 | server)
     id_frame_num = idval << 24 | frame_num
     #if stand == 0 and pol == 0:
     #    print cfreq, bw, gain, time_tag, time_tag0
