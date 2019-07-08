@@ -501,29 +501,6 @@ class TEngineOp(object):
                     if not reset_sequence:
                         break
 
-def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
-    nframe_per_sample = int(FS) // int(bw)
-    nframe_per_packet = nframe_per_sample * TBN_NSAMPLE_PER_PKT
-    sync_word    = 0xDEC0DE5C
-    idval        = 0x0
-    frame_num_wrap = 10 * int(bw) # 10 secs = 4e6, fits within a uint24
-    frame_num    = ((time_tag - time_tag0) // nframe_per_packet) % frame_num_wrap + 1 # Packet sequence no.
-    id_frame_num = idval << 24 | frame_num
-    assert( 0 <= cfreq < FS )
-    tuning_word  = int(round(cfreq / FS * 2**32))    # This should already be on the DP frequency grid from the control software so we need to use round()
-    tbn_id       = (pol + NPOL*stand) + 1
-    gain         = gain
-    #if stand == 0 and pol == 0:
-    #    print cfreq, bw, gain, time_tag, time_tag0
-    #    print nframe_per_sample, nframe_per_packet
-    return struct.pack('>IIIhhq',
-                       sync_word,
-                       id_frame_num,
-                       tuning_word,
-                       tbn_id,
-                       gain,
-                       time_tag)
-
 class PacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osock, nroach, roach0, npkt_gulp=128, core=-1):
@@ -607,33 +584,6 @@ class PacketizeOp(object):
                     
                     shape = (-1,nstand,npol)
                     data = ispan.data_view('ci8').reshape(shape)
-                    
-                    #for t in xrange(0, ntime_gulp, ntime_pkt):
-                    #    time_tag_cur = time_tag + int(t)*ticksPerSample
-                    #    try:
-                    #        self.sync_tbn_pipelines(time_tag_cur)
-                    #    except ValueError:
-                    #        continue
-                    #    except (socket.timeout, socket.error):
-                    #        pass
-                    #        
-                    #    pkts = []
-                    #    for stand in xrange(nstand):
-                    #        for pol in xrange(npol):
-                    #            pktdata = data[t:t+ntime_pkt,stand,pol,:]
-                    #            hdr = gen_tbn_header(stand0+stand, pol, cfreq, gain,
-                    #                             time_tag_cur, time_tag0, bw)
-                    #            try:
-                    #                pkt = hdr + pktdata.tostring()
-                    #                pkts.append( pkt )
-                    #            except Exception as e:
-                    #                print type(self).__name__, 'Packing Error', str(e)
-                    #                
-                    #    try:
-                    #        if ACTIVE_TBN_CONFIG.is_set():
-                    #            udt.sendmany(pkts)
-                    #    except Exception as e:
-                    #        print type(self).__name__, 'Sending Error', str(e)
                     
                     for t in xrange(0, ntime_gulp, ntime_pkt):
                         time_tag_cur = time_tag + int(t)*ticksPerSample
