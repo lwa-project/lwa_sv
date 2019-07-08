@@ -35,7 +35,7 @@
     },
     "drx": [
             {
-                "capture_bandwidth": 10.8e6,
+                "capture_bandwidth": 19.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      0,
                 "tengine_idx":       0,
@@ -45,7 +45,7 @@
                 "gpus":              [0]
             }, 
             {
-                "capture_bandwidth": 10.8e6,
+                "capture_bandwidth": 19.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      1,
                 "tengine_idx":       1,
@@ -149,7 +149,7 @@
                 },
                 {
                     "host":              "lasi", 
-                    "port":              10000,
+                    "port":              11000,
                     "max_bytes_per_sec": 104851000
                 }
     ]
