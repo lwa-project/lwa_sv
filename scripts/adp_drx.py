@@ -191,7 +191,6 @@ class CopyOp(object):
                 ogulp_size = igulp_size
                 #obuf_size  = 5*25000*nchan*nstand*npol
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
-                # Changed on 2019/7/2 from 20 to 10 on the buffer factor
                 self.iring.resize(igulp_size, igulp_size*10)
                 #self.oring.resize(ogulp_size)#, obuf_size)
                 
@@ -202,8 +201,8 @@ class CopyOp(object):
                 if chan0*CHAN_BW > 60e6 and self.tuning == 1:
                     clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
-                # Changed on 2019/7/2 to only pull in half the channels
-                udata = BFArray(shape=(self.ntime_gulp, nchan/2, len(to_keep)), dtype=np.complex64)
+                tchan = min([72, nchan])
+                udata = BFArray(shape=(self.ntime_gulp, tchan, len(to_keep)), dtype=np.complex64)
                 
                 ohdr = ihdr.copy()
                 
@@ -238,8 +237,8 @@ class CopyOp(object):
                                     if clear_to_trigger:
                                         t0 = time.time()
                                         sdata = idata.reshape(ishape)
-                                        # Changed on 2019/7/2 to only pull in half the channels
-                                        sdata = sdata[:,:nchan/2,to_keep]                               
+                                        if tchan != nchan:
+                                            sdata = sdata[:,:tchan,to_keep]                               
                                         sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
                                         
                                         Unpack(sdata, udata)
@@ -1191,7 +1190,6 @@ class PacketizeOp(object):
                 tInt = int(round(navg*0.01))
                 tBail = navg*0.01 - 0.2
                 
-                # Changed on 2019/7/2 to get the rate to scale with the number of channels
                 rate_limit = (7.7*(nchan/72.0)*10/(navg*0.01-0.5)) * 1024**2
                 
                 reset_sequence = True
@@ -1501,7 +1499,6 @@ def main(argv):
                             tuning=tuning, ntime_gulp=GSIZE,
                             nchan_max=nchan_max, nbeam_max=nbeam, 
                             core=cores.pop(0), gpu=gpus.pop(0)))
-    # Changed on 2019/7/2 from 100 to 50 on ntime_gulp to get better performance
     ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
                             tuning=tuning, nchan_max=nchan_max, 
                             ntime_gulp=50, nbeam_max=nbeam, 
