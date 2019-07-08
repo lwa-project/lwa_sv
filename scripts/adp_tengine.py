@@ -8,8 +8,8 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.udp_capture import UDPCapture
-from bifrost.udp_transmit import UDPTransmit
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_writer import HeaderInfo, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
@@ -70,15 +70,48 @@ __maintainer__ = "Jayce Dowell"
 __email__      = "jdowell at unm"
 __status__     = "Development"
 
+UTC_START = 0
+
+def chips_callback(seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr):
+    global UTC_START
+    
+    timestamp0 = int((UTC_START - ADP_EPOCH).total_seconds())
+    time_tag0  = timestamp0 * int(FS)
+    time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
+    print "++++++++++++++++ seq0     =", seq0
+    print "                 time_tag =", time_tag
+    time_tag_ptr[0] = time_tag
+    hdr = {'time_tag': time_tag,
+           'chan0':    chan0,
+           'nsrc':     nsrc,
+           'nchan':    nchan*nsrc,                              # Each server since part of the bandwidth
+           'cfreq':    (chan0 + 0.5*(nchan*nsrc-1))*CHAN_BW,    # Each server since part of the bandwidth
+           'bw':       nchan*nsrc*CHAN_BW,                      # Each server since part of the bandwidth
+           'nstand':   2,#self.nbeam_max,
+           'npol':     2,
+           'complex':  True,
+           'nbit':     32}#64 if self.nbeam_max == 1 else 32}
+    print "******** CFREQ:", hdr['cfreq']
+    hdr_str = json.dumps(hdr)
+    # TODO: Can't pad with NULL because returned as C-string
+    #hdr_str = json.dumps(hdr).ljust(4096, '\0')
+    #hdr_str = json.dumps(hdr).ljust(4096, ' ')
+    header_buf = ctypes.create_string_buffer(hdr_str)
+    hdr_ptr[0]      = ctypes.cast(header_buf, ctypes.c_void_p)
+    hdr_size_ptr[0] = len(hdr_str)
+    return 0
+
 #{"nbit": 4, "nchan": 136, "nsrc": 16, "chan0": 1456, "time_tag": 288274740432000000}
 class CaptureOp(object):
     def __init__(self, log, *args, **kwargs):
+        global UTC_START
+        
         self.log    = log
         self.args   = args
         self.kwargs = kwargs
         self.nbeam_max = self.kwargs['nbeam_max']
         del self.kwargs['nbeam_max']
-        self.utc_start = self.kwargs['utc_start']
+        UTC_START = self.utc_start = self.kwargs['utc_start']
         del self.kwargs['utc_start']
         self.shutdown_event = threading.Event()
         ## HACK TESTING
@@ -113,7 +146,9 @@ class CaptureOp(object):
         hdr_size_ptr[0] = len(hdr_str)
         return 0
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
+        seq_callback = PacketCaptureCallback()
+        #seq_callback.set_chips(lambda args: self.seq_callback(*args))
+        seq_callback.set_chips(chips_callback)
         with UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
@@ -895,11 +930,12 @@ class DualPacketizeOp(object):
             gulp_size = ntime_gulp*nbeam*npol
             
             # Figure out where we need to be in the buffer to be at a frame boundary
+            NPACKET_SET = 8
             ticksPerSample = int(FS) // int(bw)
             toffset = int(time_tag0) // ticksPerSample
-            soffset = toffset % int(ntime_pkt)
+            soffset = toffset % (NPACKET_SET*int(ntime_pkt))
             if soffset != 0:
-                soffset = ntime_pkt - soffset
+                soffset = NPACKET_SET*ntime_pkt - soffset
             boffset = soffset*nbeam*npol
             print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
             
@@ -907,8 +943,12 @@ class DualPacketizeOp(object):
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
             
             prev_time = time.time()
-            udt0 = UDPTransmit(sock=self.socks[0], core=self.core)
-            udt1 = UDPTransmit(sock=self.socks[1], core=self.core)
+            udt0 = UDPTransmit('drx', sock=self.socks[0], core=self.core)
+            udt1 = UDPTransmit('drx', sock=self.socks[1], core=self.core)
+            desc = HeaderInfo()
+            desc.set_decimation(int(FS)//int(bw))
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc_src = (((self.tuning+1)&0x7)<<3)
             pkts0, pkts1 = [], []
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
@@ -918,57 +958,82 @@ class DualPacketizeOp(object):
                 prev_time = curr_time
                 
                 shape = (-1,nbeam,npol)
-                data = ispan.data_view(np.int8).reshape(shape)
+                data = ispan.data_view('ci4').reshape(shape)
                 
-                for t in xrange(0, ntime_gulp, ntime_pkt):
-                    time_tag_cur = time_tag + int(t)*ticksPerSample
-                    #try:
-                    #    self.sync_drx_pipelines(time_tag_cur)
-                    #except ValueError:
-                    #    pass
-                    #except (socket.timeout, socket.error):
-                    #    pass
+                #for t in xrange(0, ntime_gulp, ntime_pkt):
+                #    time_tag_cur = time_tag + int(t)*ticksPerSample
+                #    #try:
+                #    #    self.sync_drx_pipelines(time_tag_cur)
+                #    #except ValueError:
+                #    #    pass
+                #    #except (socket.timeout, socket.error):
+                #    #    pass
+                #        
+                #    #pkts0, pkts1 = [], []
+                #    for pol in xrange(npol):
+                #        ## First beam
+                #        pktdata0 = data[t:t+ntime_pkt,0,pol]
+                #        hdr0 = gen_drx_header(0+self.beam0, self.tuning+1, pol, cfreq, filt, 
+                #                              time_tag_cur)
+                #        try:
+                #            pkt0 = hdr0 + pktdata0.tostring()
+                #            pkts0.append( pkt0 )
+                #        except Exception as e:
+                #            print type(self).__name__, 'Packing Error - beam 0', str(e)
+                #            
+                #        ## Second beam
+                #        pktdata1 = data[t:t+ntime_pkt,1,pol]
+                #        hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
+                #                              time_tag_cur)
+                #        try:
+                #            pkt1 = hdr1 + pktdata1.tostring()
+                #            pkts1.append( pkt1 )
+                #        except Exception as e:
+                #            print type(self).__name__, 'Packing Error - beam 1', str(e)
+                #            
+                #    # Changed on 2019/7/2 from 4 to 4 to fix synchronization at 19.8 MHz of bandwidth
+                #    if len(pkts0) >= 4:
+                #        #try:
+                #        #    self.sync_drx_pipelines(time_tag_cur)
+                #        #except ValueError:
+                #        #    continue
+                #        #except (socket.timeout, socket.error):
+                #        #    pass
+                #            
+                #        try:
+                #            if ACTIVE_DRX_CONFIG.is_set():
+                #                if not self.tbfLock.is_set():
+                #                    udt0.sendmany(pkts0)
+                #                    udt1.sendmany(pkts1)
+                #        except Exception as e:
+                #            print type(self).__name__, 'Sending Error', str(e)
+                #            
+                #        pkts0, pkts1 = [], []
+                
+                
+                data0 = data[:,0,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                
+                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                    time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
+                    try:
+                        self.sync_drx_pipelines(time_tag_cur)
+                    except ValueError:
+                        print 'skip', t, data0.shape[0]
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
                         
-                    #pkts0, pkts1 = [], []
-                    for pol in xrange(npol):
-                        ## First beam
-                        pktdata0 = data[t:t+ntime_pkt,0,pol]
-                        hdr0 = gen_drx_header(0+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                              time_tag_cur)
-                        try:
-                            pkt0 = hdr0 + pktdata0.tostring()
-                            pkts0.append( pkt0 )
-                        except Exception as e:
-                            print type(self).__name__, 'Packing Error - beam 0', str(e)
+                    try:
+                        if ACTIVE_DRX_CONFIG.is_set():
+                            if not self.tbfLock.is_set():
+                                udt0.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(0+self.beam0), 128, 
+                                          data0[t:t+NPACKET_SET,:,:])
+                                udt1.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(1+self.beam0), 128, 
+                                          data1[t:t+NPACKET_SET,:,:])
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
                             
-                        ## Second beam
-                        pktdata1 = data[t:t+ntime_pkt,1,pol]
-                        hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                              time_tag_cur)
-                        try:
-                            pkt1 = hdr1 + pktdata1.tostring()
-                            pkts1.append( pkt1 )
-                        except Exception as e:
-                            print type(self).__name__, 'Packing Error - beam 1', str(e)
-                            
-                    if len(pkts0) >= 4:
-                        try:
-                            self.sync_drx_pipelines(time_tag_cur)
-                        except ValueError:
-                            continue
-                        except (socket.timeout, socket.error):
-                            pass
-                            
-                        try:
-                            if ACTIVE_DRX_CONFIG.is_set():
-                                if not self.tbfLock.is_set():
-                                    udt0.sendmany(pkts0)
-                                    udt1.sendmany(pkts1)
-                        except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
-                            
-                        pkts0, pkts1 = [], []
-                        
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
                 curr_time = time.time()
@@ -1150,7 +1215,8 @@ def main(argv):
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))
     if split_beam:
-        if True:
+        # Switched on 2019/7/2 to the DualPacketizeOp block
+        if False:
             for beam in xrange(nbeam):
                 raddr = Address(oaddr[beam], oport[beam])
                 rsock = UDPSocket()
@@ -1165,6 +1231,7 @@ def main(argv):
                 raddr = Address(oaddr[beam], oport[beam])
                 rsocks.append(UDPSocket())
                 rsocks[-1].connect(raddr)
+            # Changed on 2019/7/2 from 32 to 32 for npkt_gulp
             ops.append(DualPacketizeOp(log, tengine_ring,
                                        osocks=rsocks,
                                        nbeam_max=nbeam, beam0=1, tuning=tuning, 
