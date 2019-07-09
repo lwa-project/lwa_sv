@@ -50,7 +50,7 @@
                 "pipeline_idx":      1,
                 "tengine_idx":       1,
                 "tbf_recorder_idx":  0,
-                "cor_recorder_idx":  3,
+                "cor_recorder_idx":  4,
                 "cpus":              [8, 9, 10, 11, 12, 14],
                 "gpus":              [1]
             }
@@ -149,6 +149,12 @@
                 },
                 {
                     "host":              "lasi", 
+                    "port":              11000,
+                    "max_bytes_per_sec": 104851000
+                },
+                {
+                    "host":              "lasi",
+                    "port":              12000,
                     "port":              11000,
                     "max_bytes_per_sec": 104851000
                 }
