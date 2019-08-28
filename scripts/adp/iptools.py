@@ -18,21 +18,21 @@ def mac2int(macaddr):
     return int_addr
 
 def host2ip(host):
-	return gethostbyname(host)
+    return gethostbyname(host)
 
 def load_ethers(filename="/etc/ethers"):
-	macs = {}
-	with open(filename, 'r') as f:
-		for line in f:
-			mac, host = line.split()
-			ip = host2ip(host)
-			macs[ip] = mac
-	return macs
+    macs = {}
+    with open(filename, 'r') as f:
+        for line in f:
+            mac, host = line.split()
+            ip = host2ip(host)
+            macs[ip] = mac
+    return macs
 
 def gen_arp_table(ips, macs):
-	""" Generates a 256-entry IP->MAC mapping table"""
-	arp_table_ints = [mac2int('ff:ff:ff:ff:ff:ff') for i in range(256)]
-	for ip, mac in zip(ips, macs):
-		ip_idx = ip2int(ip) % 256
-		arp_table_ints[ip_idx] = mac2int(mac)
-	return arp_table_ints
+    """ Generates a 256-entry IP->MAC mapping table"""
+    arp_table_ints = [mac2int('ff:ff:ff:ff:ff:ff') for i in range(256)]
+    for ip, mac in zip(ips, macs):
+        ip_idx = ip2int(ip) % 256
+        arp_table_ints[ip_idx] = mac2int(mac)
+    return arp_table_ints

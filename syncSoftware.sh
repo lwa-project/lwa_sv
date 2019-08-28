@@ -113,7 +113,7 @@ if [ "${DO_SOFTWARE}" == "1" ]; then
 	
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then
-			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_control.py ${SRC_PATH}/adp_tengine.py adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_control.py ${SRC_PATH}/adp_tengine.py ${SRC_PATH}/adp_enable_triggering.py adp${node}:${DST_PATH}/
 		else
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_tbn.py ${SRC_PATH}/adp_drx.py adp${node}:${DST_PATH}/
 		fi
