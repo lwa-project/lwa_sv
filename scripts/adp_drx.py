@@ -237,8 +237,9 @@ class CopyOp(object):
                                     if clear_to_trigger:
                                         t0 = time.time()
                                         sdata = idata.reshape(ishape)
+                                        sdata = sdata[:,:,to_keep]
                                         if tchan != nchan:
-                                            sdata = sdata[:,:tchan,to_keep]                               
+                                            sdata = sdata[:,:tchan,:]
                                         sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
                                         
                                         Unpack(sdata, udata)
@@ -469,12 +470,13 @@ class TriggeredDumpOp(object):
                         ldw.send(self.desc,
                                  time_tag, int(FS)//int(CHAN_BW), 
                                  chan0, TBF_NCHAN_PER_PKT, sdata)
+                        bytesSent += sdata.size / 6144 * 6168   # data size -> packet size
                     else:
                         try:
                             self.udt.send(self.desc,
                                           time_tag, int(FS)//int(CHAN_BW), 
                                           chan0, TBF_NCHAN_PER_PKT, sdata)
-                            bytesSent += sdata.size
+                            bytesSent += sdata.size / 6144 * 6168   # data size -> packet size
                         except Exception as e:
                             print type(self).__name__, 'Sending Error', str(e)
                             
@@ -1275,7 +1277,7 @@ class PacketizeOp(object):
                             except Exception as e:
                                 print type(self).__name__, 'Sending Error', str(e)
                                 
-                            bytesSent += sdata.size*8
+                            bytesSent += sdata.size*8 + sdata.shape[0]*32   # data size -> packet size
                             while bytesSent/(time.time()-bytesStart) >= rate_limit:
                                 time.sleep(0.001)
                                 
