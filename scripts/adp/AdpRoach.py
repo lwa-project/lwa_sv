@@ -27,8 +27,7 @@ class AdpRoach(object):
     @property
     def hostname(self):
         # TODO: Should really get this from an argument to __init__
-        #return "roach%i" % self.num
-        return "rofl%i" % self.num
+        return "roach%i" % self.num
         
     def connect(self):
         self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
