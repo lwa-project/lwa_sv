@@ -756,8 +756,13 @@ class Roach2MonitorClient(object):
             drx_dst_ips     = [host2ip(host) for host in drx_dst_hosts]
             tbn_dst_ips     = [host2ip(host) for host in tbn_dst_hosts]
             macs = load_ethers()
-            drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
-            tbn_dst_macs    = [macs[ip] for ip in tbn_dst_ips]
+            try:
+                drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
+                tbn_dst_macs    = [macs[ip] for ip in tbn_dst_ips]
+            except KeyError:
+                ## Catch for multicast addresses that do not have MACs
+                drx_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
+                tbn_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
             drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
             tbn_arp_table   = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
             drx_0_dst_ports = [dst_ports[0] for i in xrange(len(drx_dst_ips))]

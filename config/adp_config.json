@@ -135,17 +135,17 @@
     ],
     "recorder": [
                 {
-                    "host":              "dr1", 
+                    "host":              "mcg40-dr1", 
                     "port":              10000,
                     "max_bytes_per_sec": 104851000
                 },
                 {
-                    "host":              "dr2", 
+                    "host":              "mcg40-dr2", 
                     "port":              10000,
                     "max_bytes_per_sec": 104851000
                 },
                 {
-                    "host":              "dr3", 
+                    "host":              "mcg40-dr3", 
                     "port":              10000,
                     "max_bytes_per_sec": 104851000
                 },

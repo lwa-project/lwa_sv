@@ -1413,7 +1413,10 @@ def main(argv):
     
     ## Network - input
     pipeline_idx = drxConfig['pipeline_idx']
-    iaddr        = config['server']['data_ifaces'][pipeline_idx]
+    if config['host']['servers-data'][server_idx].startswith('adp'):
+        iaddr    = config['server']['data_ifaces'][pipeline_idx]
+    else:
+        iaddr    = config['host']['servers-data'][server_idx]
     iport        = config['server']['data_ports' ][pipeline_idx]
     ## Network - TBF - data recorder
     recorder_idx = drxConfig['tbf_recorder_idx']
