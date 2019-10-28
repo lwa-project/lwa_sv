@@ -1994,25 +1994,25 @@ class MsgProcessor(ConsumerThread):
                       'SAT':      lambda x: np.sum(np.abs(x)>=ADC_MAXVAL),
                       'DCOFFSET': np.mean,
                       'PEAK':     np.max}
-        if key == 'SUMMARY':         return self.state['status']
-        if key == 'INFO':            return self.state['info']
-        if key == 'LASTLOG':         return self.state['lastlog']
-        if key == 'SUBSYSTEM':       return SUBSYSTEM
-        if key == 'SERIALNO':        return self.serial_number
-        if key == 'VERSION':         return self.version
+        if key == 'SUMMARY':           return self.state['status']
+        if key == 'INFO':              return self.state['info']
+        if key == 'LASTLOG':           return self.state['lastlog']
+        if key == 'SUBSYSTEM':         return SUBSYSTEM
+        if key == 'SERIALNO':          return self.serial_number
+        if key == 'VERSION':           return self.version
         # TODO: TBF_STATUS
         #       TBF_TUNING_MASK
-        if key == 'NUM_STANDS':      return NSTAND
-        if key == 'NUM_SERVERS':     return NSERVER
-        if key == 'NUM_BOARDS':      return NBOARD
-        if key == 'NUM_TBN_BITS':    return TBN_BITS
-        if key == 'TBN_CONFIG_FREQ': return self.tbn.cur_freq
+        if key == 'NUM_STANDS':        return NSTAND
+        if key == 'NUM_SERVERS':       return NSERVER
+        if key == 'NUM_BOARDS':        return NBOARD
+        if key == 'NUM_TBN_BITS':      return TBN_BITS
+        if key == 'TBN_CONFIG_FREQ':   return self.tbn.cur_freq
         if key == 'TBN_CONFIG_FILTER': return self.tbn.cur_filt
-        if key == 'TBN_CONFIG_GAIN': return self.tbn.cur_gain
+        if key == 'TBN_CONFIG_GAIN':   return self.tbn.cur_gain
         # TODO: NUM_BEAMS
-        if key == 'BEAM_FIR_COEFFS': return FIR_NCOEF
+        if key == 'BEAM_FIR_COEFFS':   return FIR_NCOEF
         # TODO: T_NOM
-        if key == 'NUM_DRX_TUNINGS': return self.drx.ntuning
+        if key == 'NUM_DRX_TUNINGS':   return self.drx.ntuning
         if args[0] == 'DRX' and args[1] == 'CONFIG':
             tuning = args[2]-1
             if args[3] == 'FREQ':
@@ -2021,14 +2021,14 @@ class MsgProcessor(ConsumerThread):
                 return self.drx.cur_filt[tuning]
             if args[3] == 'GAIN':
                 return self.drx.cur_gain[tuning]
-        if key == 'NUM_FREQ_CHANS':  return NCHAN
-        if key == 'FIR_CHAN_INDEX':  return self._get_next_fir_index()
+        if key == 'NUM_FREQ_CHANS':    return NCHAN
+        if key == 'FIR_CHAN_INDEX':    return self._get_next_fir_index()
         if key == 'FIR':
             return self.fst.get_fir_coefs(slot)[input2standpol(self.fir_idx)]
-        if key == 'CLK_VAL':         return MCS2.slot2mpm(slot-1)
-        if key == 'UTC_START':       return self.utc_start_str # Not in spec
-        if key == 'UPTIME':          return self.uptime() # Not in spec
-        if key == 'STAT_SAMP_SIZE':  return STAT_SAMP_SIZE
+        if key == 'CLK_VAL':           return MCS2.slot2mpm(slot-1)
+        if key == 'UTC_START':         return self.utc_start_str # Not in spec
+        if key == 'UPTIME':            return self.uptime() # Not in spec
+        if key == 'STAT_SAMP_SIZE':    return STAT_SAMP_SIZE
         if args[0] == 'ANT':
             inp = args[1]-1
             if not (0 <= inp < NINPUT):
@@ -2089,62 +2089,66 @@ class MsgProcessor(ConsumerThread):
         
     def _pack_report_result(self, key, value):
         return {
-            'SUMMARY':          lambda x: x[:7],
-            'INFO':             lambda x: truncate_message(x, 256),
-            'LASTLOG':          lambda x: truncate_message(x, 256),
-            'SUBSYSTEM':        lambda x: x[:3],
-            'SERIALNO':         lambda x: x[:5],
-            'VERSION':          lambda x: truncate_message(x, 256),
+            'SUMMARY':            lambda x: x[:7],
+            'INFO':               lambda x: truncate_message(x, 256),
+            'LASTLOG':            lambda x: truncate_message(x, 256),
+            'SUBSYSTEM':          lambda x: x[:3],
+            'SERIALNO':           lambda x: x[:5],
+            'VERSION':            lambda x: truncate_message(x, 256),
             #'TBF_STATUS':
             #'TBF_TUNING_MASK':
-            'NUM_TBN_BITS':     lambda x: struct.pack('>B', x),
-            'NUM_DRX_TUNINGS':  lambda x: struct.pack('>B', x),
-            'NUM_FREQ_CHANS':   lambda x: struct.pack('>H', x),
+            'NUM_TBN_BITS':       lambda x: struct.pack('>B', x),
+            'NUM_DRX_TUNINGS':    lambda x: struct.pack('>B', x),
+            'NUM_FREQ_CHANS':     lambda x: struct.pack('>H', x),
             #'NUM_BEAMS':
-            'NUM_STANDS':       lambda x: struct.pack('>H', x),
-            'NUM_BOARDS':       lambda x: struct.pack('>B', x),
-            'NUM_SERVERS':      lambda x: struct.pack('>B', x),
-            'BEAM_FIR_COEFFS':  lambda x: struct.pack('>B', x),
+            'NUM_STANDS':         lambda x: struct.pack('>H', x),
+            'NUM_BOARDS':         lambda x: struct.pack('>B', x),
+            'NUM_SERVERS':        lambda x: struct.pack('>B', x),
+            'BEAM_FIR_COEFFS':    lambda x: struct.pack('>B', x),
             #'T_NOMn:
-            'FIR_CHAN_INDEX':   lambda x: struct.pack('>H', x),
-            'FIR':              lambda x: x.astype('>h').tobytes(),
-            'CLK_VAL':          lambda x: struct.pack('>I', x),
-            'UTC_START':        lambda x: truncate_message(x, 256), # Not in spec
-            'UPTIME':           lambda x: struct.pack('>I', x),     # Not in spec
-            'STAT_SAMPLE_SIZE': lambda x: struct.pack('>I', x),
-            'ANT_RMS':          lambda x: struct.pack('>f', x),
-            'ANT_SAT':          lambda x: struct.pack('>i', x),
-            'ANT_DCOFFSET':     lambda x: struct.pack('>f', x),
-            'ANT_PEAK':         lambda x: struct.pack('>i', x),
+            'FIR_CHAN_INDEX':     lambda x: struct.pack('>H', x),
+            'FIR':                lambda x: x.astype('>h').tobytes(),
+            'CLK_VAL':            lambda x: struct.pack('>I', x),
+            'UTC_START':          lambda x: truncate_message(x, 256), # Not in spec
+            'UPTIME':             lambda x: struct.pack('>I', x),     # Not in spec
+            'STAT_SAMPLE_SIZE':   lambda x: struct.pack('>I', x),
+            'ANT_RMS':            lambda x: struct.pack('>f', x),
+            'ANT_SAT':            lambda x: struct.pack('>i', x),
+            'ANT_DCOFFSET':       lambda x: struct.pack('>f', x),
+            'ANT_PEAK':           lambda x: struct.pack('>i', x),
             # TODO: Implement these BEAM requests
             #         Are these actually in the spec?
-            #'BEAM_RMS':         lambda x: struct.pack('>f', x),
-            #'BEAM_SAT':         lambda x: struct.pack('>i', x),
-            #'BEAM_DCOFFSET':    lambda x: struct.pack('>f', x),
-            #'BEAM_PEAK':        lambda x: struct.pack('>i', x),
+            #'BEAM_RMS':           lambda x: struct.pack('>f', x),
+            #'BEAM_SAT':           lambda x: struct.pack('>i', x),
+            #'BEAM_DCOFFSET':      lambda x: struct.pack('>f', x),
+            #'BEAM_PEAK':          lambda x: struct.pack('>i', x),
             # TODO: In the spec this is >I ?
-            'BOARD_STAT':       lambda x: struct.pack('>L', x),
-            'BOARD_TEMP_MAX':   lambda x: struct.pack('>f', x),
-            'BOARD_TEMP_MIN':   lambda x: struct.pack('>f', x),
-            'BOARD_TEMP_AVG':   lambda x: struct.pack('>f', x),
-            'BOARD_FIRMWARE':   lambda x: truncate_message(x, 256),
-            'BOARD_HOSTNAME':   lambda x: truncate_message(x, 256),
+            'BOARD_STAT':         lambda x: struct.pack('>L', x),
+            'BOARD_TEMP_MAX':     lambda x: struct.pack('>f', x),
+            'BOARD_TEMP_MIN':     lambda x: struct.pack('>f', x),
+            'BOARD_TEMP_AVG':     lambda x: struct.pack('>f', x),
+            'BOARD_FIRMWARE':     lambda x: truncate_message(x, 256),
+            'BOARD_HOSTNAME':     lambda x: truncate_message(x, 256),
             # TODO: SERVER_STAT
-            'SERVER_TEMP_MAX':  lambda x: struct.pack('>f', x),
-            'SERVER_TEMP_MIN':  lambda x: struct.pack('>f', x),
-            'SERVER_TEMP_AVG':  lambda x: struct.pack('>f', x),
-            'SERVER_SOFTWARE':  lambda x: truncate_message(x, 256),
-            'SERVER_HOSTNAME':  lambda x: truncate_message(x, 256),
-            'GLOBAL_TEMP_MAX':  lambda x: struct.pack('>f', x),
-            'GLOBAL_TEMP_MIN':  lambda x: struct.pack('>f', x),
-            'GLOBAL_TEMP_AVG':  lambda x: struct.pack('>f', x),
-            'CMD_STAT':         lambda x: pack_reply_CMD_STAT(*x),
-            'TBN_CONFIG_FREQ':  lambda x: struct.pack('>f', x),
-            'TBN_CONFIG_FILTER':lambda x: struct.pack('>H', x),
-            'TBN_CONFIG_GAIN':  lambda x: struct.pack('>H', x),
-            'DRX_CONFIG_FREQ':  lambda x: struct.pack('>f', x),
-            'DRX_CONFIG_FILTER':lambda x: struct.pack('>H', x),
-            'DRX_CONFIG_GAIN':  lambda x: struct.pack('>H', x)
+            'SERVER_TEMP_MAX':    lambda x: struct.pack('>f', x),
+            'SERVER_TEMP_MIN':    lambda x: struct.pack('>f', x),
+            'SERVER_TEMP_AVG':    lambda x: struct.pack('>f', x),
+            'SERVER_SOFTWARE':    lambda x: truncate_message(x, 256),
+            'SERVER_HOSTNAME':    lambda x: truncate_message(x, 256),
+            'GLOBAL_TEMP_MAX':    lambda x: struct.pack('>f', x),
+            'GLOBAL_TEMP_MIN':    lambda x: struct.pack('>f', x),
+            'GLOBAL_TEMP_AVG':    lambda x: struct.pack('>f', x),
+            'CMD_STAT':           lambda x: pack_reply_CMD_STAT(*x),
+            'TBN_CONFIG_FREQ':    lambda x: struct.pack('>f', x),
+            'TBN_CONFIG_FILTER':  lambda x: struct.pack('>H', x),
+            'TBN_CONFIG_GAIN':    lambda x: struct.pack('>H', x),
+            # TODO: Clean up the DRX_CONFIG entries
+            'DRX_CONFIG_1_FREQ':  lambda x: struct.pack('>f', x),
+            'DRX_CONFIG_1_FILTER':lambda x: struct.pack('>H', x),
+            'DRX_CONFIG_1_GAIN':  lambda x: struct.pack('>H', x),
+            'DRX_CONFIG_2_FREQ':  lambda x: struct.pack('>f', x),
+            'DRX_CONFIG_2_FILTER':lambda x: struct.pack('>H', x),
+            'DRX_CONFIG_2_GAIN':  lambda x: struct.pack('>H', x)
         }[key](value)
         
     def _format_report_result(self, key, value):
