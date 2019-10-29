@@ -2142,13 +2142,9 @@ class MsgProcessor(ConsumerThread):
             'TBN_CONFIG_FREQ':    lambda x: struct.pack('>f', x),
             'TBN_CONFIG_FILTER':  lambda x: struct.pack('>H', x),
             'TBN_CONFIG_GAIN':    lambda x: struct.pack('>H', x),
-            # TODO: Clean up the DRX_CONFIG entries
-            'DRX_CONFIG_1_FREQ':  lambda x: struct.pack('>f', x),
-            'DRX_CONFIG_1_FILTER':lambda x: struct.pack('>H', x),
-            'DRX_CONFIG_1_GAIN':  lambda x: struct.pack('>H', x),
-            'DRX_CONFIG_2_FREQ':  lambda x: struct.pack('>f', x),
-            'DRX_CONFIG_2_FILTER':lambda x: struct.pack('>H', x),
-            'DRX_CONFIG_2_GAIN':  lambda x: struct.pack('>H', x)
+            'DRX_CONFIG_FREQ':  lambda x: struct.pack('>f', x),
+            'DRX_CONFIG_FILTER':lambda x: struct.pack('>H', x),
+            'DRX_CONFIG_GAIN':  lambda x: struct.pack('>H', x)
         }[key](value)
         
     def _format_report_result(self, key, value):
