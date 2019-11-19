@@ -1022,7 +1022,7 @@ class RetransmitOp(object):
         self.bind_proclog.update({'ncore': 1, 
                                   'core0': cpu_affinity.get_core(),})
         
-        with UDPTransmit('subbeam2_%i' % (self.nchan_max,), sock=self.sock, core=self.core) as udt:
+        with UDPTransmit('subbeam%i_%i' % (self.nbeam_max, self.nchan_max,), sock=self.sock, core=self.core) as udt:
             desc = HeaderInfo()
             desc.set_tuning(self.tuning)
             desc.set_nsrc(6)
