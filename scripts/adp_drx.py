@@ -758,7 +758,7 @@ class CorrelatorOp(object):
             return None
         self.configMessage = null_config#ISC.CORConfigurationClient(addr=('adp',5832))
         self._pending = deque()
-        self.navg = 10*100
+        self.navg = 5*100
         self.gain = 0
         
         # Setup the correlator

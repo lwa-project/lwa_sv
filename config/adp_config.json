@@ -157,7 +157,6 @@
                 {
                     "host":              "orville",
                     "port":              12000,
-                    "port":              11000,
                     "max_bytes_per_sec": 104851000
                 }
     ]
