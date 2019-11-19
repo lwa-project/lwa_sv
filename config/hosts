@@ -56,7 +56,8 @@ ff02::2 ip6-allrouters
 192.168.40.41	dr1 # Data recorder 1
 192.168.40.42	dr2 # Data recorder 2
 192.168.40.43	dr3 # Data recorder 3
-192.168.40.44	lasi # LWA All-Sky Imager
+192.168.40.46	lasi # LWA All-Sky Imager
+192.168.40.47   orville
 
 # Mutlitcast data network (p5p1)
 239.168.40.10   mcg40s0-data mcg40-data
@@ -69,7 +70,8 @@ ff02::2 ip6-allrouters
 239.168.40.41   mcg40s41-data mcg40-dr1
 239.168.40.42   mcg40s42-data mcg40-dr2
 239.168.40.43   mcg40s43-data mcg40-dr3
-239.168.40.44   mcg40s44-data mcg40-lasi
+239.168.40.46   mcg40s46-data mcg40-lasi
+239.168.40.47   mcg40s47-data mcg40-orville
 
 # Switch management
 169.254.128.101 mgmt-switch
