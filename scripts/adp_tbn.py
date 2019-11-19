@@ -78,48 +78,13 @@ __maintainer__ = "Jayce Dowell"
 __email__      = "jdowell at unm"
 __status__     = "Development"
 
-UTC_START = 0
-
-def chips_callback(seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr):
-    global UTC_START
-    
-    timestamp0 = int((UTC_START - ADP_EPOCH).total_seconds())
-    time_tag0  = timestamp0 * int(FS)
-    time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
-    print "++++++++++++++++ seq0     =", seq0
-    print "                 time_tag =", time_tag
-    time_tag_ptr[0] = time_tag
-    hdr = {'time_tag': time_tag,
-            'seq0':     seq0, 
-            'chan0':    chan0,
-            'nchan':    nchan,
-            'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
-            'bw':       nchan*CHAN_BW,
-            'nsrc':     nsrc, 
-            'nstand':   nsrc*16,
-            #'stand0':   src0*16, # TODO: Pass src0 to the callback too(?)
-            'npol':     2,
-            'complex':  True,
-            'nbit':     4}
-    print "******** CFREQ:", hdr['cfreq']
-    hdr_str = json.dumps(hdr)
-    # TODO: Can't pad with NULL because returned as C-string
-    #hdr_str = json.dumps(hdr).ljust(4096, '\0')
-    #hdr_str = json.dumps(hdr).ljust(4096, ' ')
-    header_buf = ctypes.create_string_buffer(hdr_str)
-    hdr_ptr[0]      = ctypes.cast(header_buf, ctypes.c_void_p)
-    hdr_size_ptr[0] = len(hdr_str)
-    return 0
-
 #{"nbit": 4, "nchan": 136, "nsrc": 16, "chan0": 1456, "time_tag": 288274740432000000}
 class CaptureOp(object):
     def __init__(self, log, *args, **kwargs):
-        global UTC_START
-        
         self.log    = log
         self.args   = args
         self.kwargs = kwargs
-        UTC_START = self.utc_start = self.kwargs['utc_start']
+        self.utc_start = self.kwargs['utc_start']
         del self.kwargs['utc_start']
         self.shutdown_event = threading.Event()
         ## HACK TESTING
@@ -157,11 +122,7 @@ class CaptureOp(object):
         return 0
     def main(self):
         seq_callback = PacketCaptureCallback()
-        seq_callback.set_chips(chips_callback)
-        #seq_callback.set_chips(
-        #    lambda seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr: \
-        #            self.seq_callback(seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr)
-        #    )
+        seq_callback.set_chips(self.seq_callback)
         with UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
@@ -538,6 +499,9 @@ class PacketizeOp(object):
         
         self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
         
+        udt = UDPTransmit('tbn', sock=self.sock, core=self.core)
+        desc = HeaderInfo()
+        
         for iseq in self.iring.read():
             ihdr = json.loads(iseq.header.tostring())
             
@@ -569,49 +533,45 @@ class PacketizeOp(object):
             time_tag -= int(round(fdly*ticksPerSample))     # Correct for FIR filter delay
             
             prev_time = time.time()
-            with UDPTransmit('tbn', sock=self.sock, core=self.core) as udt:
-                desc = HeaderInfo()
-                desc.set_tuning(int(round(cfreq / FS * 2**32)))
-                desc.set_gain(gain)
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc.set_gain(gain)
+            
+            free_run = False
+            for ispan in iseq.read(gulp_size, begin=boffset):
+                if ispan.size < gulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
                 
-                free_run = False
-                for ispan in iseq.read(gulp_size, begin=boffset):
-                    if ispan.size < gulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    shape = (-1,nstand,npol)
-                    data = ispan.data_view('ci8').reshape(shape)
-                    
-                    for t in xrange(0, ntime_gulp, ntime_pkt):
-                        time_tag_cur = time_tag + int(t)*ticksPerSample
-                        try:
-                            self.sync_tbn_pipelines(time_tag_cur)
-                        except ValueError:
-                            continue
-                        except (socket.timeout, socket.error):
-                            pass
-                            
-                        sdata = data[t:t+ntime_pkt,...].transpose(1,2,0).copy()
-                        sdata = sdata.reshape(-1,nstand*npol,ntime_pkt)
-                        try:
-                            if ACTIVE_TBN_CONFIG.is_set():
-                                udt.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, 2*stand0, 1, sdata)
-                        except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
-                            
-                    time_tag += int(ntime_gulp)*ticksPerSample
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': -1, 
-                                              'process_time': process_time,})
-                    
-            del udt
+                shape = (-1,nstand,npol)
+                data = ispan.data_view('ci8').reshape(shape)
+                
+                for t in xrange(0, ntime_gulp, ntime_pkt):
+                    time_tag_cur = time_tag + int(t)*ticksPerSample
+                    try:
+                        self.sync_tbn_pipelines(time_tag_cur)
+                    except ValueError:
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
+                        
+                    sdata = data[t:t+ntime_pkt,...].transpose(1,2,0).copy()
+                    sdata = sdata.reshape(-1,nstand*npol,ntime_pkt)
+                    try:
+                        if ACTIVE_TBN_CONFIG.is_set():
+                            udt.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, 2*stand0, 1, sdata)
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
+                        
+                time_tag += int(ntime_gulp)*ticksPerSample
+                
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time, 
+                                          'reserve_time': -1, 
+                                          'process_time': process_time,})
 
 def get_utc_start(shutdown_event=None):
     got_utc_start = False
