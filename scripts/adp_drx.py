@@ -514,6 +514,7 @@ class BeamformerOp(object):
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
+        self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -675,7 +676,8 @@ class BeamformerOp(object):
                             self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), self.tdata.transpose(1,2,0), 0.0, self.bdata)
                             
                             ## Transpose, save and cleanup
-                            odata[...] = self.bdata.copy(space='cuda_host').transpose(2,0,1)
+                            copy_array(self.ldata, self.bdata)
+                            odata[...] = self.ldata.transpose(2,0,1)
                             
                         ## Update the base time tag
                         base_time_tag += self.ntime_gulp*ticksPerTime
@@ -1017,20 +1019,6 @@ class RetransmitOp(object):
                     prev_time = curr_time
                     
                     idata = ispan.data_view(np.complex64).reshape(igulp_shape)
-                    
-                    #pkts = []
-                    #for t in xrange(0, self.ntime_gulp):
-                    #    pktdata = pdata[t,:,:]
-                    #    seq_curr = seq + t
-                    #    hdr = gen_chips_header(self.server, nchan, chan0, seq_curr, gbe=self.tuning)
-                    #    pkt = hdr + pktdata.tostring()
-                    #    pkts.append( pkt )
-                    #    
-                    #try:
-                    #    udt.sendmany(pkts)
-                    #except Exception as e:
-                    #    print type(self).__name__, 'Sending Error', str(e)
-                    
                     idata = idata.reshape(self.ntime_gulp,1,nchan*nstdpol)
                     try:
                         udt.send(desc, seq, 1, self.server-1, 1, idata)
@@ -1156,17 +1144,6 @@ class PacketizeOp(object):
                 prev_time = time.time()
                 iseq_spans = iseq.read(igulp_size)
                 while not self.iring.writing_ended():
-                    ## HACK for verification
-                    #if reset_sequence:
-                    #    try:
-                    #        ofile.close()
-                    #    except:
-                    #        pass
-                    #        
-                    #    filename = '/data1/test_%s_%i_%020i.cor' % (socket.gethostname(), self.tuning, time_tag)
-                    #    ofile = open(filename, 'wb')
-                    #    file_time_tag = time_tag*1
-                        
                     reset_sequence = False
                     
                     for ispan in iseq_spans:
@@ -1184,46 +1161,6 @@ class PacketizeOp(object):
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
-                        #pkts = []
-                        ##pkts = ''
-                        #for i in xrange(nstand):
-                        #    for j in xrange(i,nstand):
-                        #        pktdata = odata[i,j,:,:,:]
-                        #        hdr = gen_cor_header(self.server, i+1, j+1, chan0, time_tag_cur, time_tag0, navg, gain)
-                        #        try:
-                        #            pkt = hdr + pktdata.tostring()
-                        #            pkts.append( pkt )
-                        #            #pkts += pkt
-                        #        except Exception as e:
-                        #            print type(self).__name__, 'COR Packing Error', str(e)
-                        #            
-                        #        # Changed on 2019/7/2 to try to get 19.6 MHz working
-                        #        if len(pkts) == 36:
-                        #            ## HACK for verification
-                        #            #for pkt in pkts:
-                        #            #    ofile.write(pkt)
-                        #            
-                        #            try:
-                        #                udt.sendmany(pkts)
-                        #            except Exception as e:
-                        #                print type(self).__name__, 'COR Sending Error', str(e)
-                        #                
-                        #            bytesSent += sum([len(p) for p in pkts])
-                        #            while bytesSent/(time.time()-bytesStart) >= rate_limit:
-                        #                time.sleep(0.001)
-                        #            pkts = []
-                        #            
-                        #    if time.time()-t0 > tBail:
-                        #        print 'WARNING: vis write bail', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2, '->', time.time()
-                        #        break
-                        #        
-                        ## HACK for verification
-                        ##try:
-                        ##    #if ACTIVE_COR_CONFIG.is_set():
-                        ##    udt.sendmany(pkts)
-                        ##except Exception as e:
-                        ##    print type(self).__name__, 'Sending Error', str(e)
-                        
                         for i in xrange(nstand):
                             sdata = odata[i,i:,:,:].copy()
                             sdata = sdata.reshape(1,-1,nchan*npol*npol)
@@ -1250,16 +1187,11 @@ class PacketizeOp(object):
                         self.perf_proclog.update({'acquire_time': acquire_time, 
                                                     'reserve_time': -1, 
                                                     'process_time': process_time,})
-                        
-                        ## Reset to move on to the next output file at the start of each hour
-                        #if int(round(time_tag/FS)) % 3600 < tInt:
-                        #    reset_sequence = True
-                        #    break
-                            
+                          
                     # Reset to move on to the next input sequence?
                     if not reset_sequence:
                         break
-        #del udt
+        del udt
 
 def get_utc_start(shutdown_event=None):
     got_utc_start = False
