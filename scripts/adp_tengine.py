@@ -1131,7 +1131,7 @@ def main(argv):
                                    nbeam_max=nbeam, beam0=1, tuning=tuning, 
                                    npkt_gulp=32, core=cores.pop(0)))
     elif nbeam == 3:
-        ops.append(TriplesPacketizeOp(log, tengine_ring,
+        ops.append(TriplePacketizeOp(log, tengine_ring,
                                    osocks=rsocks,
                                    nbeam_max=nbeam, beam0=1, tuning=tuning, 
                                    npkt_gulp=32, core=cores.pop(0)))
