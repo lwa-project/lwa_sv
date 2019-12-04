@@ -908,7 +908,7 @@ class CorrelatorOp(object):
                                 Unpack(self.tdata, self.udata)
                                 
                                 ## Correlate
-                                cscale = gain_act if nAccumulate else 0.0
+                                cscale = 1.0 if nAccumulate else 0.0
                                 self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
                                 nAccumulate += self.ntime_gulp
                                 
