@@ -447,18 +447,21 @@ class TEngineOp(object):
                                     pdata = idata
                                     
                                 ### From here until going to the output ring we are on the GPU
-                                tdata = pdata.copy(space='cuda')
-                                
+                                try:
+                                    copy_array(bdata, pdata)
+                                except NameError:
+                                    bdata = pdata.copy(space='cuda')
+                                    
                                 ## IFFT
                                 try:
-                                    gdata = gdata.reshape(*t.shape)
-                                    bfft.execute(tdata, gdata, inverse=True)
+                                    gdata = gdata.reshape(*bdata.shape)
+                                    bfft.execute(bdata, gdata, inverse=True)
                                 except NameError:
-                                    gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+                                    gdata = BFArray(shape=bdata.shape, dtype=np.complex64, space='cuda')
                                     
                                     bfft = Fft()
-                                    bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
-                                    bfft.execute(tdata, gdata, inverse=True)
+                                    bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
+                                    bfft.execute(bdata, gdata, inverse=True)
                                     
                                 ## Phase rotation
                                 gdata = gdata.reshape((-1,nstand*npol))
@@ -487,7 +490,10 @@ class TEngineOp(object):
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                     
                                 ## Save
-                                tdata = qdata.copy('system')
+                                try:
+                                    copy_array(tdata, qdata)
+                                except NameError:
+                                    tdata = qdata.copy('system')
                                 odata[...] = tdata.view(np.int8).reshape((1,)+oshape)
                                 
                             ## Update the base time tag
@@ -515,9 +521,13 @@ class TEngineOp(object):
                                 ### Clean-up
                                 try:
                                     del pdata
+                                    del bdata
                                     del gdata
+                                    del bfft
                                     del fdata
+                                    del bfir
                                     del qdata
+                                    del tdata
                                 except NameError:
                                     pass
                                     
@@ -632,7 +642,7 @@ class DualPacketizeOp(object):
             gulp_size = ntime_gulp*nbeam*npol
             
             # Figure out where we need to be in the buffer to be at a frame boundary
-            NPACKET_SET = 8
+            NPACKET_SET = 16
             ticksPerSample = int(FS) // int(bw)
             toffset = int(time_tag0) // ticksPerSample
             soffset = toffset % (NPACKET_SET*int(ntime_pkt))
@@ -648,7 +658,6 @@ class DualPacketizeOp(object):
             desc.set_decimation(int(FS)//int(bw))
             desc.set_tuning(int(round(cfreq / FS * 2**32)))
             desc_src = (((self.tuning+1)&0x7)<<3)
-            pkts0, pkts1 = [], []
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
                     continue # Ignore final gulp
@@ -758,7 +767,7 @@ class TriplePacketizeOp(object):
             gulp_size = ntime_gulp*nbeam*npol
             
             # Figure out where we need to be in the buffer to be at a frame boundary
-            NPACKET_SET = 8
+            NPACKET_SET = 16
             ticksPerSample = int(FS) // int(bw)
             toffset = int(time_tag0) // ticksPerSample
             soffset = toffset % (NPACKET_SET*int(ntime_pkt))
@@ -774,7 +783,6 @@ class TriplePacketizeOp(object):
             desc.set_decimation(int(FS)//int(bw))
             desc.set_tuning(int(round(cfreq / FS * 2**32)))
             desc_src = (((self.tuning+1)&0x7)<<3)
-            pkts0, pkts1, pkts2 = [], [], []
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
                     continue # Ignore final gulp
@@ -888,7 +896,7 @@ class QuadrupalPacketizeOp(object):
             gulp_size = ntime_gulp*nbeam*npol
             
             # Figure out where we need to be in the buffer to be at a frame boundary
-            NPACKET_SET = 8
+            NPACKET_SET = 16
             ticksPerSample = int(FS) // int(bw)
             toffset = int(time_tag0) // ticksPerSample
             soffset = toffset % (NPACKET_SET*int(ntime_pkt))
@@ -904,7 +912,6 @@ class QuadrupalPacketizeOp(object):
             desc.set_decimation(int(FS)//int(bw))
             desc.set_tuning(int(round(cfreq / FS * 2**32)))
             desc_src = (((self.tuning+1)&0x7)<<3)
-            pkts0, pkts1, pkts2 = [], [], []
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
                     continue # Ignore final gulp
@@ -1126,15 +1133,17 @@ def main(argv):
         rsocks.append(UDPSocket())
         rsocks[-1].connect(raddr)
     if nbeam == 2:
-        ops.append(DualPacketizeOp(log, tengine_ring,
-                                   osocks=rsocks,
-                                   nbeam_max=nbeam, beam0=1, tuning=tuning, 
-                                   npkt_gulp=32, core=cores.pop(0)))
+        PacketizerOp = DualPacketizeOp
     elif nbeam == 3:
-        ops.append(TriplePacketizeOp(log, tengine_ring,
-                                   osocks=rsocks,
-                                   nbeam_max=nbeam, beam0=1, tuning=tuning, 
-                                   npkt_gulp=32, core=cores.pop(0)))
+        PacketizerOp = TriplePacketizeOp
+    elif nbeam == 4:
+        PacketizerOp = QuadrupalPacketizeOp
+    else:
+        raise RuntimeError("Unsupported number of beams: %i" % nbeam)
+    ops.append(PacketizerOp(log, tengine_ring,
+                            osocks=rsocks,
+                            nbeam_max=nbeam, beam0=1, tuning=tuning, 
+                            npkt_gulp=32, core=cores.pop(0)))
     
     threads = [threading.Thread(target=op.main) for op in ops]
     
