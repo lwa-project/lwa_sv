@@ -733,7 +733,7 @@ class Roach2MonitorClient(object):
         ## ADC digital gain
         adc_gain       = self.config['roach']['adc_gain']
         adc_gain_bits  = ( adc_gain       | (adc_gain <<  4) |
-                        (adc_gain << 8) | (adc_gain << 12) )
+                         (adc_gain << 8) | (adc_gain << 12) )
         adc_gain_reg   = 0x2a
         adc_registers  = {adc_gain_reg: adc_gain_bits}
         ## Maximum number of attempts to try and program

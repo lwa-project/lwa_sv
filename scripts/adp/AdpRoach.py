@@ -35,9 +35,9 @@ class AdpRoach(object):
         
     def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, adc_registers={}, max_attempts=5, bypass_pfb=False):
         # Validate
-        assert( 10 <= subband_nchan0 and subband_nchan0 <= 132 )
-        assert( 10 <= subband_nchan1 and subband_nchan1 <= 132 )
-        assert( 10 <= subband_nchan2 and subband_nchan2 <= 132 )
+        assert( 8 <= subband_nchan0 and subband_nchan0 <= 132 )
+        assert( 8 <= subband_nchan1 and subband_nchan1 <= 132 )
+        assert( 8 <= subband_nchan2 and subband_nchan2 <= 132 )
         
         if len(adc_registers) > 0:
             regstring = ','.join(["0x%x=0x%x" % (key,val)
