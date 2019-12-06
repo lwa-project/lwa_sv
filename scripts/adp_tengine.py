@@ -93,14 +93,13 @@ class CaptureOp(object):
         print "++++++++++++++++ seq0     =", seq0
         print "                 time_tag =", time_tag
         time_tag_ptr[0] = time_tag
-        nchan = 2*nchan / self.nbeam_max     # correction for the number of beams
         hdr = {'time_tag': time_tag,
                'chan0':    chan0,
                'nsrc':     nsrc,
-               'nchan':    nchan*nsrc,                              # Each server since part of the bandwidth
-               'cfreq':    (chan0 + 0.5*(nchan*nsrc-1))*CHAN_BW,    # Each server since part of the bandwidth
-               'bw':       nchan*nsrc*CHAN_BW,                      # Each server since part of the bandwidth
-               'nstand':   self.nbeam_max,
+               'nchan':    nchan,
+               'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
+               'bw':       nchan*CHAN_BW,
+               'nstand':   nsrc,
                'npol':     2,
                'complex':  True,
                'nbit':     32}
@@ -115,7 +114,7 @@ class CaptureOp(object):
         return 0
     def main(self):
         seq_callback = PacketCaptureCallback()
-        seq_callback.set_chips(self.seq_callback)
+        seq_callback.set_ibeam(self.seq_callback)
         with UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
@@ -123,89 +122,6 @@ class CaptureOp(object):
                 status = capture.recv()
                 #print status
         del capture
-
-class ReorderChannelsOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500,# ntime_buf=None,
-                 guarantee=True, core=-1):
-        self.log = log
-        self.iring = iring
-        self.oring = oring
-        self.ntime_gulp = ntime_gulp
-        #if ntime_buf is None:
-        #    ntime_buf = self.ntime_gulp*3
-        #self.ntime_buf = ntime_buf
-        self.guarantee = guarantee
-        self.core = core
-        
-        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-        self.in_proclog   = ProcLog(type(self).__name__+"/in")
-        self.out_proclog  = ProcLog(type(self).__name__+"/out")
-        self.size_proclog = ProcLog(type(self).__name__+"/size")
-        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-        
-        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
-        self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
-        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
-        
-    #@ISC.logException
-    def main(self):
-        cpu_affinity.set_core(self.core)
-        self.bind_proclog.update({'ncore': 1, 
-                                  'core0': cpu_affinity.get_core(),})
-        
-        with self.oring.begin_writing() as oring:
-            for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
-                
-                self.sequence_proclog.update(ihdr)
-                
-                self.log.info("Reorder: Start of new sequence: %s", str(ihdr))
-                
-                nsrc   = ihdr['nsrc']
-                nchan  = ihdr['nchan']
-                nstand = ihdr['nstand']
-                npol   = ihdr['npol']
-                
-                igulp_size = self.ntime_gulp*nchan*nstand*npol*8            # complex64
-                ishape = (self.ntime_gulp,nchan/nsrc,nsrc,nstand*npol)
-                ogulp_size = self.ntime_gulp*nchan*nstand*npol*8                # complex64
-                oshape = (self.ntime_gulp,nchan,nstand,npol)
-                self.iring.resize(igulp_size, igulp_size*10)
-                self.oring.resize(ogulp_size)#, obuf_size)
-                
-                ohdr = ihdr.copy()
-                ohdr['nbit'] = 32
-                ohdr['complex'] = True
-                ohdr_str = json.dumps(ohdr)
-                
-                prev_time = time.time()
-                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-                    for ispan in iseq.read(igulp_size):
-                        if ispan.size < igulp_size:
-                            continue # Ignore final gulp
-                        curr_time = time.time()
-                        acquire_time = curr_time - prev_time
-                        prev_time = curr_time
-                        
-                        with oseq.reserve(ogulp_size) as ospan:
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-                            
-                            idata = ispan.data_view(np.complex64).reshape(ishape)
-                            odata = ospan.data_view(np.complex64).reshape(oshape)
-                            
-                            rdata = idata.astype(np.complex64)
-                            
-                            odata[...] = np.swapaxes(rdata, 1, 2).reshape((self.ntime_gulp,nchan,nstand,npol))
-                            
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-                            self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                      'reserve_time': reserve_time, 
-                                                      'process_time': process_time,})
 
 class TEngineOp(object):
     def __init__(self, log, iring, oring, tuning=0, ntime_gulp=2500, nchan_max=864, nbeam=1, # ntime_buf=None,
@@ -1109,21 +1025,17 @@ def main(argv):
     isock.timeout = 0.5
     
     capture_ring = Ring(name="capture-%i" % tuning)
-    reorder_ring = Ring(name="reorder-%i" % tuning)
     tengine_ring = Ring(name="tengine-%i" % tuning)
     
     GSIZE = 2500
     nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))    # Subtly different from what is in adp_drx.py
     
-    ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
+    ops.append(CaptureOp(log, fmt="ibeam%i" % nbeam, sock=isock, ring=capture_ring,
                          nsrc=nserver, src0=server0, max_payload_size=9000,
                          nbeam_max=nbeam, 
                          buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
                          utc_start=utc_start_dt))
-    ops.append(ReorderChannelsOp(log, capture_ring, reorder_ring, 
-                                ntime_gulp=GSIZE, 
-                                core=cores.pop(0)))
-    ops.append(TEngineOp(log, reorder_ring, tengine_ring,
+    ops.append(TEngineOp(log, capture_ring, tengine_ring,
                          tuning=tuning, ntime_gulp=GSIZE, 
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))

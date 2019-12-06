@@ -985,7 +985,7 @@ class RetransmitOp(object):
         self.bind_proclog.update({'ncore': 1, 
                                   'core0': cpu_affinity.get_core(),})
         
-        with UDPTransmit('subbeam%i_%i' % (self.nbeam_max, self.nchan_max,), sock=self.sock, core=self.core) as udt:
+        with UDPTransmit('ibeam%i_%i' % (self.nbeam_max, self.nchan_max,), sock=self.sock, core=self.core) as udt:
             desc = HeaderInfo()
             desc.set_tuning(self.tuning)
             desc.set_nsrc(6)
@@ -1007,8 +1007,8 @@ class RetransmitOp(object):
                 seq0 = ihdr['seq0']
                 seq = seq0
                 
-                desc.set_nchan(nchan + nchan*(nstand-2)/2)
-                desc.set_chan0(chan0-nchan*(self.server-1))
+                desc.set_nchan(nchan)
+                desc.set_chan0(chan0)
                 
                 prev_time = time.time()
                 for ispan in iseq.read(igulp_size):
