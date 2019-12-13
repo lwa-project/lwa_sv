@@ -40,8 +40,6 @@ from collections import deque
 
 ACTIVE_COR_CONFIG = threading.Event()
 
-TBF_CPU_CORE_LOCK = threading.Event()
-
 __version__    = "0.2"
 __date__       = '$LastChangedDate: 2016-08-09 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -292,8 +290,6 @@ class TriggeredDumpOp(object):
         self.max_bytes_per_sec = max_bytes_per_sec
         
     def main(self):
-        global TBF_CPU_CORE_LOCK
-        
         cpu_affinity.set_core(self.core)
         self.bind_proclog.update({'ncore': 1, 
                                   'core0': cpu_affinity.get_core(),})
@@ -313,12 +309,9 @@ class TriggeredDumpOp(object):
                 
             print "Trigger: New trigger received: %s" % str(config)
             try:
-                #TBF_CPU_CORE_LOCK.set()
                 self.dump(time_tag=config[0], samples=config[1], mask=config[2], local=config[3])
             except Exception as e:
                 print "Error on TBF dump: %s" % str(e)
-            #finally:
-            #    TBF_CPU_CORE_LOCK.clear()
                 
         del self.udt
         
@@ -812,8 +805,6 @@ class CorrelatorOp(object):
             
     #@ISC.logException
     def main(self):
-        global TBF_CPU_CORE_LOCK
-        
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:
             BFSetGPU(self.gpu)
@@ -821,6 +812,8 @@ class CorrelatorOp(object):
                                   'core0': cpu_affinity.get_core(),
                                   'ngpu': 1,
                                   'gpu0': BFGetGPU(),})
+        
+        last_base_time_tag = 0
         
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
@@ -873,6 +866,14 @@ class CorrelatorOp(object):
                     navg = navg_seq / int(CHAN_BW/100.0)
                     
                     navg_mod_value = navg_seq * int(FS) / int(CHAN_BW)
+                    if base_time_tag == last_base_time_tag:
+                        ## Sometimes we get into a situation where the frequency changes
+                        ## in less than an integration period.  To deal with this we need to 
+                        ## skip forward to the next integration boundary and go from there
+                        base_time_tag = base_time_tag + navg_mod_value
+                        nAccumulate = -navg_mod_value / ticksPerTime
+                    start_time_tag = int(base_time_tag / navg_mod_value) * navg_mod_value
+                    nAccumulate += (base_time_tag - start_time_tag) / ticksPerTime
                     
                     ohdr['time_tag']  = base_time_tag
                     ohdr['start_tag'] = int(base_time_tag / navg_mod_value) * navg_mod_value
@@ -892,47 +893,44 @@ class CorrelatorOp(object):
                             ## Pre-update the base time tag - we need this so that we can dump at the right times
                             base_time_tag += self.ntime_gulp*ticksPerTime
                             
-                            if not TBF_CPU_CORE_LOCK.is_set():
-                                ## Setup and load
-                                idata = ispan.data_view(np.uint8).reshape(ishape)
-                                if ochan != nchan:
-                                    idata = idata[:,:ochan,:]
-                                    
-                                ## Fix the type
-                                wcidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                            ## Setup and load
+                            idata = ispan.data_view(np.uint8).reshape(ishape)
+                            if ochan != nchan:
+                                idata = idata[:,:ochan,:]
                                 
-                                ## Copy
-                                copy_array(self.tdata, wcidata)
-                                
-                                ## Unpack
-                                Unpack(self.tdata, self.udata)
-                                
-                                ## Correlate
-                                cscale = 1.0 if nAccumulate else 0.0
-                                self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
-                                nAccumulate += self.ntime_gulp
-                                
-                                curr_time = time.time()
-                                process_time = curr_time - prev_time
-                                prev_time = curr_time
-                                
-                                ## Dump?
-                                if base_time_tag % navg_mod_value == 0:
-                                    with oseq.reserve(ogulp_size) as ospan:
-                                        odata = ospan.data_view(np.complex64).reshape(oshape)
-                                        odata[...] = self.cdata
-                                        BFSync()
-                                    nAccumulate = 0
-                                curr_time = time.time()
-                                reserve_time = curr_time - prev_time
-                                prev_time = curr_time
-                            else:
-                                reserve_time = 0.0
-                                process_time = 0.0
-                                
+                            ## Fix the type
+                            wcidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                            
+                            ## Copy
+                            copy_array(self.tdata, wcidata)
+                            
+                            ## Unpack
+                            Unpack(self.tdata, self.udata)
+                            
+                            ## Correlate
+                            cscale = 1.0 if nAccumulate else 0.0
+                            self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
+                            nAccumulate += self.ntime_gulp
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            ## Dump?
+                            if base_time_tag % navg_mod_value == 0:
+                                with oseq.reserve(ogulp_size) as ospan:
+                                    odata = ospan.data_view(np.complex64).reshape(oshape)
+                                    odata[...] = self.cdata
+                                    BFSync()
+                                nAccumulate = 0
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
                             ## Check for an update to the configuration
                             if self.updateConfig( self.configMessage(), ihdr, base_time_tag, forceUpdate=False ):
                                 reset_sequence = True
+                                last_base_time_tag = base_time_tag
                                 break
                                 
                             curr_time = time.time()
@@ -944,6 +942,7 @@ class CorrelatorOp(object):
                             
                     # Reset to move on to the next input sequence?
                     if not reset_sequence:
+                        last_base_time_tag = base_time_tag
                         break
 
 def gen_chips_header(server, nchan, chan0, seq, gbe=0, nservers=6):
@@ -1175,6 +1174,7 @@ class PacketizeOp(object):
                             while bytesSent/(time.time()-bytesStart) >= rate_limit:
                                 time.sleep(0.001)
                                 
+                            del sdata
                             if time.time()-t0 > tBail:
                                 print 'WARNING: vis write bail', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2, '->', time.time()
                                 break
@@ -1348,7 +1348,7 @@ def main(argv):
     isock.bind(iaddr)
     isock.timeout = 0.5
     
-    capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
+    capture_ring = Ring(name="capture-%i" % tuning)
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
     vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
