@@ -409,7 +409,7 @@ class TEngineOp(object):
                                 try:
                                     copy_array(tdata, qdata)
                                 except NameError:
-                                    tdata = qdata.copy('cuda_host')
+                                    tdata = qdata.copy('system')
                                 odata[...] = tdata.view(np.int8).reshape((1,)+oshape)
                                 
                             ## Update the base time tag
@@ -1024,8 +1024,8 @@ def main(argv):
     isock.bind(iaddr)
     isock.timeout = 0.5
     
-    capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
-    tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
+    capture_ring = Ring(name="capture-%i" % tuning, space="cuda_host")
+    tengine_ring = Ring(name="tengine-%i" % tuning, space="system")
     
     GSIZE = 2500
     nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))    # Subtly different from what is in adp_drx.py
