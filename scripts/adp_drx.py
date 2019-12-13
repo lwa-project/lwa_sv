@@ -656,11 +656,8 @@ class BeamformerOp(object):
                             prev_time = curr_time
                             
                             ## Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(ishape)
+                            idata = ispan.data_view('ci4').reshape(ishape)
                             odata = ospan.data_view(np.complex64).reshape(oshape)
-                            
-                            ## Fix the type
-                            bfidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                             
                             ## Copy
                             copy_array(self.tdata, bfidata)
@@ -723,16 +720,13 @@ class CorrelatorOp(object):
         ## Metadata
         nchan = self.nchan_max
         nstand, npol = nroach*16, 2
-        ## Decimation
-        self.chan_decim = 1
-        ochan = nchan / self.chan_decim
         ## Object
         self.bfcc = LinAlg()
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
-        self.tdata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci4', native=False, space='cuda')
-        self.udata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci8', space='cuda')
-        self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
+        self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
+        self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
+        self.cdata = BFArray(shape=(nchan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -826,13 +820,12 @@ class CorrelatorOp(object):
                 self.log.info("Correlator: Start of new sequence: %s", str(ihdr))
                 
                 nchan  = ihdr['nchan']
-                ochan  = nchan / self.chan_decim
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
                 igulp_size = self.ntime_gulp*nchan*nstand*npol        # 4+4 complex
-                ogulp_size = ochan*nstand*npol*nstand*npol*8            # complex64
+                ogulp_size = nchan*nstand*npol*nstand*npol*8            # complex64
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
-                oshape = (ochan,nstand*npol,nstand*npol)
+                oshape = (nchan,nstand*npol,nstand*npol)
                 
                 # Figure out where we need to be in the buffer to be at a second boundary
                 ticksPerTime = int(FS) / int(CHAN_BW)
@@ -846,7 +839,6 @@ class CorrelatorOp(object):
                 base_time_tag = iseq.time_tag + soffset*ticksPerTime        # Correct for offset
                 
                 ohdr = ihdr.copy()
-                ohdr['nchan'] = ochan
                 ohdr['nbit'] = 32
                 ohdr['complex'] = True
                 ohdr_str = json.dumps(ohdr)
@@ -894,15 +886,10 @@ class CorrelatorOp(object):
                             base_time_tag += self.ntime_gulp*ticksPerTime
                             
                             ## Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(ishape)
-                            if ochan != nchan:
-                                idata = idata[:,:ochan,:]
-                                
-                            ## Fix the type
-                            wcidata = BFArray(shape=idata.shape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                            idata = ispan.data_view('ci4').reshape(ishape)
                             
                             ## Copy
-                            copy_array(self.tdata, wcidata)
+                            copy_array(self.tdata, idata)
                             
                             ## Unpack
                             Unpack(self.tdata, self.udata)
@@ -1085,12 +1072,9 @@ class PacketizeOp(object):
         ## Metadata
         nchan = self.nchan_max
         nstand, npol = nroach*16, 2
-        ## Decimation
-        self.chan_decim = 1
-        ochan = nchan / self.chan_decim
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
-        self.ldata = BFArray(shape=(ochan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
+        self.ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
         
     def main(self):
         global ACTIVE_COR_CONFIG
@@ -1117,15 +1101,14 @@ class PacketizeOp(object):
                 #print 'PacketizeOp', ihdr
                 chan0  = ihdr['chan0']
                 nchan  = ihdr['nchan']
-                ochan  = nchan / self.chan_decim
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
                 navg   = ihdr['navg']
                 gain   = ihdr['gain']
                 time_tag0 = ihdr['start_tag'] #iseq.time_tag
                 time_tag  = time_tag0
-                igulp_size = ochan*nstand*npol*nstand*npol*8
-                ishape = (ochan,nstand,npol,nstand,npol)
+                igulp_size = nchan*nstand*npol*nstand*npol*8
+                ishape = (nchan,nstand,npol,nstand,npol)
                 
                 desc.set_chan0(chan0)
                 desc.set_gain(gain)
@@ -1341,14 +1324,12 @@ def main(argv):
     log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
     log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
     
-    # Note: Capture uses Bifrost address+socket objects, while output uses
-    #         plain Python address+socket objects.
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
     isock.bind(iaddr)
     isock.timeout = 0.5
     
-    capture_ring = Ring(name="capture-%i" % tuning)
+    capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
     vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
