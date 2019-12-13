@@ -714,8 +714,6 @@ def main(argv):
     log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
     log.info("Cores:        %s", ' '.join([str(v) for v in cores]))
     
-    # Note: Capture uses Bifrost address+socket objects, while output uses
-    #         plain Python address+socket objects.
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
     isock.bind(iaddr)
