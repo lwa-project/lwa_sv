@@ -660,7 +660,7 @@ class BeamformerOp(object):
                             odata = ospan.data_view(np.complex64).reshape(oshape)
                             
                             ## Copy
-                            copy_array(self.tdata, bfidata)
+                            copy_array(self.tdata, idata)
                             
                             ## Beamform
                             self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), self.tdata.transpose(1,2,0), 0.0, self.bdata)
