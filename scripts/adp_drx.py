@@ -1075,6 +1075,7 @@ class PacketizeOp(object):
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
+        self.adata = BFArray(shape=self.ldata.shape, dtype=self.ldata.dtype, space='system')
         
     def main(self):
         global ACTIVE_COR_CONFIG
@@ -1138,7 +1139,8 @@ class PacketizeOp(object):
                         idata = ispan.data_view(np.complex64).reshape(ishape)
                         t0 = time.time()
                         copy_array(self.ldata, idata)
-                        odata = self.ldata.transpose(3,1,0,4,2)
+                        copy_array(self.adata, self.ldata)
+                        odata = self.adata.transpose(3,1,0,4,2)
                         
                         bytesSent, bytesStart = 0, time.time()
                         
