@@ -511,6 +511,9 @@ class BeamformerOp(object):
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+            
         # Get the current pipeline time to figure out if we need to shelve a command or not
         pipeline_time = time_tag / FS
         
@@ -730,6 +733,9 @@ class CorrelatorOp(object):
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+            
         global ACTIVE_COR_CONFIG
         
         # Get the current pipeline time to figure out if we need to shelve a command or not
