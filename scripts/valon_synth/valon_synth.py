@@ -50,9 +50,9 @@ NACK = 0x15
 
 class Synthesizer:
     def __init__(self, port):
-        self.conn = serial.Serial(None, 9600, serial.EIGHTBITS,
+        self.conn = serial.Serial(port, 9600, serial.EIGHTBITS,
                                   serial.PARITY_NONE, serial.STOPBITS_ONE)
-        self.conn.setPort(port)
+        self.conn.close()
 
     def _generate_checksum(self, bytes):
         return chr(sum([ord(b) for b in bytes]) % 256)
