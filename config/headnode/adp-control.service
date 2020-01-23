@@ -7,6 +7,13 @@ Wants=network-online.target
 # Run as the specified user
 User=adp
 
+# Automatically restart process if crashed
+Restart=on-failure
+
+# Limit respawns to <count> many times within <interval_secs>
+StartLimitIntervalSec=5
+StartLimitBurst=5
+
 # Run before process
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
