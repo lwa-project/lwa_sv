@@ -1,0 +1,19 @@
+[Unit]
+Description=ADP MCS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Run as the specified user
+User=adp
+
+# Run before process
+ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
+
+ExecStart=/bin/bash -ec '\
+python /usr/local/bin/adp_control.py \
+	 --configfile /usr/local/share/adp/adp_config.json \
+	 --logfile    /home/adp/log/adp-control.log'
+
+[Install]
+WantedBy=multi-user.target

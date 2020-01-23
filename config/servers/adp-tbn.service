@@ -1,0 +1,39 @@
+[Unit]
+Description=ADP TBN pipeline
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Run as the specified user
+User=adp
+
+# Allow unlimited locked memory
+LimitMEMLOCK=infinity
+
+# Have a safety net to kill off recalcitrant pipelines
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Run before process
+ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
+
+# Setup the environment
+Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8/src/bifrost
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8/lib:$LD_LIBRARY_PATH
+Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8/python:$PYTHONPATH
+
+Environment=LD_PRELOAD=libvma.so
+Environment=VMA_TRACELEVEL=0
+Environment=VMA_RX_POLL=1000
+Environment=VMA_INTERNAL_THREAD_AFFINITY=1
+Environment=VMA_RX_PREFETCH_BYTES=128
+Environment=VMA_THREAD_MODE=0
+Environment=VMA_MTU=9000 
+
+ExecStart=/bin/bash -ec '\
+python /usr/local/bin/adp_tbn.py \
+	 --configfile /usr/local/share/adp/adp_config.json \
+	 --logfile    /home/adp/log/adp-tbn.%H.log'
+
+[Install]
+WantedBy=multi-user.target

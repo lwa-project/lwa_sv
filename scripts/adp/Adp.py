@@ -524,14 +524,14 @@ class AdpServerMonitorClient(object):
         
     def stop_tbn(self):
         try:
-            self._shell_command("stop adp-tbn")
+            self._shell_command("systemctl stop adp-tbn")
             return True
         except subprocess.CalledProcessError:
             return False
             
     def start_tbn(self):
         try:
-            self._shell_command("start adp-tbn")
+            self._shell_command("systemctl start adp-tbn")
             return True
         except subprocess.CalledProcessError:
             return False
@@ -561,14 +561,14 @@ class AdpServerMonitorClient(object):
             
     def stop_tengine(self, tuning=0):
         try:
-            self._shell_command("stop adp-tengine-%i" % tuning)
+            self._shell_command("systemctl stop adp-tengine-%i" % tuning)
             return True
         except subprocess.CalledProcessError:
             return False
             
     def start_tengine(self, tuning=0):
         try:
-            self._shell_command("start adp-tengine-%i" % tuning)
+            self._shell_command("systemctl start adp-tengine-%i" % tuning)
             return True
         except subprocess.CalledProcessError:
             return False
@@ -598,14 +598,14 @@ class AdpServerMonitorClient(object):
             
     def stop_drx(self, tuning=0):
         try:
-            self._shell_command("stop adp-drx-%i" % tuning)
+            self._shell_command("systemctl stop adp-drx-%i" % tuning)
             return True
         except subprocess.CalledProcessError:
             return False
         
     def start_drx(self, tuning=0):
         try:
-            self._shell_command("start adp-drx-%i" % tuning)
+            self._shell_command("systemctl start adp-drx-%i" % tuning)
             return True
         except subprocess.CalledProcessError:
             return False
