@@ -1,5 +1,5 @@
 [Unit]
-Description=ADP DRX pipeline - tuning 0
+Description=ADP DRX Pipeline - Tuning 0
 After=network-online.target
 Wants=network-online.target
 

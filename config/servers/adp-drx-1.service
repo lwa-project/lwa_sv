@@ -1,5 +1,5 @@
 [Unit]
-Description=ADP DRX pipeline - tuning 1
+Description=ADP DRX Pipeline - Tuning 1
 After=network-online.target
 Wants=network-online.target
 
@@ -35,7 +35,7 @@ numactl --cpunodebind=1 --membind=1 -- \
 python /usr/local/bin/adp_drx.py \
 	 --tuning     1 \
 	 --configfile /usr/local/share/adp/adp_config.json \
-	 --logfile    /home/adp/log/adp-tengine-1.%H.log'
+	 --logfile    /home/adp/log/adp-drx-1.%H.log'
 
 [Install]
 WantedBy=multi-user.target
