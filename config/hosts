@@ -7,8 +7,8 @@ ff02::2 ip6-allrouters
 # Internet (eth0)
 #131.142.8.137	adp.cfa.harvard.edu	adp
 #131.142.8.137	adp.cfa.harvard.edu
-#10.1.1.10 adp
-10.1.1.10 adp-external
+#10.1.2.10 adp
+10.1.2.10 adp-external
 
 # Management network (eth1 on adp, eth0 on adpX)
 169.254.128.1	adp0 adp

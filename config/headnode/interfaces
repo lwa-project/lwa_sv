@@ -8,8 +8,8 @@ iface lo inet loopback
 # Internet connection
 auto eth0
 iface eth0 inet static
- address 10.1.1.10
- gateway 10.1.1.204
+ address 10.1.2.10
+ gateway 10.1.2.204
  #address 198.59.133.190
  #gateway 198.59.133.1
  netmask 255.255.255.0
