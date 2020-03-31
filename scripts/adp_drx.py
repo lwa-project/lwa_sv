@@ -15,6 +15,7 @@ import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
 from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
+from bifrost.reduce import reduce as Reduce
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
@@ -723,7 +724,9 @@ class CorrelatorOp(object):
         if self.gpu != -1:
             BFSetGPU(self.gpu)
         ## Metadata
+        self.decim = 4
         nchan = self.nchan_max
+        ochan = nchan//self.decim
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = LinAlg()
@@ -731,7 +734,8 @@ class CorrelatorOp(object):
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
-        self.cdata = BFArray(shape=(nchan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
+        self.ddata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='cf32', space='cuda')
+        self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -830,10 +834,11 @@ class CorrelatorOp(object):
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
+                ochan  = nchan // self.decim
                 igulp_size = self.ntime_gulp*nchan*nstand*npol        # 4+4 complex
-                ogulp_size = nchan*nstand*npol*nstand*npol*8            # complex64
+                ogulp_size = ochan*nstand*npol*nstand*npol*8            # complex64
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
-                oshape = (nchan,nstand*npol,nstand*npol)
+                oshape = (ochan,nstand*npol,nstand*npol)
                 
                 # Figure out where we need to be in the buffer to be at a second boundary
                 ticksPerTime = int(FS) / int(CHAN_BW)
@@ -847,6 +852,7 @@ class CorrelatorOp(object):
                 base_time_tag = iseq.time_tag + soffset*ticksPerTime        # Correct for offset
                 
                 ohdr = ihdr.copy()
+                ohdr['nchan'] = ochan
                 ohdr['nbit'] = 32
                 ohdr['complex'] = True
                 ohdr_str = json.dumps(ohdr)
@@ -900,11 +906,18 @@ class CorrelatorOp(object):
                             copy_array(self.tdata, idata)
                             
                             ## Unpack
+                            self.udata = self.udata.reshape(*self.tdata)
                             Unpack(self.tdata, self.udata)
+
+                            ## Decimate
+                            self.udata = self.udata.reshape(-1,ochan,self.decim,nstand*npol)
+                            self.ddata = self.ddata.reshape(-1,ochan,1,nstand*npol)
+                            Reduce(self.udata, self.ddata, op='sum')
+                            self.ddata = self.ddata reshape(-1,ochan,nstand*npol)
                             
                             ## Correlate
                             cscale = 1.0 if nAccumulate else 0.0
-                            self.cdata = self.bfcc.matmul(gain_act, None, self.udata.transpose((1,0,2)), cscale, self.cdata)
+                            self.cdata = self.bfcc.matmul(gain_act, None, self.ddata.transpose((1,0,2)), cscale, self.cdata)
                             nAccumulate += self.ntime_gulp
                             
                             curr_time = time.time()
@@ -1397,7 +1410,7 @@ def main(argv):
                                 nchan_max=nchan_max, 
                                 core=ccore, gpu=tuning))
         ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-                               tuning=tuning, nchan_max=nchan_max, npkt_gulp=1, 
+                               tuning=tuning, nchan_max=nchan_max//4, npkt_gulp=1, 
                                core=pcore, gpu=tuning,
                                max_bytes_per_sec=cor_bw_max))
         
