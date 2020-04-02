@@ -906,14 +906,14 @@ class CorrelatorOp(object):
                             copy_array(self.tdata, idata)
                             
                             ## Unpack
-                            self.udata = self.udata.reshape(*self.tdata)
+                            self.udata = self.udata.reshape(*self.tdata.shape)
                             Unpack(self.tdata, self.udata)
 
                             ## Decimate
                             self.udata = self.udata.reshape(-1,ochan,self.decim,nstand*npol)
                             self.ddata = self.ddata.reshape(-1,ochan,1,nstand*npol)
                             Reduce(self.udata, self.ddata, op='sum')
-                            self.ddata = self.ddata reshape(-1,ochan,nstand*npol)
+                            self.ddata = self.ddata.reshape(-1,ochan,nstand*npol)
                             
                             ## Correlate
                             cscale = 1.0 if nAccumulate else 0.0
