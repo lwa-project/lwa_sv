@@ -6,7 +6,7 @@
         "headnode": {
             "local_host":       "0.0.0.0",
             "local_port":       1742,
-            "remote_host":      "10.1.1.2",
+            "remote_host":      "10.1.2.2",
             "remote_host_TEST": "localhost",
             "remote_port":      1743
         },
@@ -37,18 +37,18 @@
     },
     "drx": [
             {
-                "capture_bandwidth": 10.8e6,
-                "beam_count":        2,
+                "capture_bandwidth": 19.8e6,
+                "beam_count":        3,
                 "pipeline_idx":      0,
                 "tengine_idx":       0,
                 "tbf_recorder_idx":  0,
-                "cor_recorder_idx":  3,
+                "cor_recorder_idx":  4,
                 "cpus":              [0, 2, 3, 4, 5, 6],
                 "gpus":              [0]
             }, 
             {
-                "capture_bandwidth": 10.8e6,
-                "beam_count":        2,
+                "capture_bandwidth": 19.8e6,
+                "beam_count":        3,
                 "pipeline_idx":      1,
                 "tengine_idx":       1,
                 "tbf_recorder_idx":  0,
@@ -63,7 +63,7 @@
     "tbn": {
         "capture_bandwidth": 200e3,
         "pipeline_idx":      2,
-        "recorder_idx":      2,
+        "recorder_idx":      3,
         "cpus":              [1, 13, 13],
         "gpus":              [1]
     },
@@ -122,13 +122,13 @@
     "tengine": [
                 {
                     "pipeline_idx":      0,
-                    "recorder_idx":      [0, 1],
+                    "recorder_idx":      [0, 1, 2],
                     "cpus":              [0, 2, 3, 4, 5],
                     "gpus":              [0]
                 },
                 {
                     "pipeline_idx":      1,
-                    "recorder_idx":      [0, 1],
+                    "recorder_idx":      [0, 1, 2],
                     "cpus":              [8, 9, 10, 11, 12],
                     "gpus":              [1]
                 }
@@ -150,13 +150,13 @@
                     "max_bytes_per_sec": 104851000
                 },
                 {
-                    "host":              "orville", 
-                    "port":              11000,
+                    "host":              "mcg40-dr4", 
+                    "port":              10000,
                     "max_bytes_per_sec": 104851000
                 },
                 {
                     "host":              "orville",
-                    "port":              12000,
+                    "port":              11000,
                     "max_bytes_per_sec": 104851000
                 }
     ]
