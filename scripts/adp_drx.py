@@ -872,14 +872,17 @@ class CorrelatorOp(object):
                     navg = navg_seq / int(CHAN_BW/100.0)
                     
                     navg_mod_value = navg_seq * int(FS) / int(CHAN_BW)
+                    print '??', '@', base_time_tag, last_base_time_tag
                     if base_time_tag == last_base_time_tag:
                         ## Sometimes we get into a situation where the frequency changes
                         ## in less than an integration period.  To deal with this we need to 
                         ## skip forward to the next integration boundary and go from there
                         base_time_tag = base_time_tag + navg_mod_value
                         nAccumulate = -navg_mod_value / ticksPerTime
+                        print '&&', '@', base_time_tag, 'with', nAccumulate
                     start_time_tag = int(base_time_tag / navg_mod_value) * navg_mod_value
                     nAccumulate += (base_time_tag - start_time_tag) / ticksPerTime
+                    print '&&&&', '@', start_time_tag, 'with', nAccumulate
                     
                     ohdr['time_tag']  = base_time_tag
                     ohdr['start_tag'] = int(base_time_tag / navg_mod_value) * navg_mod_value
