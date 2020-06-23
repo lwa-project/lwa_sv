@@ -465,7 +465,7 @@ class TriggeredDumpOp(object):
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+    def __init__(self, log, iring, oring, cgainsFile, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
         self.log   = log
         self.iring = iring
         self.oring = oring
@@ -475,6 +475,7 @@ class BeamformerOp(object):
         self.guarantee = guarantee
         self.core = core
         self.gpu = gpu
+	self.cgainsFile = cgainsFile
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -503,15 +504,28 @@ class BeamformerOp(object):
         ## Delays and gains
         self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
         self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
-        self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
+        #self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
+	##Populate the cgains array with the values from cgainsFile.
+	cgains = np.load(cgainsFile)['cgains']
+	
+	##Figure out which indices to pull for the given tuning
+	good = np.where(np.arange(cgains.shape[0]) // 2 % 2 == self.tuning)[0]
+	self.cgains = cgains[good,:,:]
+
+	self.cgains = BFArray(cgains, dtype=np.complex64, space='cuda')
+
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+
+        #Test statement to immediately return false so that custom beam runs won't update pointing.
+        return False
+
         if self.gpu != -1:
             BFSetGPU(self.gpu)
             
