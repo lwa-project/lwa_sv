@@ -9,28 +9,24 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-from lsl.common.stations import parse_ssmif
+from lsl.common import stations
 from lsl.misc import parser as aph
 from lsl.misc import beamformer
 
 from astropy.constants import c as vLight
 vLight = vLight.to('m/s').value
 
-from adp import Adp, AdpConfig
 from adp.AdpCommon import *
 
 def main(args):
 
-    #Read in the SSMIF and build the station.
-    station = parse_ssmif('../Misc/LWASV_SSMIF_CURRENT.txt')
+    #Build the station.
+    station = stations.lwasv
     antennas = station.antennas
  
     #Set up the antenna locations and find the center of the array.
     xyz = np.array([(a.stand.x, a.stand.y, a.stand.z) for a in antennas]).T
     center = np.mean(xyz[:,:510], axis=1)
-
-    #Read in the ADP config file.
-    config = AdpConfig.parse_config_file('../config/adp_config.json')
 
     #Set up the frequencies.
     #Center freqs.
