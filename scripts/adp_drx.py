@@ -344,6 +344,11 @@ class TriggeredDumpOp(object):
         #ntime_dump = 0.1*1*25000
         ntime_dump = int(round(time_tag_to_seq_float(samples)))
         
+        max_bytes_per_second = self.max_bytes_per_second
+        if local:
+            max_bytes_per_second = 157286400 # Limit to 150 MB/s
+            speed_factor = 1
+            
         print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
         if not local:
             self.tbfLock.set()
@@ -435,8 +440,8 @@ class TriggeredDumpOp(object):
                         except Exception as e:
                             print type(self).__name__, 'Sending Error', str(e)
                             
-                        while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
-                            time.sleep(0.001)
+                    while bytesSent/(time.time()-bytesStart) >= max_bytes_per_sec*speed_factor:
+                        time.sleep(0.001)
                             
         #if local:
         #    for pkt in pkts:
