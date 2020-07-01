@@ -470,7 +470,7 @@ class TriggeredDumpOp(object):
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-    def __init__(self, log, iring, oring, cgainsFile, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
         self.log   = log
         self.iring = iring
         self.oring = oring
@@ -480,7 +480,6 @@ class BeamformerOp(object):
         self.guarantee = guarantee
         self.core = core
         self.gpu = gpu
-	self.cgainsFile = cgainsFile
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -516,7 +515,9 @@ class BeamformerOp(object):
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
-	##Populate the cgains array with the values from cgainsFile.
+	##Populate the cgains array with the values from the appropriate file containing the complex gains.
+        hostname = socket.gethostname()
+        cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
 	cgains = np.load(cgainsFile)['cgains']
 	
 	##Figure out which indices to pull for the given tuning

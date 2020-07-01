@@ -7,7 +7,6 @@ import os
 import sys
 import argparse
 import numpy as np
-import matplotlib.pyplot as plt
 
 from lsl.common import stations
 from lsl.misc import parser as aph
@@ -30,21 +29,21 @@ def main(args):
 
     #Set up the frequencies.
     #Center freqs.
-    cFreq1 = 60e6
-    cFreq2 = 75e6
+    cFreq1 = 60.0e6
+    cFreq2 = 75.0e6
 
     nchan_server = 132
     nservers = 6
 
     freqs = np.zeros((2, nservers, nchan_server))
-    for i,cfreq in enumerate(cFreq1, cFreq2):
+    for i, cfreq in enumerate((cFreq1, cFreq2)):
         ch0 = int(round(cfreq / CHAN_BW)) - nservers*nchan_server//2 
 
         freqs[i,:,:] = (ch0 + np.arange(nservers*nchan_server) * CHAN_BW).reshape((nservers, nchan_server))
   
     #Now lets build the complex gains for all frequencies. 
     #shape = (server x beam #/tuning/beam pol x channel x ant pol) (6 x 6 x 132 x 512)
-    cgains = np.zeros((serverFreqs1.shape[0], 12, nchan_server, 512), dtype=np.complex64)
+    cgains = np.zeros((freqs.shape[1], 12, nchan_server, 512), dtype=np.complex64)
 
     for i in range(6): #Loop over servers
         print('Working on server %i...' % (i+1))
@@ -54,10 +53,9 @@ def main(args):
 
             tuning = serverFreqs[j % 2,:]
 
-            x0, y0, theta =  args.azimuth[j // 2], args.elevation[j // 2], args.theta[j // 2]
+            x0, y0, theta =  args.azimuths[j // 2], args.elevations[j // 2], args.thetas[j // 2]
 
             m = 0
-            print('Computing complex gains for beam %i tuning %i pol %i at azimuth %.1f deg and altitude %.1f deg with beam FWHM of %.1f deg' % (j//2 +1, j % 2, x0, y0, theta))
             for freq in tuning:
                 #Find the gains first. We'll use a smooth Gaussian taper for now.
                 att = np.sqrt(np.array([a.cable.attenuation(freq) for a in antennas]))
@@ -99,7 +97,7 @@ def main(args):
 
     #Save the files.
     for i in range(6):
-        np.savez('complexGains_server_'+str(i+1)+'.npz', cgains=cgains[i,:,:,:])
+        np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains[i,:,:,:])
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(
