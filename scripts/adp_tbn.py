@@ -351,7 +351,7 @@ class TEngineOp(object):
                                 prev_time = curr_time
                                 
                                 ## Setup and load
-                                idata = ispan.data_view(np.int8).reshape(ishape)
+                                idata = ispan.data_view('ci4').reshape(ishape)
                                 odata = ospan.data_view(np.int8).reshape((1,)+oshape)
                                 
                                 ## Prune the data
