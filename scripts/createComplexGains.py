@@ -42,8 +42,10 @@ def main(args):
         freqs[i,:,:] = (ch0 + np.arange(nservers*nchan_server) * CHAN_BW).reshape((nservers, nchan_server))
   
     #Now lets build the complex gains for all frequencies. 
-    #shape = (server x beam #/tuning/beam pol x channel x ant pol) (6 x 6 x 132 x 512)
+    #shape = (server x beam #/tuning/beam pol x channel x ant pol) (6 x 12 x 132 x 512)
     cgains = np.zeros((freqs.shape[1], 12, nchan_server, 512), dtype=np.complex64)
+
+    
 
     for i in range(6): #Loop over servers
         print('Working on server %i...' % (i+1))
@@ -84,14 +86,15 @@ def main(args):
                 wgt[[k for k,a in enumerate(antennas) if a.combined_status != 33]] = 0.0
 
                 #Set the weights between 0 and 1.
-                wgt[::2] /= wgt[::2].max() #antenna XX pol weights
-                wgt[1::2] /= wgt[1::2].max() #antenna YY pol weights
+                wgt[::2] /= wgt[::2].max() #antenna X pol weights
+                wgt[1::2] /= wgt[1::2].max() #antenna Y pol weights
 
                 #Compute the delays.
                 delays = beamformer.calc_delay(antennas, freq=freq, azimuth=x0, elevation=y0)
 
-                #Put it all together. The beam XX and YY pols will be the same.
-                cgains[i,2*j:2*(j+1),m,:] = np.tile(wgt*np.exp(2j*np.pi*(freq/1e9)*delays), (2,1))
+                #Put it all together.
+                cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
                 m += 1
 
