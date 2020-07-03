@@ -128,7 +128,7 @@ class CopyOp(object):
         self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        tid = "%s-%i" % (socket.gethostname(), tuning)
+        tid = "%s-drx-%i" % (socket.gethostname(), tuning)
         self.internal_trigger = ISC.InternalTrigger(id=tid)
         
     def main(self):
