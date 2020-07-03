@@ -128,7 +128,8 @@ class CopyOp(object):
         self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.internal_trigger = ISC.InternalTrigger()
+        tid = "%s-%i" % (socket.gethostname(), tuning)
+        self.internal_trigger = ISC.InternalTrigger(id=tid)
         
     def main(self):
         cpu_affinity.set_core(self.core)
@@ -177,6 +178,9 @@ class CopyOp(object):
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
+                                # Is this really needed or is ispan.size always zero when we hit this?
+                                print("too small at %i vs %i" % (ispan.size, igulp_size))
+                                base_time_tag += (ispan.size//(nchan*nstand*npol))*ticksPerTime
                                 continue # Ignore final gulp
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
@@ -442,7 +446,20 @@ class TriggeredDumpOp(object):
                             
                     while bytesSent/(time.time()-bytesStart) >= max_bytes_per_sec*speed_factor:
                         time.sleep(0.001)
-                            
+                        
+            if local:
+                del ldw
+                ofile.close()
+                
+                # Try to make sure that everyone releases the ring lock at the same time
+                ts = time.time()
+                if ts-int(ts) < 0.75:
+                    while time.time() < int(ts)+1:
+                        time.sleep(0.001)
+                else:
+                    while time.time() < int(ts)+2:
+                        time.sleep(0.001)
+                        
         #if local:
         #    for pkt in pkts:
         #        ofile.write(pkt)
@@ -460,13 +477,10 @@ class TriggeredDumpOp(object):
         #            
         #    self.tbfLock.clear()
         
-        if local:
-            del ldw
-            ofile.close()
-        else:
+        if not local:
             self.tbfLock.clear()
             
-        print "TBF DUMP COMPLETE - average rate was %.3f MB/s" % (bytesSent/(time.time()-bytesStart)/1024**2,)
+        print "TBF DUMP COMPLETE at %.3f - average rate was %.3f MB/s" % (time.time(), bytesSent/(time.time()-bytesStart)/1024**2)
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
