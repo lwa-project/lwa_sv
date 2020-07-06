@@ -159,8 +159,9 @@ class CopyOp(object):
                 base_time_tag = iseq.time_tag
                 
                 clear_to_trigger = False
-                if chan0*CHAN_BW > 60e6 and self.tuning == 1:
-                    clear_to_trigger = True
+                ## Turned off 2020/7/6 for ADP data drop testing
+                #if chan0*CHAN_BW > 60e6 and self.tuning == 1:
+                #    clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
                 tchan = min([72, nchan])
                 udata = BFArray(shape=(self.ntime_gulp, tchan, len(to_keep)), dtype=np.complex64)
