@@ -518,13 +518,13 @@ class BeamformerOp(object):
 	##Populate the cgains array with the values from the appropriate file containing the complex gains.
         hostname = socket.gethostname()
         cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
-	cgains = np.load(cgainsFile)['cgains']
+	self.cgains = np.load(cgainsFile)['cgains']
 	
 	##Figure out which indices to pull for the given tuning
-	good = np.where(np.arange(cgains.shape[0]) // 2 % 2 == self.tuning)[0]
-	self.cgains = cgains[good,:,:]
+	good = np.where(np.arange(self.cgains.shape[0]) // 2 % 2 == self.tuning)[0]
+	self.cgains = self.cgains[good,:,:]
 
-	self.cgains = BFArray(cgains, dtype=np.complex64, space='cuda')
+	self.cgains = BFArray(self.cgains, dtype=np.complex64, space='cuda')
 
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
