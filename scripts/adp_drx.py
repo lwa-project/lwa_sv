@@ -128,7 +128,8 @@ class CopyOp(object):
         self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.internal_trigger = ISC.InternalTrigger()
+        tid = "%s-drx-%i" % (socket.gethostname(), tuning)
+        self.internal_trigger = ISC.InternalTrigger(id=tid)
         
     def main(self):
         cpu_affinity.set_core(self.core)
@@ -158,8 +159,9 @@ class CopyOp(object):
                 base_time_tag = iseq.time_tag
                 
                 clear_to_trigger = False
-                if chan0*CHAN_BW > 60e6 and self.tuning == 1:
-                    clear_to_trigger = True
+                ## Turned off 2020/7/6 for ADP data drop testing
+                #if chan0*CHAN_BW > 60e6 and self.tuning == 1:
+                #    clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
                 tchan = min([72, nchan])
                 udata = BFArray(shape=(self.ntime_gulp, tchan, len(to_keep)), dtype=np.complex64)
@@ -177,6 +179,9 @@ class CopyOp(object):
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
+                                # Is this really needed or is ispan.size always zero when we hit this?
+                                print("too small at %i vs %i" % (ispan.size, igulp_size))
+                                base_time_tag += (ispan.size//(nchan*nstand*npol))*ticksPerTime
                                 continue # Ignore final gulp
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
@@ -344,9 +349,9 @@ class TriggeredDumpOp(object):
         #ntime_dump = 0.1*1*25000
         ntime_dump = int(round(time_tag_to_seq_float(samples)))
         
-        max_bytes_per_second = self.max_bytes_per_second
+        max_bytes_per_sec = self.max_bytes_per_sec
         if local:
-            max_bytes_per_second = 157286400 # Limit to 150 MB/s
+            max_bytes_per_sec = 157286400 # Limit to 150 MB/s
             speed_factor = 1
             
         print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
@@ -442,7 +447,20 @@ class TriggeredDumpOp(object):
                             
                     while bytesSent/(time.time()-bytesStart) >= max_bytes_per_sec*speed_factor:
                         time.sleep(0.001)
-                            
+                        
+            if local:
+                del ldw
+                ofile.close()
+                
+                # Try to make sure that everyone releases the ring lock at the same time
+                ts = time.time()
+                if ts-int(ts) < 0.75:
+                    while time.time() < int(ts)+1:
+                        time.sleep(0.001)
+                else:
+                    while time.time() < int(ts)+2:
+                        time.sleep(0.001)
+                        
         #if local:
         #    for pkt in pkts:
         #        ofile.write(pkt)
@@ -460,13 +478,10 @@ class TriggeredDumpOp(object):
         #            
         #    self.tbfLock.clear()
         
-        if local:
-            del ldw
-            ofile.close()
-        else:
+        if not local:
             self.tbfLock.clear()
             
-        print "TBF DUMP COMPLETE - average rate was %.3f MB/s" % (bytesSent/(time.time()-bytesStart)/1024**2,)
+        print "TBF DUMP COMPLETE at %.3f - average rate was %.3f MB/s" % (time.time(), bytesSent/(time.time()-bytesStart)/1024**2)
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]

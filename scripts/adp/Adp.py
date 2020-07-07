@@ -1591,7 +1591,7 @@ class MsgProcessor(ConsumerThread):
                 self.thread_pool.add_task(soft_power_off)
         return 0
         
-    def _wait_until_servers_power(self, target_state, max_wait=30):
+    def _wait_until_servers_power(self, target_state, max_wait=60):
         # TODO: Need to check for ping (or even ssh connectivity) instead of 'power is on'?
         time.sleep(6)
         wait_time = 6
