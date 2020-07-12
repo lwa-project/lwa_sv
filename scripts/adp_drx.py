@@ -530,22 +530,19 @@ class BeamformerOp(object):
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
-	##Populate the cgains array with the values from the appropriate file containing the complex gains.
+        ##Populate the cgains array with the values from the appropriate file containing the complex gains.
         hostname = socket.gethostname()
         cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
-	self.cgains = np.load(cgainsFile)['cgains']
+        self.cgains = np.load(cgainsFile)['cgains']
 	
-	##Figure out which indices to pull for the given tuning
-	good = np.where(np.arange(self.cgains.shape[0]) // 2 % 2 == self.tuning)[0]
-	self.cgains = self.cgains[good,:,:]
+        ##Figure out which indices to pull for the given tuning
+        good = np.where(np.arange(self.cgains.shape[0]) // 2 % 2 == self.tuning)[0]
+        self.cgains = self.cgains[good,:,:]
 
-	self.cgains = BFArray(self.cgains, dtype=np.complex64, space='cuda')
+        self.cgains = BFArray(self.cgains, dtype=np.complex64, space='cuda')
 
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
-
-        #Test statement to immediately return false so that custom beam runs won't update pointing.
-        return False
 
         if self.gpu != -1:
             BFSetGPU(self.gpu)
@@ -557,7 +554,7 @@ class BeamformerOp(object):
         if config:
             ## Pull out the tuning (something unique to DRX/BAM/COR)
             beam, tuning = config[0], config[3]
-            if beam > self.nbeam_max or tuning != self.tuning:
+            if beam > self.nbeam_max or beam = 1 or tuning != self.tuning:
                 return False
                 
             ## Set the configuration time - BAM commands are for the specified slot in the next second
@@ -597,7 +594,7 @@ class BeamformerOp(object):
             if tuning != self.tuning:
                 self.log.info("Beamformer: Not for this tuning, skipping")
                 return False
-                
+             
             # Byteswap to get into little endian
             delays = delays.byteswap().newbyteorder()
             gains = gains.byteswap().newbyteorder()

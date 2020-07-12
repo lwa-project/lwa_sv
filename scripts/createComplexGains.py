@@ -45,8 +45,6 @@ def main(args):
     #shape = (server x beam #/tuning/beam pol x channel x ant pol) (6 x 12 x 132 x 512)
     cgains = np.zeros((freqs.shape[1], 12, nchan_server, 512), dtype=np.complex64)
 
-    
-
     for i in range(6): #Loop over servers
         print('Working on server %i...' % (i+1))
         serverFreqs = freqs[:,i,:]
@@ -59,42 +57,46 @@ def main(args):
 
             m = 0
             for freq in tuning:
-                #Find the gains first. We'll use a smooth Gaussian taper for now.
-                att = np.sqrt(np.array([a.cable.attenuation(freq) for a in antennas]))
+                if theta != 0:
+                    #Find the gains first. We'll use a smooth Gaussian taper for now.
+                    att = np.sqrt(np.array([a.cable.attenuation(freq) for a in antennas]))
 
-                #Compute desired perpendicular baseline (r_u) and required parallel baseline (r_v)
-                #for a given pointing such that the projected r_v equals r_u. The line of sight is along the v-axis (y' in the paper).
-                r_u = (vLight/(freq) / (theta*np.pi/180.0))
-                r_v = r_u / np.sin(y0*np.pi/180.0)
+                    #Compute desired perpendicular baseline (r_u) and required parallel baseline (r_v)
+                    #for a given pointing such that the projected r_v equals r_u. The line of sight is along the v-axis (y' in the paper).
+                    r_u = (vLight/(freq) / (theta*np.pi/180.0))
+                    r_v = r_u / np.sin(y0*np.pi/180.0)
 
-                #Apply a Gaussian weighting scheme across the dipoles.
-                sigma_u = r_u / (2.0*np.sqrt(2.0*np.log(5.0)))
-                sigma_v = r_v / (2.0*np.sqrt(2.0*np.log(5.0)))
+                    #Apply a Gaussian weighting scheme across the dipoles.
+                    sigma_u = r_u / (2.0*np.sqrt(2.0*np.log(5.0)))
+                    sigma_v = r_v / (2.0*np.sqrt(2.0*np.log(5.0)))
 
-                #Roation matrix describing the u (x') and v (y') coordinates.   
-                rot = np.array([[np.cos(x0*np.pi/180), -np.sin(x0*np.pi/180.0), 0], [np.sin(x0*np.pi/180), np.cos(x0*np.pi/180), 0], [0, 0, 1]])
+                    #Roation matrix describing the u (x') and v (y') coordinates.   
+                    rot = np.array([[np.cos(x0*np.pi/180), -np.sin(x0*np.pi/180.0), 0], [np.sin(x0*np.pi/180), np.cos(x0*np.pi/180), 0], [0, 0, 1]])
 
-                xyz2 = xyz - np.array([[center[0]], [center[1]], [0]])
+                    xyz2 = xyz - np.array([[center[0]], [center[1]], [0]])
 
-                uvw = np.matmul(rot,xyz2)
+                    uvw = np.matmul(rot,xyz2)
 
-                wgt = np.zeros(len(antennas))
+                    wgt = np.zeros(len(antennas))
 
-                for k in range(wgt.size):
-                    wgt[k] = att[k]*np.exp(-(uvw[0,k]**2/(2*sigma_u**2) + uvw[1,k]**2/(2*sigma_v**2)))
+                    for k in range(wgt.size):
+                        wgt[k] = att[k]*np.exp(-(uvw[0,k]**2/(2*sigma_u**2) + uvw[1,k]**2/(2*sigma_v**2)))
 
-                wgt[[k for k,a in enumerate(antennas) if a.combined_status != 33]] = 0.0
+                    wgt[[k for k,a in enumerate(antennas) if a.combined_status != 33]] = 0.0
 
-                #Set the weights between 0 and 1.
-                wgt[::2] /= wgt[::2].max() #antenna X pol weights
-                wgt[1::2] /= wgt[1::2].max() #antenna Y pol weights
+                    #Set the weights between 0 and 1.
+                    wgt[::2] /= wgt[::2].max() #antenna X pol weights
+                    wgt[1::2] /= wgt[1::2].max() #antenna Y pol weights
 
-                #Compute the delays.
-                delays = beamformer.calc_delay(antennas, freq=freq, azimuth=x0, elevation=y0)
+                    #Compute the delays for a custom beam which uses the  proper delays for the desired frequency.
+                    delays = beamformer.calc_delay(antennas, freq=freq, azimuth=x0, elevation=y0)
 
-                #Put it all together.
-                cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+                    #Put it all together.
+                    cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                    cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+
+                else:
+                    cgains[i,2*j:2*(j+1),m,:] = np.zeros((2,512))
 
                 m += 1
 
@@ -113,8 +115,6 @@ if __name__ == '__main__':
 	parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
 				help='elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
 	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_float, default=5.0,
-				help='shaped beam width in degrees (Takes up to 3 numbers)')
+				help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
 	args = parser.parse_args()
 	main(args)
-
-
