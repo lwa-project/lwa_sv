@@ -114,7 +114,7 @@ if __name__ == '__main__':
 				help='azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
 	parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
 				help='elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
-	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_float, default=5.0,
+	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
 				help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
 	args = parser.parse_args()
 	main(args)
