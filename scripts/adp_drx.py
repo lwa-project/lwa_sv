@@ -554,7 +554,7 @@ class BeamformerOp(object):
         if config:
             ## Pull out the tuning (something unique to DRX/BAM/COR)
             beam, tuning = config[0], config[3]
-            if beam > self.nbeam_max or beam = 1 or tuning != self.tuning:
+            if beam > self.nbeam_max or beam == 1 or tuning != self.tuning:
                 return False
                 
             ## Set the configuration time - BAM commands are for the specified slot in the next second
