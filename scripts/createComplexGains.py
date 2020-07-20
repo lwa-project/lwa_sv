@@ -88,8 +88,9 @@ def main(args):
                     wgt[::2] /= wgt[::2].max() #antenna X pol weights
                     wgt[1::2] /= wgt[1::2].max() #antenna Y pol weights
 
-                    #Compute the delays for a custom beam which uses the  proper delays for the desired frequency.
+                    #Compute the delays (nanoseconds) for a custom beam which uses the proper delays for the desired frequency.
                     delays = beamformer.calc_delay(antennas, freq=freq, azimuth=x0, elevation=y0)
+                    delays *= 1e9
 
                     #Put it all together.
                     cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X

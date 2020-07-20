@@ -628,7 +628,7 @@ class BeamformerOp(object):
             # Compute the complex gains needed for the beamformer
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
-            for beam in xrange(1, self.nbeam_max+1):
+            for beam in xrange(2, self.nbeam_max+1):
                 self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
                                                  * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
                 self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
