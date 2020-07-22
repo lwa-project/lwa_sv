@@ -495,6 +495,8 @@ class BeamformerOp(object):
         self.guarantee = guarantee
         self.core = core
         self.gpu = gpu
+
+        self.STATIC_BEAMS = (1,)
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -554,7 +556,7 @@ class BeamformerOp(object):
         if config:
             ## Pull out the tuning (something unique to DRX/BAM/COR)
             beam, tuning = config[0], config[3]
-            if beam > self.nbeam_max or beam == 1 or tuning != self.tuning:
+            if beam > self.nbeam_max or tuning != self.tuning or beam in self.STATIC_BEAMS:
                 return False
                 
             ## Set the configuration time - BAM commands are for the specified slot in the next second
@@ -628,13 +630,14 @@ class BeamformerOp(object):
             # Compute the complex gains needed for the beamformer
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
-            for beam in xrange(2, self.nbeam_max+1):
-                self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
-                                                 * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
-                self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
-                                                 * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
-                BFSync()
-                self.log.info('  Complex gains set - beam %i' % beam)
+            for beam in xrange(1, self.nbeam_max+1):
+                if beam not in self.STATIC_BEAMS:
+                    self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
+                                                    * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
+                    self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
+                                                    * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
+                    BFSync()
+                    self.log.info('  Complex gains set - beam %i' % beam)
                 
             return True
             
