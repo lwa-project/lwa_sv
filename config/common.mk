@@ -55,7 +55,8 @@ $(RSYSLOG_CONF): ./rsyslog.conf
     cp $< $@
     mkdir /var/log/adp
     chown syslog:adm /var/log/adp
-    chmod 755 /var/log/adp
+    chmod 750 /var/log/adp
+    service rsyslog restart
 
 .PHONY: resolvconf
 $(RESOLVCONF): ./resolv.conf.d_tail
