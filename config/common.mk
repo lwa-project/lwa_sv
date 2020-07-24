@@ -18,6 +18,7 @@ SOCK_WMEM_CONF            ?= /proc/sys/net/core/wmem_max
 SOCK_RMEM_CONF            ?= /proc/sys/net/core/rmem_max
 SOCK_BUF_LIMIT            ?= "536870912"
 SYSCTL_CONF               ?= /etc/sysctl.conf
+RSYSLOG_CONF              ?= /etc/rsyslog.d/10_adp.conf
 DATA_NETWORK_IFACE        ?= p5p1
 IRQBALANCE_CONF           ?= /etc/default/irqbalance
 
@@ -48,6 +49,13 @@ $(SYSCTL_CONF): ./sysctl.conf
 	cp $< $@
 	sysctl -p
 sysctl: $(SYSCTL_CONF)
+
+.PHONY: rsyslog
+$(RSYSLOG_CONF): ./rsyslog.conf
+    cp $< $@
+    mkdir /var/log/adp
+    chown syslog:adm /var/log/adp
+    chmod 755 /var/log/adp
 
 .PHONY: resolvconf
 $(RESOLVCONF): ./resolv.conf.d_tail

@@ -14,6 +14,11 @@ Restart=on-failure
 StartLimitIntervalSec=5
 StartLimitBurst=5
 
+# Logging
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=adp-control
+
 # Run before process
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
