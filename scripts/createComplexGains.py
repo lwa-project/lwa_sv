@@ -92,6 +92,9 @@ def main(args):
                     delays = beamformer.calc_delay(antennas, freq=freq, azimuth=x0, elevation=y0)
                     delays *= 1e9
 
+                    #Convert to the corrective term in order to get all the antennas phased up.
+                    delays = delays.max() - delays
+
                     #Put it all together.
                     cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
                     cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
