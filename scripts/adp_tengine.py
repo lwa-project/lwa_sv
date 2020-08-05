@@ -591,8 +591,8 @@ class DualPacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
@@ -717,8 +717,8 @@ class TriplePacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
@@ -847,8 +847,8 @@ class QuadruplePacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
