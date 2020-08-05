@@ -14,6 +14,11 @@ LimitMEMLOCK=infinity
 KillSignal=SIGTERM
 TimeoutStopSec=20
 
+# Logging
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=adp-tengine-0
+
 # Run before process
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
@@ -29,6 +34,8 @@ Environment=VMA_INTERNAL_THREAD_AFFINITY=0
 Environment=VMA_RX_PREFETCH_BYTES=128
 Environment=VMA_THREAD_MODE=0
 Environment=VMA_MTU=9000 
+
+Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/bin/bash -ec '\
 numactl --cpunodebind=0 --membind=0 -- \

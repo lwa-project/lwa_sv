@@ -159,9 +159,8 @@ class CopyOp(object):
                 base_time_tag = iseq.time_tag
                 
                 clear_to_trigger = False
-                ## Turned off 2020/7/6 for ADP data drop testing
-                #if chan0*CHAN_BW > 60e6 and self.tuning == 1:
-                #    clear_to_trigger = True
+                if chan0*CHAN_BW > 60e6 and self.tuning == 1:
+                    clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
                 tchan = min([72, nchan])
                 udata = BFArray(shape=(self.ntime_gulp, tchan, len(to_keep)), dtype=np.complex64)
@@ -179,9 +178,7 @@ class CopyOp(object):
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
-                                # Is this really needed or is ispan.size always zero when we hit this?
                                 print("too small at %i vs %i" % (ispan.size, igulp_size))
-                                base_time_tag += (ispan.size//(nchan*nstand*npol))*ticksPerTime
                                 continue # Ignore final gulp
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
@@ -351,9 +348,13 @@ class TriggeredDumpOp(object):
         
         max_bytes_per_sec = self.max_bytes_per_sec
         if local:
-            max_bytes_per_sec = 157286400 # Limit to 150 MB/s
-            speed_factor = 1
-            
+            if os.path.exists(TRIGGERING_ACTIVE_FILE):
+                max_bytes_per_sec = 8388608 # Limit to 8 MB/s
+                speed_factor = 1
+            else:
+                max_bytes_per_sec = 104857600 # Limit to 100 MB/s
+                speed_factor = 1
+                
         print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
         if not local:
             self.tbfLock.set()

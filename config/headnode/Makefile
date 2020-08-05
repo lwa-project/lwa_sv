@@ -7,4 +7,4 @@ include ../common.mk
 
 all:
 
-configure: configure_grub iptables network resolvconf dnsmasq configure_hosts configure_ethers ssh nfs_server ntp dev_ttyUSB0 sysctl socket_buffers irq_affinity rclocal
+configure: configure_grub iptables network resolvconf dnsmasq configure_hosts configure_ethers ssh nfs_server ntp dev_ttyUSB0 sysctl rsyslog socket_buffers irq_affinity rclocal
