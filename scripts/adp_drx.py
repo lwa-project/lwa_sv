@@ -348,7 +348,7 @@ class TriggeredDumpOp(object):
         
         max_bytes_per_sec = self.max_bytes_per_sec
         if local:
-            if os.path.exists(TRIGGERING_ACTIVE_FILE)
+            if os.path.exists(TRIGGERING_ACTIVE_FILE):
                 max_bytes_per_sec = 8388608 # Limit to 8 MB/s
                 speed_factor = 1
             else:
