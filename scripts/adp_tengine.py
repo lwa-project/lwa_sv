@@ -743,7 +743,7 @@ class TriplePacketizeOp(object):
                                           'reserve_time': -1, 
                                           'process_time': process_time,})
 
-class QuadrupalPacketizeOp(object):
+class QuadruplePacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
         self.log   = log
@@ -1049,7 +1049,7 @@ def main(argv):
     elif nbeam == 3:
         PacketizerOp = TriplePacketizeOp
     elif nbeam == 4:
-        PacketizerOp = QuadrupalPacketizeOp
+        PacketizerOp = QuadruplePacketizeOp
     else:
         raise RuntimeError("Unsupported number of beams: %i" % nbeam)
     ops.append(PacketizerOp(log, tengine_ring,
