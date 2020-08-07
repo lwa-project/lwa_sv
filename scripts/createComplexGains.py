@@ -39,7 +39,7 @@ def main(args):
     for i, cfreq in enumerate((cFreq1, cFreq2)):
         ch0 = int(round(cfreq / CHAN_BW)) - nservers*nchan_server//2 
 
-        freqs[i,:,:] = (ch0 + np.arange(nservers*nchan_server) * CHAN_BW).reshape((nservers, nchan_server))
+        freqs[i,:,:] = ((ch0 + np.arange(nservers*nchan_server)) * CHAN_BW).reshape((nservers, nchan_server))
   
     #Now lets build the complex gains for all frequencies. 
     #shape = (server x beam #/tuning/beam pol x channel x ant pol) (6 x 12 x 132 x 512)
@@ -96,8 +96,8 @@ def main(args):
                     delays = delays.max() - delays
 
                     #Put it all together.
-                    cgains[i,2*j,m,::2] = wgt[::2]*np.exp(2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                    cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+                    cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                    cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
                 else:
                     cgains[i,2*j:2*(j+1),m,:] = np.zeros((2,512))
