@@ -59,11 +59,13 @@ def main(args):
             for freq in tuning:
                 if theta != 0:
                     #Find the gains first. We'll use a smooth Gaussian taper for now.
+
+                    #Correct for cable attenuation.
                     att = np.sqrt(np.array([a.cable.attenuation(freq) for a in antennas]))
 
                     #Compute desired perpendicular baseline (r_u) and required parallel baseline (r_v)
                     #for a given pointing such that the projected r_v equals r_u. The line of sight is along the v-axis (y' in the paper).
-                    r_u = (vLight/(freq) / (theta*np.pi/180.0))
+                    r_u = (vLight/freq / (theta*np.pi/180.0))
                     r_v = r_u / np.sin(y0*np.pi/180.0)
 
                     #Apply a Gaussian weighting scheme across the dipoles.
