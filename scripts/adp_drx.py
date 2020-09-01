@@ -8,7 +8,7 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPVerbsCapture as UDPCapture
 from bifrost.packet_writer import HeaderInfo, DiskWriter, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
@@ -355,7 +355,7 @@ class TriggeredDumpOp(object):
                 max_bytes_per_sec = 104857600 # Limit to 100 MB/s
                 speed_factor = 1
                 
-        print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
+        print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locally' if local else ''))
         if not local:
             self.tbfLock.set()
         with self.iring.open_sequence_at(dump_time_tag, guarantee=True) as iseq:
@@ -536,7 +536,7 @@ class BeamformerOp(object):
         ##Populate the cgains array with the values from the appropriate file containing the complex gains.
         hostname = socket.gethostname()
         cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
-        self.cgains = np.load(cgainsFile)['cgains']
+        self.cgains = np.load(cgainsFile)['cgains'][:8,:,:] #Temporary as long as LWA-SV is limited to 2 beams.
 	
         ##Figure out which indices to pull for the given tuning
         good = np.where(np.arange(self.cgains.shape[0]) // 2 % 2 == self.tuning)[0]
@@ -588,7 +588,7 @@ class BeamformerOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuation at %.1f" % pipeline_time
+                #print "No pending configuration at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -766,7 +766,7 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = LinAlg()
-        ## Intermidiate arrays
+        ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
@@ -818,7 +818,7 @@ class CorrelatorOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuation at %.1f" % pipeline_time
+                #print "No pending configuration at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -1228,8 +1228,8 @@ class PacketizeOp(object):
                         process_time = curr_time - prev_time
                         prev_time = curr_time
                         self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                    'reserve_time': -1, 
-                                                    'process_time': process_time,})
+                                                  'reserve_time': -1, 
+                                                  'process_time': process_time,})
                           
                     # Reset to move on to the next input sequence?
                     if not reset_sequence:

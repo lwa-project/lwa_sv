@@ -38,7 +38,7 @@
     "drx": [
             {
                 "capture_bandwidth": 19.8e6,
-                "beam_count":        3,
+                "beam_count":        2,
                 "pipeline_idx":      0,
                 "tengine_idx":       0,
                 "tbf_recorder_idx":  0,
@@ -48,7 +48,7 @@
             }, 
             {
                 "capture_bandwidth": 19.8e6,
-                "beam_count":        3,
+                "beam_count":        2,
                 "pipeline_idx":      1,
                 "tengine_idx":       1,
                 "tbf_recorder_idx":  0,
