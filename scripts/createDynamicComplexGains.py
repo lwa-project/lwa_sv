@@ -46,15 +46,15 @@ def main(args):
     azimuths, elevations = beamPointings['azs'], beamPointings['alts']
 
     #Now lets build the complex gains for all frequencies. 
-    #shape = (pointing x server x beam #/tuning/beam pol x channel x ant pol) (272 x 6 x 12 x 132 x 512)
-    cgains = np.zeros((azimuths.size, freqs.shape[1], 12, nchan_server, 512), dtype=np.complex64)
+    #shape = (pointing x beam #/tuning/beam pol x channel x ant pol) (272 x 6 x 12 x 132 x 512)
+    cgains = np.zeros((azimuths.size, 12, nchan_server, 512), dtype=np.complex64)
 
-    for i in range(azimuths.size):
+    for i in range(6): #Loop over servers
+        print 'Generating complex gains for server %i' % (i+1)
+        serverFreqs = freqs[:,i,:]
 
-        x0, y0 = azimuths[i], elevations[i]
-
-        for j in range(6): #Loop over servers
-            serverFreqs = freqs[:,j,:]
+        for j in range(azimuths.size): #Loop over pointings
+            x0, y0 = azimuths[j], elevations[j]
 
             for k in range(6): #Loop over beams/tunings
 
@@ -62,8 +62,7 @@ def main(args):
 
                 theta = args.thetas[k // 2]
 
-                m = 0
-                for freq in tuning:
+                for m, freq in enumerate(tuning):
                     if theta != 0:
                         #Find the gains first. We'll use a smooth Gaussian taper for now.
                         att = np.sqrt(np.array([a.cable.attenuation(freq) for a in antennas]))
@@ -103,17 +102,17 @@ def main(args):
                         delays = delays.max() - delays
 
                         #Put it all together.
-                        cgains[i,j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                        cgains[i,j,2*k+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+                        cgains[j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                        cgains[j,2*k+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
                 else:
                     cgains[i,j,2*k:2*(k+1),m,:] = np.zeros((2,512))
 
-                m += 1
+        #Save the file.
+        np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains)
 
-    #Save the files.
-    for i in range(6):
-        np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains[:,i,:,:,:])
+        #Reset cgains to all zeros.
+        cgains = np.zeros(cgains.shape)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(
