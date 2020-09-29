@@ -5,6 +5,7 @@
 
 import os
 import sys
+import time
 import argparse
 import numpy as np
 
@@ -51,6 +52,7 @@ def main(args):
 
     for i in range(6): #Loop over servers
         print 'Generating complex gains for server %i' % (i+1)
+        start = time.time()
         serverFreqs = freqs[:,i,:]
 
         for j in range(azimuths.size): #Loop over pointings
@@ -111,8 +113,11 @@ def main(args):
         #Save the file.
         np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains)
 
+        end = time.time()
+        print 'Finished in %.2f minutes' % (end-start)/60.
+
         #Reset cgains to all zeros.
-        cgains = np.zeros(cgains.shape)
+        cgains = np.zeros(cgains.shape, dtype=np.complex64)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(
