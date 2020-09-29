@@ -105,8 +105,8 @@ def main(args):
                         cgains[j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
                         cgains[j,2*k+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
-                else:
-                    cgains[i,j,2*k:2*(k+1),m,:] = np.zeros((2,512))
+                    else:
+                        cgains[j,2*k:2*(k+1),m,:] = np.zeros((2,512))
 
         #Save the file.
         np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains)
