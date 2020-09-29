@@ -159,8 +159,9 @@ class CopyOp(object):
                 base_time_tag = iseq.time_tag
                 
                 clear_to_trigger = False
-                if chan0*CHAN_BW > 60e6 and self.tuning == 1:
-                    clear_to_trigger = True
+                ## Turned off 2020/7/6 for ADP data drop testing
+                #if chan0*CHAN_BW > 60e6 and self.tuning == 1:
+                #    clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
                 tchan = min([72, nchan])
                 udata = BFArray(shape=(self.ntime_gulp, tchan, len(to_keep)), dtype=np.complex64)
@@ -178,7 +179,9 @@ class CopyOp(object):
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
+                                # Is this really needed or is ispan.size always zero when we hit this?
                                 print("too small at %i vs %i" % (ispan.size, igulp_size))
+                                base_time_tag += (ispan.size//(nchan*nstand*npol))*ticksPerTime
                                 continue # Ignore final gulp
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
@@ -348,14 +351,10 @@ class TriggeredDumpOp(object):
         
         max_bytes_per_sec = self.max_bytes_per_sec
         if local:
-            if os.path.exists(TRIGGERING_ACTIVE_FILE):
-                max_bytes_per_sec = 8388608 # Limit to 8 MB/s
-                speed_factor = 1
-            else:
-                max_bytes_per_sec = 104857600 # Limit to 100 MB/s
-                speed_factor = 1
-                
-        print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locally' if local else ''))
+            max_bytes_per_sec = 157286400 # Limit to 150 MB/s
+            speed_factor = 1
+            
+        print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locallay' if local else ''))
         if not local:
             self.tbfLock.set()
         with self.iring.open_sequence_at(dump_time_tag, guarantee=True) as iseq:
@@ -497,8 +496,9 @@ class BeamformerOp(object):
         self.core = core
         self.gpu = gpu
 
-        self.STATIC_BEAMS = (1,)
-        
+        self.pointing_counter = [0, 0, 0]
+        CUSTOM_BEAMS = (1,2)        
+
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -526,23 +526,21 @@ class BeamformerOp(object):
         ## Delays and gains
         self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
         self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
-        #self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
+        self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
-        ##Populate the cgains array with the values from the appropriate file containing the complex gains.
+        ##Read in the precalculated complex gains for all of the steps of the custom beam.
         hostname = socket.gethostname()
         cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
-        self.cgains = np.load(cgainsFile)['cgains'][:8,:,:] #Temporary as long as LWA-SV is limited to 2 beams.
+        self.complexGains = np.load(cgainsFile)['cgains'][:,:8,:,:]
 	
         ##Figure out which indices to pull for the given tuning
-        good = np.where(np.arange(self.cgains.shape[0]) // 2 % 2 == self.tuning)[0]
-        self.cgains = self.cgains[good,:,:]
-
-        self.cgains = BFArray(self.cgains, dtype=np.complex64, space='cuda')
+        good = np.where(np.arange(self.complexGains.shape[1]) // 2 % 2 == self.tuning)[0]
+        self.complexGains = self.complexGains[:,good,:,:]
 
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -557,7 +555,7 @@ class BeamformerOp(object):
         if config:
             ## Pull out the tuning (something unique to DRX/BAM/COR)
             beam, tuning = config[0], config[3]
-            if beam > self.nbeam_max or tuning != self.tuning or beam in self.STATIC_BEAMS:
+            if beam > self.nbeam_max or tuning != self.tuning:
                 return False
                 
             ## Set the configuration time - BAM commands are for the specified slot in the next second
@@ -588,7 +586,7 @@ class BeamformerOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print "No pending configuation at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -597,29 +595,37 @@ class BeamformerOp(object):
             if tuning != self.tuning:
                 self.log.info("Beamformer: Not for this tuning, skipping")
                 return False
-             
-            # Byteswap to get into little endian
-            delays = delays.byteswap().newbyteorder()
-            gains = gains.byteswap().newbyteorder()
+           
+            if beam in CUSTOM_BEAMS:
+                self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
+                self.cgains[2*(beam-1)+1,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+1,:,:]
+                self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", self.pointing_counter[beam-1], beam) 
+
+                self.pointing_counter[beam-1] += 1 
+
+            else:
+                # Byteswap to get into little endian
+                delays = delays.byteswap().newbyteorder()
+                gains = gains.byteswap().newbyteorder()
             
-            # Unpack and re-shape the delays (to seconds) and gains (to floating-point)
-            delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
-            gains = gains/32767.0
-            gains.shape = (gains.size/2, 2)
+                # Unpack and re-shape the delays (to seconds) and gains (to floating-point)
+                delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
+                gains = gains/32767.0
+                gains.shape = (gains.size/2, 2)
             
-            # Update the internal delay and gain cache so that we can use these later
-            self.delays[2*(beam-1)+0,:] = delays
-            self.delays[2*(beam-1)+1,:] = delays
-            self.gains[2*(beam-1)+0,:] = gains[:,0]
-            self.gains[2*(beam-1)+1,:] = gains[:,1]
+                # Update the internal delay and gain cache so that we can use these later
+                self.delays[2*(beam-1)+0,:] = delays
+                self.delays[2*(beam-1)+1,:] = delays
+                self.gains[2*(beam-1)+0,:] = gains[:,0]
+                self.gains[2*(beam-1)+1,:] = gains[:,1]
             
-            # Compute the complex gains needed for the beamformer
-            freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
-            freqs.shape = (freqs.size, 1)
-            self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) * \
-                                             self.gains[2*(beam-1)+0,:]).astype(np.complex64)
-            self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) * \
-                                             self.gains[2*(beam-1)+1,:]).astype(np.complex64)
+                # Compute the complex gains needed for the beamformer
+                freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
+                freqs.shape = (freqs.size, 1)
+                self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) * \
+                                                self.gains[2*(beam-1)+0,:]).astype(np.complex64)
+                self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) * \
+                                                self.gains[2*(beam-1)+1,:]).astype(np.complex64)
             BFSync()
             self.log.info('  Complex gains set - beam %i' % beam)
             
@@ -632,13 +638,19 @@ class BeamformerOp(object):
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
             for beam in xrange(1, self.nbeam_max+1):
-                if beam not in self.STATIC_BEAMS:
+                if beam in CUSTOM_BEAMS:
+                    self.pointing_counter[beam-1] = 0
+
+                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
+                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+1,:,:]
+
+                else:
                     self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
                                                     * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
                     self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
                                                     * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
-                    BFSync()
-                    self.log.info('  Complex gains set - beam %i' % beam)
+                BFSync()
+                self.log.info('  Complex gains set - beam %i' % beam)
                 
             return True
             
@@ -766,7 +778,7 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = LinAlg()
-        ## Intermediate arrays
+        ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
@@ -818,7 +830,7 @@ class CorrelatorOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print "No pending configuation at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -1228,8 +1240,8 @@ class PacketizeOp(object):
                         process_time = curr_time - prev_time
                         prev_time = curr_time
                         self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                  'reserve_time': -1, 
-                                                  'process_time': process_time,})
+                                                    'reserve_time': -1, 
+                                                    'process_time': process_time,})
                           
                     # Reset to move on to the next input sequence?
                     if not reset_sequence:

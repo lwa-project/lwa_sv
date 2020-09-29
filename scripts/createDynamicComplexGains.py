@@ -42,7 +42,7 @@ def main(args):
         freqs[i,:,:] = ((ch0 + np.arange(nservers*nchan_server)) * CHAN_BW).reshape((nservers, nchan_server))
   
     #Set up the pointings.
-    beamPointings = np.load('Beam_Step_Info.npz')
+    beamPointings = np.load('/home/adp/Achromatic_Beam_Step_Info.npz')
     azimuths, elevations = beamPointings['azs'], beamPointings['alts']
 
     #Now lets build the complex gains for all frequencies. 
