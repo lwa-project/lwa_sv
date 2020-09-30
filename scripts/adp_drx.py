@@ -497,7 +497,7 @@ class BeamformerOp(object):
         self.gpu = gpu
 
         self.pointing_counter = [0, 0, 0]
-        CUSTOM_BEAMS = (1,2)        
+        self.CUSTOM_BEAMS = (1,2)        
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -596,7 +596,7 @@ class BeamformerOp(object):
                 self.log.info("Beamformer: Not for this tuning, skipping")
                 return False
            
-            if beam in CUSTOM_BEAMS:
+            if beam in self.CUSTOM_BEAMS:
                 self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
                 self.cgains[2*(beam-1)+1,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+1,:,:]
                 self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", self.pointing_counter[beam-1], beam) 
@@ -638,7 +638,7 @@ class BeamformerOp(object):
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
             for beam in xrange(1, self.nbeam_max+1):
-                if beam in CUSTOM_BEAMS:
+                if beam in self.CUSTOM_BEAMS:
                     self.pointing_counter[beam-1] = 0
 
                     self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
