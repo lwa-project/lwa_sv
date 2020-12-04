@@ -496,8 +496,8 @@ class BeamformerOp(object):
         self.core = core
         self.gpu = gpu
 
-        self.pointing_counter = [0, 0, 0]
-        self.CUSTOM_BEAMS = (1,2)        
+        #self.pointing_counter = [0, 0, 0]
+        #self.CUSTOM_BEAMS = (1,2)        
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -533,7 +533,7 @@ class BeamformerOp(object):
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
-        ##Read in the precalculated complex gains for all of the steps of the custom beam.
+        ##Read in the precalculated complex gains for all of the steps of the achromatic beams.
         hostname = socket.gethostname()
         cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
         self.complexGains = np.load(cgainsFile)['cgains'][:,:8,:,:]
@@ -596,13 +596,21 @@ class BeamformerOp(object):
                 self.log.info("Beamformer: Not for this tuning, skipping")
                 return False
            
-            if beam in self.CUSTOM_BEAMS:
-                self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
-                self.cgains[2*(beam-1)+1,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+1,:,:]
-                self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", self.pointing_counter[beam-1], beam) 
+            #Search for the "code word" gain pattern which specifies an achromatic observation.
+            if ( gains[0,:,:] == np.array([[8191, 16383],[32767,65535]]) ).all():
+                #The pointing index is stored in the second gains entry.
+                pointing = gains[1,0,0]
 
-                self.pointing_counter[beam-1] += 1 
-
+                #Set the custom complex gains.
+                try:
+                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[pointing,2*(beam-1)+0,:,:]
+                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[pointing,2*(beam-1)+1,:,:]
+                    self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", pointing, beam) 
+                except IndexError:
+                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[pointing-1,2*(beam-1)+0,:,:]
+                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[pointing-1,2*(beam-1)+1,:,:]
+                    self.log.info("Beamformer: Ran out of pointings...using complex gains from the previous pointing.")
+                    
             else:
                 # Byteswap to get into little endian
                 delays = delays.byteswap().newbyteorder()
@@ -638,17 +646,10 @@ class BeamformerOp(object):
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
             for beam in xrange(1, self.nbeam_max+1):
-                if beam in self.CUSTOM_BEAMS:
-                    self.pointing_counter[beam-1] = 0
-
-                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+0,:,:]
-                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[self.pointing_counter[beam-1],2*(beam-1)+1,:,:]
-
-                else:
-                    self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
-                                                    * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
-                    self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
-                                                    * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
+                self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
+                                                * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
+                self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
+                                                * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
                 BFSync()
                 self.log.info('  Complex gains set - beam %i' % beam)
                 
