@@ -496,9 +496,6 @@ class BeamformerOp(object):
         self.core = core
         self.gpu = gpu
 
-        #self.pointing_counter = [0, 0, 0]
-        #self.CUSTOM_BEAMS = (1,2)        
-
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -598,18 +595,18 @@ class BeamformerOp(object):
            
             #Search for the "code word" gain pattern which specifies an achromatic observation.
             if ( gains[0,:,:] == np.array([[8191, 16383],[32767,65535]]) ).all():
-                #The pointing index is stored in the second gains entry.
+                #The pointing index is stored in the second gains entry. Pointings start at 1.
                 pointing = gains[1,0,0]
 
                 #Set the custom complex gains.
                 try:
-                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[pointing,2*(beam-1)+0,:,:]
-                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[pointing,2*(beam-1)+1,:,:]
-                    self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", pointing, beam) 
-                except IndexError:
                     self.cgains[2*(beam-1)+0,:,:] = self.complexGains[pointing-1,2*(beam-1)+0,:,:]
                     self.cgains[2*(beam-1)+1,:,:] = self.complexGains[pointing-1,2*(beam-1)+1,:,:]
-                    self.log.info("Beamformer: Ran out of pointings...using complex gains from the previous pointing.")
+                    self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", pointing, beam)
+                except IndexError:
+                    self.cgains[2*(beam-1)+0,:,:] = np.zeros( (self.cgains.shape[1],self.cgains.shape[2]) )
+                    self.cgains[2*(beam-1)+1,:,:] = np.zeros( (self.cgains.shape[1],self.cgains.shape[2]) )
+                    self.log.info("Beamformer: Ran out of pointings...setting complex gains to zero.")
                     
             else:
                 # Byteswap to get into little endian
