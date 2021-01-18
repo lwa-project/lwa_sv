@@ -98,8 +98,12 @@ def main(args):
                     delays = delays.max() - delays
 
                     #Put it all together.
-                    cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                    cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+                    if args.fringe != 0:
+                        cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                        cgains[i,2*j,m, 2*args.fringe-1] = np.exp(-2j*np.pi*(freq/1e9)*delays[2*args.fringe-1]) #Fringing dipole alone on Y pol
+                    else:
+                        cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                        cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
                 else:
                     cgains[i,2*j:2*(j+1),m,:] = np.zeros((2,512))
@@ -117,10 +121,12 @@ if __name__ == '__main__':
 		)
 
 	parser.add_argument('-a','--azimuths', nargs='+', type=aph.positive_or_zero_float, default=90.0,
-				help='azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
+				help='Azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
 	parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
-				help='elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
+				help='Elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
 	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
-				help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
+				help='Shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
+        parser.add_argument('-f', '--fringe', type=int, default=0,
+                                help='Reference stand for a frining run. (Beam on X pol, fringing dipole on Y pol, 0 = no fringing)')
 	args = parser.parse_args()
 	main(args)
