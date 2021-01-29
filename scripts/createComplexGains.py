@@ -109,10 +109,13 @@ def main(args):
                     cgains[i,2*j:2*(j+1),m,:] = np.zeros((2,512))
 
                 m += 1
+    #Add a "pointing" dimension (size 1 for static runs).
+    #This will match the shape required by adp_drx.py for dynamic runs.
+    cgains = cgains.reshape((1, cgains.shape[0], cgains.shape[1], cgains.shape[2], cgains.shape[3]))
 
     #Save the files.
     for i in range(6):
-        np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains[i,:,:,:])
+        np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains[:,i,:,:,:])
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(
