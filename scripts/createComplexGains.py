@@ -100,7 +100,7 @@ def main(args):
                     #Put it all together.
                     if args.fringe != 0:
                         cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                        cgains[i,2*j,m, 2*(args.fringe-1)] = np.exp(-2j*np.pi*(freq/1e9)*delays[2*(args.fringe-1)]) #Fringing dipole alone on Y pol
+                        cgains[i,2*j,m, 2*(args.fringe-1)] = 5*np.exp(-2j*np.pi*(freq/1e9)*delays[2*(args.fringe-1)]) #Fringing dipole alone on Y pol
                     else:
                         cgains[i,2*j,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
                         cgains[i,2*j+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
