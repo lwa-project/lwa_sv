@@ -8,8 +8,8 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.udp_capture import UDPCapture
-from bifrost.udp_transmit import UDPTransmit
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_writer import HeaderInfo, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
@@ -121,7 +121,8 @@ class CaptureOp(object):
         hdr_size_ptr[0] = len(hdr_str)
         return 0
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
+        seq_callback = PacketCaptureCallback()
+        seq_callback.set_chips(self.seq_callback)
         with UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
@@ -461,29 +462,6 @@ class TEngineOp(object):
                     if not reset_sequence:
                         break
 
-def gen_tbn_header(stand, pol, cfreq, gain, time_tag, time_tag0, bw=100e3):
-    nframe_per_sample = int(FS) // int(bw)
-    nframe_per_packet = nframe_per_sample * TBN_NSAMPLE_PER_PKT
-    sync_word    = 0xDEC0DE5C
-    idval        = 0x0
-    frame_num_wrap = 10 * int(bw) # 10 secs = 4e6, fits within a uint24
-    frame_num    = ((time_tag - time_tag0) // nframe_per_packet) % frame_num_wrap + 1 # Packet sequence no.
-    id_frame_num = idval << 24 | frame_num
-    assert( 0 <= cfreq < FS )
-    tuning_word  = int(round(cfreq / FS * 2**32))    # This should already be on the DP frequency grid from the control software so we need to use round()
-    tbn_id       = (pol + NPOL*stand) + 1
-    gain         = gain
-    #if stand == 0 and pol == 0:
-    #    print cfreq, bw, gain, time_tag, time_tag0
-    #    print nframe_per_sample, nframe_per_packet
-    return struct.pack('>IIIhhq',
-                       sync_word,
-                       id_frame_num,
-                       tuning_word,
-                       tbn_id,
-                       gain,
-                       time_tag)
-
 class PacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osock, nroach, roach0, npkt_gulp=128, core=-1):
@@ -521,6 +499,9 @@ class PacketizeOp(object):
         
         self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
         
+        udt = UDPTransmit('tbn', sock=self.sock, core=self.core)
+        desc = HeaderInfo()
+        
         for iseq in self.iring.read():
             ihdr = json.loads(iseq.header.tostring())
             
@@ -552,55 +533,45 @@ class PacketizeOp(object):
             time_tag -= int(round(fdly*ticksPerSample))     # Correct for FIR filter delay
             
             prev_time = time.time()
-            with UDPTransmit(sock=self.sock, core=self.core) as udt:
-                free_run = False
-                for ispan in iseq.read(gulp_size, begin=boffset):
-                    if ispan.size < gulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    shape = (-1,nstand,npol,2)
-                    data = ispan.data_view(np.int8).reshape(shape)
-                    
-                    for t in xrange(0, ntime_gulp, ntime_pkt):
-                        time_tag_cur = time_tag + int(t)*ticksPerSample
-                        try:
-                            self.sync_tbn_pipelines(time_tag_cur)
-                        except ValueError:
-                            continue
-                        except (socket.timeout, socket.error):
-                            pass
-                            
-                        pkts = []
-                        for stand in xrange(nstand):
-                            for pol in xrange(npol):
-                                pktdata = data[t:t+ntime_pkt,stand,pol,:]
-                                hdr = gen_tbn_header(stand0+stand, pol, cfreq, gain,
-                                                 time_tag_cur, time_tag0, bw)
-                                try:
-                                    pkt = hdr + pktdata.tostring()
-                                    pkts.append( pkt )
-                                except Exception as e:
-                                    print type(self).__name__, 'Packing Error', str(e)
-                                    
-                        try:
-                            if ACTIVE_TBN_CONFIG.is_set():
-                                udt.sendmany(pkts)
-                        except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
-                            
-                    time_tag += int(ntime_gulp)*ticksPerSample
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': -1, 
-                                              'process_time': process_time,})
-                    
-            del udt
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc.set_gain(gain)
+            
+            free_run = False
+            for ispan in iseq.read(gulp_size, begin=boffset):
+                if ispan.size < gulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                shape = (-1,nstand,npol)
+                data = ispan.data_view('ci8').reshape(shape)
+                
+                for t in xrange(0, ntime_gulp, ntime_pkt):
+                    time_tag_cur = time_tag + int(t)*ticksPerSample
+                    try:
+                        self.sync_tbn_pipelines(time_tag_cur)
+                    except ValueError:
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
+                        
+                    sdata = data[t:t+ntime_pkt,...].transpose(1,2,0).copy()
+                    sdata = sdata.reshape(-1,nstand*npol,ntime_pkt)
+                    try:
+                        if ACTIVE_TBN_CONFIG.is_set():
+                            udt.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, 2*stand0, 1, sdata)
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
+                        
+                time_tag += int(ntime_gulp)*ticksPerSample
+                
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time, 
+                                          'reserve_time': -1, 
+                                          'process_time': process_time,})
 
 def get_utc_start(shutdown_event=None):
     got_utc_start = False
@@ -718,7 +689,10 @@ def main(argv):
     
     ## Network - input
     pipeline_idx = tbnConfig['pipeline_idx']
-    iaddr        = config['server']['data_ifaces'][pipeline_idx]
+    if config['host']['servers-data'][server_idx].startswith('adp'):
+        iaddr    = config['server']['data_ifaces'][pipeline_idx]
+    else:
+        iaddr    = config['host']['servers-data'][server_idx]
     iport        = config['server']['data_ports' ][pipeline_idx]
     ## Network - output
     recorder_idx = tbnConfig['recorder_idx']
@@ -740,8 +714,6 @@ def main(argv):
     log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
     log.info("Cores:        %s", ' '.join([str(v) for v in cores]))
     
-    # Note: Capture uses Bifrost address+socket objects, while output uses
-    #         plain Python address+socket objects.
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
     isock.bind(iaddr)

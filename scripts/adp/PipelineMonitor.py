@@ -293,7 +293,7 @@ class BifrostPipeline(object):
                 prev, curr = self._get_last_state(), self._get_state()
                 
             # Re-check if things look strange
-            if prev[block][metric] >= curr[block][metric]:
+            if prev[block]['good'] >= curr[block]['good']:
                 time.sleep(1)
                 self._update_state()
                 prev, curr = self._get_last_state(), self._get_state()

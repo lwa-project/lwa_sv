@@ -730,7 +730,7 @@ class InternalTriggerProcessor(object):
     them, and actually act on the trigger.
     """
     
-    def __init__(self, port=5835, coincidence_window=5e-4, min_coincident=6, deadtime=15.0, callback=None, context=None):
+    def __init__(self, port=5835, coincidence_window=5e-4, min_coincident=6, deadtime=30.0, callback=None, context=None):
         # Set the port to use
         self.port = port
         

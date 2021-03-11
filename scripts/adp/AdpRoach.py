@@ -27,8 +27,7 @@ class AdpRoach(object):
     @property
     def hostname(self):
         # TODO: Should really get this from an argument to __init__
-        #return "roach%i" % self.num
-        return "rofl%i" % self.num
+        return "roach%i" % self.num
         
     def connect(self):
         self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
@@ -36,9 +35,9 @@ class AdpRoach(object):
         
     def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, adc_registers={}, max_attempts=5, bypass_pfb=False):
         # Validate
-        assert( 0 <= subband_nchan0 and subband_nchan0 < 256 )
-        assert( 0 <= subband_nchan1 and subband_nchan1 < 256 )
-        assert( 0 <= subband_nchan2 and subband_nchan2 < 256 )
+        assert( 8 <= subband_nchan0 and subband_nchan0 <= 132 )
+        assert( 8 <= subband_nchan1 and subband_nchan1 <= 132 )
+        assert( 8 <= subband_nchan2 and subband_nchan2 <= 132 )
         
         if len(adc_registers) > 0:
             regstring = ','.join(["0x%x=0x%x" % (key,val)
@@ -217,11 +216,12 @@ class AdpRoach(object):
         
         # Validate the inputs
         assert( 0 <= gbe_idx and gbe_idx < 3 )
-        assert( 0 <= start_chan and start_chan < 4096 )
+        assert( 10 <= start_chan and start_chan <= 4000 )
         
         # Compute the stop channel and updated packetizer registries as needed
         stop_chan = start_chan + self._fpgaState['pkt_gbe%i_n_chan_per_sub' % gbe_idx] * \
                             self._fpgaState['pkt_gbe%i_n_subband' % gbe_idx]
+        assert( 20 <= stop_chan and stop_chan <= 4095 )
         updated = False
         for baseReg,value in zip(('start_chan', 'stop_chan'), (start_chan, stop_chan)):
             register = 'pkt_gbe%i_%s' % (gbe_idx, baseReg)

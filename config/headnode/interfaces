@@ -8,26 +8,27 @@ iface lo inet loopback
 # Internet connection
 auto eth0
 iface eth0 inet static
-	address 10.1.1.10
-	gateway 10.1.1.204
-	#address 198.59.133.190
-	#gateway 198.59.133.1
-	netmask 255.255.255.0
-	# dns-* options are implemented by the resolvconf package, if installed
-	#   See /etc/resolvconf/resolv.conf.d/tail
-	#dns-nameservers 10.3.33.10 10.3.32.10 8.8.8.8
-	#dns-nameservers 8.8.8.8 209.244.0.3 37.235.1.174
-	pre-up iptables-restore < /etc/iptables.rules
-	
+ address 10.1.2.10
+ gateway 10.1.2.204
+ #address 198.59.133.190
+ #gateway 198.59.133.1
+ netmask 255.255.255.0
+ # dns-* options are implemented by the resolvconf package, if installed
+ #   See /etc/resolvconf/resolv.conf.d/tail
+ #dns-nameservers 10.3.33.10 10.3.32.10 8.8.8.8
+ #dns-nameservers 8.8.8.8 209.244.0.3 37.235.1.174
+ pre-up iptables-restore < /etc/iptables.rules
+
 # Management network
 auto eth1
 iface eth1 inet static
-      address 169.254.128.1
-      netmask 255.255.255.0
+ address 169.254.128.1
+ netmask 255.255.255.0
 
 # 40 GbE data network
 auto p5p1
 iface p5p1 inet static
-      address 192.168.40.10
-      netmask 255.255.255.0
-      mtu 9000
+ address 192.168.40.10
+ netmask 255.255.255.0
+ mtu 9000
+ post-up route add -net 239.168.40.0 netmask 255.255.255.0 dev p5p1

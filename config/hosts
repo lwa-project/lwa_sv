@@ -7,8 +7,8 @@ ff02::2 ip6-allrouters
 # Internet (eth0)
 #131.142.8.137	adp.cfa.harvard.edu	adp
 #131.142.8.137	adp.cfa.harvard.edu
-#10.1.1.10 adp
-10.1.1.10 adp-external
+#10.1.2.10 adp
+10.1.2.10 adp-external
 
 # Management network (eth1 on adp, eth0 on adpX)
 169.254.128.1	adp0 adp
@@ -44,33 +44,8 @@ ff02::2 ip6-allrouters
 169.254.128.73	roach14
 169.254.128.74	roach15
 169.254.128.75	roach16
-# TODO: Deprecated
-169.254.128.60	rofl1
-169.254.128.61	rofl2
-169.254.128.62	rofl3
-169.254.128.63	rofl4
-169.254.128.64	rofl5
-169.254.128.65	rofl6
-169.254.128.66	rofl7
-169.254.128.67	rofl8
-169.254.128.68	rofl9
-169.254.128.69	rofl10
-169.254.128.70	rofl11
-169.254.128.71	rofl12
-169.254.128.72	rofl13
-169.254.128.73	rofl14
-169.254.128.74	rofl15
-169.254.128.75	rofl16
 
 # Data network (p5p1)
-# TODO: Deprecated -40g suffix (use -data instead)
-192.168.40.10	adp0-40g adp-40g
-192.168.40.11	adp1-40g
-192.168.40.12	adp2-40g
-192.168.40.13	adp3-40g
-192.168.40.14	adp4-40g
-192.168.40.15	adp5-40g
-192.168.40.16	adp6-40g
 192.168.40.10	adp0-data adp-data
 192.168.40.11	adp1-data
 192.168.40.12	adp2-data
@@ -81,8 +56,24 @@ ff02::2 ip6-allrouters
 192.168.40.41	dr1 # Data recorder 1
 192.168.40.42	dr2 # Data recorder 2
 192.168.40.43	dr3 # Data recorder 3
-192.168.40.44	lasi # LWA All-Sky Imager
+192.168.40.46	lasi # LWA All-Sky Imager
+192.168.40.47   orville
 
+# Mutlitcast data network (p5p1)
+239.168.40.10   mcg40s0-data mcg40-data
+239.168.40.11   mcg40s1-data
+239.168.40.12   mcg40s2-data
+239.168.40.13   mcg40s3-data
+239.168.40.14   mcg40s4-data
+239.168.40.15   mcg40s5-data
+239.168.40.16   mcg40s6-data
+239.168.40.41   mcg40s41-data mcg40-dr1
+239.168.40.42   mcg40s42-data mcg40-dr2
+239.168.40.43   mcg40s43-data mcg40-dr3
+239.168.40.46   mcg40s46-data mcg40-lasi
+239.168.40.47   mcg40s47-data mcg40-orville
+
+# Switch management
 169.254.128.101 mgmt-switch
 169.254.128.101 hp48        # Alias for mgmt-switch
 169.254.128.102 data-switch

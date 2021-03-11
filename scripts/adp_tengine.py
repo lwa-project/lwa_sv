@@ -8,8 +8,8 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.udp_capture import UDPCapture
-from bifrost.udp_transmit import UDPTransmit
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_writer import HeaderInfo, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
@@ -96,13 +96,13 @@ class CaptureOp(object):
         hdr = {'time_tag': time_tag,
                'chan0':    chan0,
                'nsrc':     nsrc,
-               'nchan':    nchan*nsrc,                              # Each server since part of the bandwidth
-               'cfreq':    (chan0 + 0.5*(nchan*nsrc-1))*CHAN_BW,    # Each server since part of the bandwidth
-               'bw':       nchan*nsrc*CHAN_BW,                      # Each server since part of the bandwidth
-               'nstand':   self.nbeam_max,
+               'nchan':    nchan,
+               'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
+               'bw':       nchan*CHAN_BW,
+               'nstand':   nsrc,
                'npol':     2,
                'complex':  True,
-               'nbit':     64 if self.nbeam_max == 1 else 32}
+               'nbit':     32}
         print "******** CFREQ:", hdr['cfreq']
         hdr_str = json.dumps(hdr)
         # TODO: Can't pad with NULL because returned as C-string
@@ -113,7 +113,8 @@ class CaptureOp(object):
         hdr_size_ptr[0] = len(hdr_str)
         return 0
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
+        seq_callback = PacketCaptureCallback()
+        seq_callback.set_ibeam(self.seq_callback)
         with UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
@@ -121,95 +122,6 @@ class CaptureOp(object):
                 status = capture.recv()
                 #print status
         del capture
-
-class ReorderChannelsOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500,# ntime_buf=None,
-                 guarantee=True, core=-1):
-        self.log = log
-        self.iring = iring
-        self.oring = oring
-        self.ntime_gulp = ntime_gulp
-        #if ntime_buf is None:
-        #    ntime_buf = self.ntime_gulp*3
-        #self.ntime_buf = ntime_buf
-        self.guarantee = guarantee
-        self.core = core
-        
-        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-        self.in_proclog   = ProcLog(type(self).__name__+"/in")
-        self.out_proclog  = ProcLog(type(self).__name__+"/out")
-        self.size_proclog = ProcLog(type(self).__name__+"/size")
-        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-        
-        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
-        self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
-        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
-        
-    #@ISC.logException
-    def main(self):
-        cpu_affinity.set_core(self.core)
-        self.bind_proclog.update({'ncore': 1, 
-                                  'core0': cpu_affinity.get_core(),})
-        
-        with self.oring.begin_writing() as oring:
-            for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
-                
-                self.sequence_proclog.update(ihdr)
-                
-                self.log.info("Reorder: Start of new sequence: %s", str(ihdr))
-                
-                nsrc   = ihdr['nsrc']
-                nchan  = ihdr['nchan']
-                nstand = ihdr['nstand']
-                npol   = ihdr['npol']
-                
-                if ihdr['nbit'] == 64:
-                    igulp_size = self.ntime_gulp*nchan*nstand*npol*16           # complex128
-                else:
-                    igulp_size = self.ntime_gulp*nchan*nstand*npol*8            # complex64
-                ishape = (self.ntime_gulp,nchan/nsrc,nsrc,nstand*npol)
-                ogulp_size = self.ntime_gulp*nchan*nstand*npol*8                # complex64
-                oshape = (self.ntime_gulp,nchan,nstand,npol)
-                self.iring.resize(igulp_size, igulp_size*10)
-                self.oring.resize(ogulp_size)#, obuf_size)
-                
-                ohdr = ihdr.copy()
-                ohdr['nbit'] = 32
-                ohdr['complex'] = True
-                ohdr_str = json.dumps(ohdr)
-                
-                prev_time = time.time()
-                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-                    for ispan in iseq.read(igulp_size):
-                        if ispan.size < igulp_size:
-                            continue # Ignore final gulp
-                        curr_time = time.time()
-                        acquire_time = curr_time - prev_time
-                        prev_time = curr_time
-                        
-                        with oseq.reserve(ogulp_size) as ospan:
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-                            
-                            if ihdr['nbit'] == 64:
-                                idata = ispan.data_view(np.complex128).reshape(ishape)
-                            else:
-                                idata = ispan.data_view(np.complex64).reshape(ishape)
-                            odata = ospan.data_view(np.complex64).reshape(oshape)
-                            
-                            rdata = idata.astype(np.complex64)
-                            
-                            odata[...] = np.swapaxes(rdata, 1, 2).reshape((self.ntime_gulp,nchan,nstand,npol))
-                            
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-                            self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                      'reserve_time': reserve_time, 
-                                                      'process_time': process_time,})
 
 class TEngineOp(object):
     def __init__(self, log, iring, oring, tuning=0, ntime_gulp=2500, nchan_max=864, nbeam=1, # ntime_buf=None,
@@ -451,18 +363,21 @@ class TEngineOp(object):
                                     pdata = idata
                                     
                                 ### From here until going to the output ring we are on the GPU
-                                tdata = pdata.copy(space='cuda')
-                                
+                                try:
+                                    copy_array(bdata, pdata)
+                                except NameError:
+                                    bdata = pdata.copy(space='cuda')
+                                    
                                 ## IFFT
                                 try:
-                                    gdata = gdata.reshape(*t.shape)
-                                    bfft.execute(tdata, gdata, inverse=True)
+                                    gdata = gdata.reshape(*bdata.shape)
+                                    bfft.execute(bdata, gdata, inverse=True)
                                 except NameError:
-                                    gdata = BFArray(shape=tdata.shape, dtype=np.complex64, space='cuda')
+                                    gdata = BFArray(shape=bdata.shape, dtype=np.complex64, space='cuda')
                                     
                                     bfft = Fft()
-                                    bfft.init(tdata, gdata, axes=1, apply_fftshift=True)
-                                    bfft.execute(tdata, gdata, inverse=True)
+                                    bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
+                                    bfft.execute(bdata, gdata, inverse=True)
                                     
                                 ## Phase rotation
                                 gdata = gdata.reshape((-1,nstand*npol))
@@ -491,7 +406,10 @@ class TEngineOp(object):
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                     
                                 ## Save
-                                tdata = qdata.copy('system')
+                                try:
+                                    copy_array(tdata, qdata)
+                                except NameError:
+                                    tdata = qdata.copy('system')
                                 odata[...] = tdata.view(np.int8).reshape((1,)+oshape)
                                 
                             ## Update the base time tag
@@ -519,9 +437,13 @@ class TEngineOp(object):
                                 ### Clean-up
                                 try:
                                     del pdata
+                                    del bdata
                                     del gdata
+                                    del bfft
                                     del fdata
+                                    del bfir
                                     del qdata
+                                    del tdata
                                 except NameError:
                                     pass
                                     
@@ -569,269 +491,6 @@ def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
                        tuning_word, 
                        0)
 
-class PacketizeOp(object):
-    # Note: Input data are: [time,beam,pol,iq]
-    def __init__(self, log, iring, osock, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
-        self.log   = log
-        self.iring = iring
-        self.sock  = osock
-        self.nbeam_max = nbeam_max
-        self.beam0 = beam0
-        self.tuning = tuning
-        self.npkt_gulp = npkt_gulp
-        self.core = core
-        
-        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-        self.in_proclog   = ProcLog(type(self).__name__+"/in")
-        self.size_proclog = ProcLog(type(self).__name__+"/size")
-        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-        
-        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
-        
-        self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
-        
-        self.sync_drx_pipelines = MCS.Synchronizer('DRX')
-        
-    #@ISC.logException
-    def main(self):
-        global ACTIVE_DRX_CONFIG
-        
-        cpu_affinity.set_core(self.core)
-        self.bind_proclog.update({'ncore': 1, 
-                                  'core0': cpu_affinity.get_core(),})
-        
-        ntime_pkt     = DRX_NSAMPLE_PER_PKT
-        ntime_gulp    = self.npkt_gulp * ntime_pkt
-        ninput_max    = self.nbeam_max * 2
-        gulp_size_max = ntime_gulp * ninput_max * 2
-        self.iring.resize(gulp_size_max)
-        
-        self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
-        
-        for isequence in self.iring.read():
-            ihdr = json.loads(isequence.header.tostring())
-            
-            self.sequence_proclog.update(ihdr)
-            
-            self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
-            
-            #print 'PacketizeOp', ihdr
-            cfreq  = ihdr['cfreq']
-            bw     = ihdr['bw']
-            gain   = ihdr['gain']
-            filt   = ihdr['filter']
-            nbeam  = ihdr['nstand']
-            npol   = ihdr['npol']
-            fdly   = (ihdr['fir_size'] - 1) / 2.0
-            time_tag0 = isequence.time_tag
-            time_tag  = time_tag0
-            gulp_size = ntime_gulp*nbeam*npol
-            
-            # Figure out where we need to be in the buffer to be at a frame boundary
-            ticksPerSample = int(FS) // int(bw)
-            toffset = int(time_tag0) // ticksPerSample
-            soffset = toffset % int(ntime_pkt)
-            if soffset != 0:
-                soffset = ntime_pkt - soffset
-            boffset = soffset*nbeam*npol
-            print '!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
-            
-            time_tag += soffset*ticksPerSample                  # Correct for offset
-            time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
-            
-            prev_time = time.time()
-            with UDPTransmit(sock=self.sock, core=self.core) as udt:
-                for ispan in isequence.read(gulp_size, begin=boffset):
-                    if ispan.size < gulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    shape = (-1,nbeam,npol)
-                    data = ispan.data_view(np.int8).reshape(shape)
-                    
-                    for t in xrange(0, ntime_gulp, ntime_pkt):
-                        time_tag_cur = time_tag + int(t)*ticksPerSample
-                        try:
-                            self.sync_drx_pipelines(time_tag_cur)
-                        except ValueError:
-                            continue
-                        except (socket.timeout, socket.error):
-                            pass
-                            
-                        pkts = []
-                        for beam in xrange(nbeam):
-                            for pol in xrange(npol):
-                                pktdata = data[t:t+ntime_pkt,beam,pol]
-                                hdr = gen_drx_header(beam+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                            time_tag_cur)
-                                try:
-                                    pkt = hdr + pktdata.tostring()
-                                    pkts.append( pkt )
-                                except Exception as e:
-                                    print type(self).__name__, 'Packing Error', str(e)
-                                    
-                        try:
-                            if ACTIVE_DRX_CONFIG.is_set():
-                                if not self.tbfLock.is_set():
-                                    udt.sendmany(pkts)
-                        except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
-                            
-                    time_tag += int(ntime_gulp)*ticksPerSample
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': -1, 
-                                              'process_time': process_time,})
-                    
-            del udt
-
-class SinglePacketizeOp(object):
-    # Note: Input data are: [time,beam,pol,iq]
-    def __init__(self, log, iring, osock, nbeam_max=1, beam0=1, beam=1, tuning=0, npkt_gulp=128, core=-1):
-        self.log   = log
-        self.iring = iring
-        self.sock  = osock
-        self.nbeam_max = nbeam_max
-        self.beam0 = beam0
-        self.beam = beam
-        self.tuning = tuning
-        self.npkt_gulp = npkt_gulp
-        self.core = core
-        
-        assert(self.beam > 0)
-        assert(self.beam <= self.nbeam_max)
-        assert(self.npkt_gulp % 2 == 0)
-        
-        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-        self.in_proclog   = ProcLog(type(self).__name__+"/in")
-        self.size_proclog = ProcLog(type(self).__name__+"/size")
-        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-        
-        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
-        
-        self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
-        
-        self.sync_drx_pipelines = MCS.Synchronizer('DRX%i' % self.beam)
-        
-    #@ISC.logException
-    def main(self):
-        global ACTIVE_DRX_CONFIG
-        
-        cpu_affinity.set_core(self.core)
-        self.bind_proclog.update({'ncore': 1, 
-                                  'core0': cpu_affinity.get_core(),})
-        
-        ntime_pkt     = DRX_NSAMPLE_PER_PKT
-        ntime_gulp    = self.npkt_gulp * ntime_pkt
-        ninput_max    = self.nbeam_max * 2
-        gulp_size_max = ntime_gulp * ninput_max * 2
-        self.iring.resize(gulp_size_max)
-        
-        self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
-        
-        for isequence in self.iring.read():
-            ihdr = json.loads(isequence.header.tostring())
-            
-            self.sequence_proclog.update(ihdr)
-            
-            self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
-            
-            #print 'PacketizeOp', ihdr
-            cfreq  = ihdr['cfreq']
-            bw     = ihdr['bw']
-            gain   = ihdr['gain']
-            filt   = ihdr['filter']
-            nbeam  = ihdr['nstand']
-            npol   = ihdr['npol']
-            fdly   = (ihdr['fir_size'] - 1) / 2.0
-            time_tag0 = isequence.time_tag
-            time_tag  = time_tag0
-            gulp_size = ntime_gulp*nbeam*npol
-            
-            # Figure out where we need to be in the buffer to be at a frame boundary
-            ticksPerSample = int(FS) // int(bw)
-            toffset = int(time_tag0) // ticksPerSample
-            soffset = toffset % int(ntime_pkt)
-            if soffset != 0:
-                soffset = ntime_pkt - soffset
-            boffset = soffset*nbeam*npol
-            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
-            
-            time_tag += soffset*ticksPerSample                  # Correct for offset
-            time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
-            
-            prev_time = time.time()
-            with UDPTransmit(sock=self.sock, core=self.core) as udt:
-                pkts = []
-                for ispan in isequence.read(gulp_size, begin=boffset):
-                    if ispan.size < gulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    shape = (-1,nbeam,npol)
-                    data = ispan.data_view(np.int8).reshape(shape)
-                    
-                    for t in xrange(0, ntime_gulp, ntime_pkt):
-                        time_tag_cur = time_tag + int(t)*ticksPerSample
-                        #try:
-                        #    self.sync_drx_pipelines(time_tag_cur)
-                        #except ValueError:
-                        #    continue
-                        #except (socket.timeout, socket.error):
-                        #    pass
-                            
-                        #pkts = []
-                        for pol in xrange(npol):
-                            pktdata = data[t:t+ntime_pkt,self.beam-1,pol]
-                            hdr = gen_drx_header(self.beam-1+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                                 time_tag_cur)
-                            try:
-                                pkt = hdr + pktdata.tostring()
-                                pkts.append( pkt )
-                            except Exception as e:
-                                print type(self).__name__, 'Packing Error', str(e)
-                                
-                        if len(pkts) >= 4:
-                            try:
-                                self.sync_drx_pipelines(time_tag_cur)
-                            except ValueError:
-                                continue
-                            except (socket.timeout, socket.error):
-                                pass
-                                
-                            try:
-                                if ACTIVE_DRX_CONFIG.is_set():
-                                    if not self.tbfLock.is_set():
-                                        udt.sendmany(pkts)
-                            except Exception as e:
-                                print type(self).__name__, 'Sending Error', str(e)
-                                
-                            pkts = []
-                            
-                    time_tag += int(ntime_gulp)*ticksPerSample
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': -1, 
-                                              'process_time': process_time,})
-                    
-            del udt
-
-def izip(*iterables):
-    while True:
-        yield [it.next() for it in iterables]
-        
 class DualPacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
@@ -875,6 +534,10 @@ class DualPacketizeOp(object):
         
         self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
         
+        udt0 = UDPTransmit('drx', sock=self.socks[0], core=self.core)
+        udt1 = UDPTransmit('drx', sock=self.socks[1], core=self.core)
+        desc = HeaderInfo()
+        
         for isequence in self.iring.read():
             ihdr = json.loads(isequence.header.tostring())
             
@@ -895,11 +558,12 @@ class DualPacketizeOp(object):
             gulp_size = ntime_gulp*nbeam*npol
             
             # Figure out where we need to be in the buffer to be at a frame boundary
+            NPACKET_SET = 16
             ticksPerSample = int(FS) // int(bw)
             toffset = int(time_tag0) // ticksPerSample
-            soffset = toffset % int(ntime_pkt)
+            soffset = toffset % (NPACKET_SET*int(ntime_pkt))
             if soffset != 0:
-                soffset = ntime_pkt - soffset
+                soffset = NPACKET_SET*ntime_pkt - soffset
             boffset = soffset*nbeam*npol
             print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
             
@@ -907,9 +571,9 @@ class DualPacketizeOp(object):
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
             
             prev_time = time.time()
-            udt0 = UDPTransmit(sock=self.socks[0], core=self.core)
-            udt1 = UDPTransmit(sock=self.socks[1], core=self.core)
-            pkts0, pkts1 = [], []
+            desc.set_decimation(int(FS)//int(bw))
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc_src = (((self.tuning+1)&0x7)<<3)
             for ispan in isequence.read(gulp_size, begin=boffset):
                 if ispan.size < gulp_size:
                     continue # Ignore final gulp
@@ -918,57 +582,30 @@ class DualPacketizeOp(object):
                 prev_time = curr_time
                 
                 shape = (-1,nbeam,npol)
-                data = ispan.data_view(np.int8).reshape(shape)
+                data = ispan.data_view('ci4').reshape(shape)
+                data0 = data[:,0,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 
-                for t in xrange(0, ntime_gulp, ntime_pkt):
-                    time_tag_cur = time_tag + int(t)*ticksPerSample
-                    #try:
-                    #    self.sync_drx_pipelines(time_tag_cur)
-                    #except ValueError:
-                    #    pass
-                    #except (socket.timeout, socket.error):
-                    #    pass
+                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                    time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
+                    try:
+                        self.sync_drx_pipelines(time_tag_cur)
+                    except ValueError:
+                        print 'skip', t, data0.shape[0]
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
                         
-                    #pkts0, pkts1 = [], []
-                    for pol in xrange(npol):
-                        ## First beam
-                        pktdata0 = data[t:t+ntime_pkt,0,pol]
-                        hdr0 = gen_drx_header(0+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                              time_tag_cur)
-                        try:
-                            pkt0 = hdr0 + pktdata0.tostring()
-                            pkts0.append( pkt0 )
-                        except Exception as e:
-                            print type(self).__name__, 'Packing Error - beam 0', str(e)
+                    try:
+                        if ACTIVE_DRX_CONFIG.is_set():
+                            if not self.tbfLock.is_set():
+                                udt0.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(0+self.beam0), 128, 
+                                          data0[t:t+NPACKET_SET,:,:])
+                                udt1.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(1+self.beam0), 128, 
+                                          data1[t:t+NPACKET_SET,:,:])
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
                             
-                        ## Second beam
-                        pktdata1 = data[t:t+ntime_pkt,1,pol]
-                        hdr1 = gen_drx_header(1+self.beam0, self.tuning+1, pol, cfreq, filt, 
-                                              time_tag_cur)
-                        try:
-                            pkt1 = hdr1 + pktdata1.tostring()
-                            pkts1.append( pkt1 )
-                        except Exception as e:
-                            print type(self).__name__, 'Packing Error - beam 1', str(e)
-                            
-                    if len(pkts0) >= 4:
-                        try:
-                            self.sync_drx_pipelines(time_tag_cur)
-                        except ValueError:
-                            continue
-                        except (socket.timeout, socket.error):
-                            pass
-                            
-                        try:
-                            if ACTIVE_DRX_CONFIG.is_set():
-                                if not self.tbfLock.is_set():
-                                    udt0.sendmany(pkts0)
-                                    udt1.sendmany(pkts1)
-                        except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
-                            
-                        pkts0, pkts1 = [], []
-                        
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
                 curr_time = time.time()
@@ -977,9 +614,266 @@ class DualPacketizeOp(object):
                 self.perf_proclog.update({'acquire_time': acquire_time, 
                                           'reserve_time': -1, 
                                           'process_time': process_time,})
+
+class TriplePacketizeOp(object):
+    # Note: Input data are: [time,beam,pol,iq]
+    def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
+        self.log   = log
+        self.iring = iring
+        self.socks  = osocks
+        self.nbeam_max = nbeam_max
+        self.beam0 = beam0
+        self.tuning = tuning
+        self.npkt_gulp = npkt_gulp
+        self.core = core
+        
+        assert(len(self.socks) == 3)
+        assert(self.nbeam_max  == 3)
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+        
+        self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+        
+        self.sync_drx_pipelines = MCS.Synchronizer('DRX')
+        
+    #@ISC.logException
+    def main(self):
+        global ACTIVE_DRX_CONFIG
+        
+        cpu_affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': cpu_affinity.get_core(),})
+        
+        ntime_pkt     = DRX_NSAMPLE_PER_PKT
+        ntime_gulp    = self.npkt_gulp * ntime_pkt
+        ninput_max    = self.nbeam_max * 2
+        gulp_size_max = ntime_gulp * ninput_max * 2
+        self.iring.resize(gulp_size_max)
+        
+        self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
+        
+        udt0 = UDPTransmit('drx', sock=self.socks[0], core=self.core)
+        udt1 = UDPTransmit('drx', sock=self.socks[1], core=self.core)
+        udt2 = UDPTransmit('drx', sock=self.socks[2], core=self.core)
+        desc = HeaderInfo()
+        
+        for isequence in self.iring.read():
+            ihdr = json.loads(isequence.header.tostring())
+            
+            self.sequence_proclog.update(ihdr)
+            
+            self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
+            
+            #print 'PacketizeOp', ihdr
+            cfreq  = ihdr['cfreq']
+            bw     = ihdr['bw']
+            gain   = ihdr['gain']
+            filt   = ihdr['filter']
+            nbeam  = ihdr['nstand']
+            npol   = ihdr['npol']
+            fdly   = (ihdr['fir_size'] - 1) / 2.0
+            time_tag0 = isequence.time_tag
+            time_tag  = time_tag0
+            gulp_size = ntime_gulp*nbeam*npol
+            
+            # Figure out where we need to be in the buffer to be at a frame boundary
+            NPACKET_SET = 16
+            ticksPerSample = int(FS) // int(bw)
+            toffset = int(time_tag0) // ticksPerSample
+            soffset = toffset % (NPACKET_SET*int(ntime_pkt))
+            if soffset != 0:
+                soffset = NPACKET_SET*ntime_pkt - soffset
+            boffset = soffset*nbeam*npol
+            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            
+            time_tag += soffset*ticksPerSample                  # Correct for offset
+            time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
+            
+            prev_time = time.time()
+            desc.set_decimation(int(FS)//int(bw))
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc_src = (((self.tuning+1)&0x7)<<3)
+            for ispan in isequence.read(gulp_size, begin=boffset):
+                if ispan.size < gulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
                 
-            del udt0
-            del udt1
+                shape = (-1,nbeam,npol)
+                data = ispan.data_view('ci4').reshape(shape)
+                data0 = data[:,0,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data2 = data[:,2,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                
+                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                    time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
+                    try:
+                        self.sync_drx_pipelines(time_tag_cur)
+                    except ValueError:
+                        print 'skip', t, data0.shape[0]
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
+                        
+                    try:
+                        if ACTIVE_DRX_CONFIG.is_set():
+                            if not self.tbfLock.is_set():
+                                udt0.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(0+self.beam0), 128, 
+                                          data0[t:t+NPACKET_SET,:,:])
+                                udt1.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(1+self.beam0), 128, 
+                                          data1[t:t+NPACKET_SET,:,:])
+                                udt2.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(2+self.beam0), 128, 
+                                          data2[t:t+NPACKET_SET,:,:])
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
+                            
+                time_tag += int(ntime_gulp)*ticksPerSample
+                
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time, 
+                                          'reserve_time': -1, 
+                                          'process_time': process_time,})
+
+class QuadrupalPacketizeOp(object):
+    # Note: Input data are: [time,beam,pol,iq]
+    def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
+        self.log   = log
+        self.iring = iring
+        self.socks  = osocks
+        self.nbeam_max = nbeam_max
+        self.beam0 = beam0
+        self.tuning = tuning
+        self.npkt_gulp = npkt_gulp
+        self.core = core
+        
+        assert(len(self.socks) == 4)
+        assert(self.nbeam_max  == 4)
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+        
+        self.tbfLock       = ISC.PipelineEventClient(addr=('adp',5834))
+        
+        self.sync_drx_pipelines = MCS.Synchronizer('DRX')
+        
+    #@ISC.logException
+    def main(self):
+        global ACTIVE_DRX_CONFIG
+        
+        cpu_affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': cpu_affinity.get_core(),})
+        
+        ntime_pkt     = DRX_NSAMPLE_PER_PKT
+        ntime_gulp    = self.npkt_gulp * ntime_pkt
+        ninput_max    = self.nbeam_max * 2
+        gulp_size_max = ntime_gulp * ninput_max * 2
+        self.iring.resize(gulp_size_max)
+        
+        self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
+        
+        udt0 = UDPTransmit('drx', sock=self.socks[0], core=self.core)
+        udt1 = UDPTransmit('drx', sock=self.socks[1], core=self.core)
+        udt2 = UDPTransmit('drx', sock=self.socks[2], core=self.core)
+        udt3 = UDPTransmit('drx', sock=self.socks[3], core=self.core)
+        desc = HeaderInfo()
+        
+        for isequence in self.iring.read():
+            ihdr = json.loads(isequence.header.tostring())
+            
+            self.sequence_proclog.update(ihdr)
+            
+            self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
+            
+            #print 'PacketizeOp', ihdr
+            cfreq  = ihdr['cfreq']
+            bw     = ihdr['bw']
+            gain   = ihdr['gain']
+            filt   = ihdr['filter']
+            nbeam  = ihdr['nstand']
+            npol   = ihdr['npol']
+            fdly   = (ihdr['fir_size'] - 1) / 2.0
+            time_tag0 = isequence.time_tag
+            time_tag  = time_tag0
+            gulp_size = ntime_gulp*nbeam*npol
+            
+            # Figure out where we need to be in the buffer to be at a frame boundary
+            NPACKET_SET = 16
+            ticksPerSample = int(FS) // int(bw)
+            toffset = int(time_tag0) // ticksPerSample
+            soffset = toffset % (NPACKET_SET*int(ntime_pkt))
+            if soffset != 0:
+                soffset = NPACKET_SET*ntime_pkt - soffset
+            boffset = soffset*nbeam*npol
+            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            
+            time_tag += soffset*ticksPerSample                  # Correct for offset
+            time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
+            
+            prev_time = time.time()
+            desc.set_decimation(int(FS)//int(bw))
+            desc.set_tuning(int(round(cfreq / FS * 2**32)))
+            desc_src = (((self.tuning+1)&0x7)<<3)
+            for ispan in isequence.read(gulp_size, begin=boffset):
+                if ispan.size < gulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                shape = (-1,nbeam,npol)
+                data = ispan.data_view('ci4').reshape(shape)
+                data0 = data[:,0,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data2 = data[:,2,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                data3 = data[:,3,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
+                
+                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                    time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
+                    try:
+                        self.sync_drx_pipelines(time_tag_cur)
+                    except ValueError:
+                        print 'skip', t, data0.shape[0]
+                        continue
+                    except (socket.timeout, socket.error):
+                        pass
+                        
+                    try:
+                        if ACTIVE_DRX_CONFIG.is_set():
+                            if not self.tbfLock.is_set():
+                                udt0.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(0+self.beam0), 128, 
+                                          data0[t:t+NPACKET_SET,:,:])
+                                udt1.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(1+self.beam0), 128, 
+                                          data1[t:t+NPACKET_SET,:,:])
+                                udt2.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(2+self.beam0), 128, 
+                                          data2[t:t+NPACKET_SET,:,:])
+                                udt3.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(3+self.beam0), 128, 
+                                          data3[t:t+NPACKET_SET,:,:])
+                    except Exception as e:
+                        print type(self).__name__, 'Sending Error', str(e)
+                            
+                time_tag += int(ntime_gulp)*ticksPerSample
+                
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time, 
+                                          'reserve_time': -1, 
+                                          'process_time': process_time,})
 
 def get_utc_start(shutdown_event=None):
     got_utc_start = False
@@ -1130,54 +1024,38 @@ def main(argv):
     isock.bind(iaddr)
     isock.timeout = 0.5
     
-    capture_ring = Ring(name="capture-%i" % tuning)
-    reorder_ring = Ring(name="reorder-%i" % tuning)
-    tengine_ring = Ring(name="tengine-%i" % tuning)
+    capture_ring = Ring(name="capture-%i" % tuning, space="cuda_host")
+    tengine_ring = Ring(name="tengine-%i" % tuning, space="system")
     
     GSIZE = 2500
     nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW))    # Subtly different from what is in adp_drx.py
     
-    ops.append(CaptureOp(log, fmt="chips", sock=isock, ring=capture_ring,
+    ops.append(CaptureOp(log, fmt="ibeam%i" % nbeam, sock=isock, ring=capture_ring,
                          nsrc=nserver, src0=server0, max_payload_size=9000,
                          nbeam_max=nbeam, 
                          buffer_ntime=GSIZE, slot_ntime=25000, core=cores.pop(0),
                          utc_start=utc_start_dt))
-    ops.append(ReorderChannelsOp(log, capture_ring, reorder_ring, 
-                                ntime_gulp=GSIZE, 
-                                core=cores.pop(0)))
-    ops.append(TEngineOp(log, reorder_ring, tengine_ring,
+    ops.append(TEngineOp(log, capture_ring, tengine_ring,
                          tuning=tuning, ntime_gulp=GSIZE, 
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))
-    if split_beam:
-        if True:
-            for beam in xrange(nbeam):
-                raddr = Address(oaddr[beam], oport[beam])
-                rsock = UDPSocket()
-                rsock.connect(raddr)
-                ops.append(SinglePacketizeOp(log, tengine_ring,
-                                             osock=rsock,
-                                             nbeam_max=nbeam, beam0=1, beam=beam+1, tuning=tuning, 
-                                             npkt_gulp=32, core=cores.pop(0)))
-        else:
-            rsocks = []
-            for beam in xrange(nbeam):
-                raddr = Address(oaddr[beam], oport[beam])
-                rsocks.append(UDPSocket())
-                rsocks[-1].connect(raddr)
-            ops.append(DualPacketizeOp(log, tengine_ring,
-                                       osocks=rsocks,
-                                       nbeam_max=nbeam, beam0=1, tuning=tuning, 
-                                       npkt_gulp=32, core=cores.pop(0)))
+    rsocks = []
+    for beam in xrange(nbeam):
+        raddr = Address(oaddr[beam], oport[beam])
+        rsocks.append(UDPSocket())
+        rsocks[-1].connect(raddr)
+    if nbeam == 2:
+        PacketizerOp = DualPacketizeOp
+    elif nbeam == 3:
+        PacketizerOp = TriplePacketizeOp
+    elif nbeam == 4:
+        PacketizerOp = QuadrupalPacketizeOp
     else:
-        oaddr = Address(oaddr, oport)
-        osock = UDPSocket()
-        osock.connect(oaddr)
-        
-        ops.append(PacketizeOp(log, tengine_ring,
-                               osock=osock, 
-                               nbeam_max=nbeam, beam0=1, tuning=tuning, 
-                               npkt_gulp=16, core=cores.pop(0)))
+        raise RuntimeError("Unsupported number of beams: %i" % nbeam)
+    ops.append(PacketizerOp(log, tengine_ring,
+                            osocks=rsocks,
+                            nbeam_max=nbeam, beam0=1, tuning=tuning, 
+                            npkt_gulp=32, core=cores.pop(0)))
     
     threads = [threading.Thread(target=op.main) for op in ops]
     
