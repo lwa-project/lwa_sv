@@ -8,7 +8,7 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPVerbsCapture as UDPCapture
 from bifrost.packet_writer import HeaderInfo, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
@@ -229,7 +229,7 @@ class TEngineOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuation at %.1f" % pipeline_time
+                #print "No pending configuration at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -286,9 +286,9 @@ class TEngineOp(object):
         if self.gpu != -1:
             BFSetGPU(self.gpu)
         self.bind_proclog.update({'ncore': 1, 
-                                 'core0': cpu_affinity.get_core(),
-                                 'ngpu': 1,
-                                 'gpu0': BFGetGPU(),})
+                                  'core0': cpu_affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
         
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
@@ -351,7 +351,7 @@ class TEngineOp(object):
                                 prev_time = curr_time
                                 
                                 ## Setup and load
-                                idata = ispan.data_view(np.int8).reshape(ishape)
+                                idata = ispan.data_view('ci4').reshape(ishape)
                                 odata = ospan.data_view(np.int8).reshape((1,)+oshape)
                                 
                                 ## Prune the data

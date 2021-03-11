@@ -27,6 +27,10 @@
 
 ## Document history
 
+### 2021-03-10
+
+* Updated specifications and COR data format
+
 ### 2016-07-31
 
 * Added FORCE and NOREPROGRAM options to INI command
@@ -112,25 +116,25 @@ Initial mostly-complete draft.
 #### TBN
 
 Narrow-band recording of all inputs. Supports continuous recording of
-all inputs at up to 1.6 MHz. This mode cannot be run concurrently with
+all inputs at up to 100 kHz. This mode can be run concurrently with
 any other modes.
 
 #### TBF
 
 Wide-band recording of all inputs at low duty-cycle or on a
 trigger. Supports recording of frequency-domain data for all inputs
-across any subset of active DRX tunings for up to 10 seconds.
+across any subset of active DRX tunings for up to 5 seconds.
 
 #### BAM
 
-The beamformer. Supports up to 32 dual-pol beams, each using any
+The beamformer. Supports up to 2 dual-pol beams, each using any
 tuning set by the DRX command, up to a maximum combined bandwidth of
 39.2 MHz dual-pol. This mode can operate concurrently with TBF and
 COR.
 
 #### COR
 
-The correlator. Cross-correlates all 512 inputs using 25 kHz frequency
+The correlator. Cross-correlates all 512 inputs using 100 kHz frequency
 channels across any subset of frequency tunings set by the DRX
 command. This mode can operate concurrently with TBF and BAM.
 
@@ -286,10 +290,6 @@ Name           | Type                   | Value(s)   | Description
 5         |     25
 6         |     50
 7         |    100
-8         |    200
-9         |    400
-10        |    800
-11        |   1600
 
 ### DRX command
 
@@ -304,7 +304,7 @@ TBF/BAM/COR recordings be stopped, and takes 1 second before
 recordings can be started again (i.e., it requires 1 second of downtime).
 
 Any combination of up to NUM_DRX_TUNINGS tunings totalling up to the
-equivalent of 1x `DRX_FILTER8` (39.2 MHz) of bandwidth may be
+equivalent of 2x `DRX_FILTER7` (2x19.6 MHz = 39.2 MHz) of bandwidth may be
 specified. The specified tuning can be disabled by specifying `DRX_BW
 = DRX_FILTER0`.
 
@@ -329,7 +329,6 @@ Name           | Type                   | Value(s)   | Description
 5         |  4900
 6         |  9800
 7         | 19600
-8         | 39200
 
 #### Constraints
 
@@ -406,13 +405,13 @@ any frequency channel that overlaps with the first, third or fourth
 active DRX tunings.
 
 Correlator frequency channels have a width of
-<math>f<sub>c</sub></math>, with channel <math>n &isin;
-[0,`NUM_FREQ_CHANS`-1]<math> centered at
-<math>f<sub>n</sub>=n*f<sub>c</sub></math>. E.g., the first channel is
-centered at 0 Hz (i.e., DC) and spans the frequencies
-<math>[-f<sub>c</sub>/2, +f<sub>c</sub>/2</math>)</math>, the second
-channel is centered at <math>f<sub>c</sub></math> and spans the
-frequencies <math>[f<sub>c</sub>/2, 3f<sub>c</sub>/2)</math>, and so
+<math>4*f<sub>c</sub></math>, with channel <math>n &isin;
+[0,`NUM_FREQ_CHANS`/4-1]<math> centered at
+<math>f<sub>n</sub>=(n+2)*f<sub>c</sub></math>. E.g., the first channel is
+centered at 50 Hz (i.e., DC) and spans the frequencies
+<math>[-4*f<sub>c</sub>/2, +4*f<sub>c</sub>/2</math>)</math>, the second
+channel is centered at <math>6*f<sub>c</sub></math> and spans the
+frequencies <math>[4*f<sub>c</sub>/2, 8*f<sub>c</sub>/2)</math>, and so
 on.
 
 Note that due to the use of frequency channels and output data packets
@@ -535,10 +534,10 @@ Name           | Type     | Value(s)   | Description
 
 #### Data rate
 
-One 400 kHz tuning:
+One 100 kHz tuning:
 
-       400 kHz * 16 stands * 2 pols * 3 roaches/server * 8+8 bits
-     = 76.8 MB/s to local disk(s)
+       100 kHz * 16 stands * 2 pols * 3 roaches/server * 8+8 bits
+     = 19.2 MB/s to local disk(s)
 
 ### Correlator output
 
@@ -557,8 +556,8 @@ Name           | Type     | Value(s)   | Description
 `stand_i`      | `sint16` | [1-256]    | Stand number of the unconjugated stand.
 `stand_j`      | `sint16` | [1-256]    | Stand number of the conjugated stand.
 
-Each packet payload shall contain 144 frequency channels (each channel
-spanning a bandwidth of <math>f<sub>c</sub></math>) and 4 polarisation
+Each packet payload shall contain 33 frequency channels (each channel
+spanning a bandwidth of <math>4*f<sub>c</sub></math>) and 4 polarisation
 products for one baseline (unique pair of stands). The data shall be
 ordered with frequency channel changing slowest, followed by the
 polarisation of the unconjugated stand, the polarisation of the
@@ -566,30 +565,21 @@ conjugated stand, and finally a packed value of 8 bytes, for a total
 payload size of 4608 bytes.
 
     Slowest-changing                           Fastest-changing
-    [144 chans][2 pol_i (X,Y)][2 pol_j (X,Y)][8 byte structure] = 4608 bytes
+    [33 chans][2 pol_i (X,Y)][2 pol_j (X,Y)][8 byte structure] = 1056 bytes
 
 Polarisations are ordered X then Y, giving a combined order of XiXj,
 XiYj, YiXj, YiYj, where the 'j' elements represent the conjugated
 stand in the product. The 8-byte value structure shall contain the
-real and imaginary components of a complex number, each 21 bits,
-followed by a weight value with format `fixed22.21`. All three values
-are signed and in two's complement format, with the structure packed
-MSB first. Negative weight values indicate that samples were flagged.
-
-    MSB                               LSB
-    0        8        16       24     31
-    ======== ======== ======== ========
-    <------- --REAL-- ----><-- --------
-    IMAG---- -><----- -WEIGHT- ------->
-    ======== ======== ======== ========
+real and imaginary components as a little endian complex floating point
+number.
 
 #### Data rate
 
-Each 3.6 MHz (144-chan) subband:
+Each 3.3 MHz (33-chan) subband:
 
-      4608 B * 256*257/2 / COR_NAVG s
-	= 151.6 MB / COR_NAVG s
-	= 15.16 MB/s @ COR_NAVG=10s
+      1056 B * 256*257/2 / COR_NAVG s
+	= 37.9 MB / COR_NAVG s
+	= 3.79 MB/s @ COR_NAVG=10s
 
 ### TBF output
 
@@ -661,7 +651,7 @@ Bit(s) | Name         | Value           | Description
 
 #### Data rate
 
-One 39.2 MHz dual-polarisation 8+8-bit beam:
+One 19.6 MHz dual-polarisation 8+8-bit beam:
 
-      2*2 B * 39.2 MHz
-    = 156.8 MB/s
+      2*2 B * 19.6 MHz
+    = 78.4 MB/s

@@ -8,7 +8,7 @@ from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
-from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPVerbsCapture as UDPCapture
 from bifrost.packet_writer import HeaderInfo, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
@@ -221,7 +221,7 @@ class TEngineOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuation at %.1f" % pipeline_time
+                #print "No pending configuration at %.1f" % pipeline_time
                 pass
                 
         if config:
@@ -304,8 +304,8 @@ class TEngineOp(object):
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1       # 4+4 complex
                 oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)#, obuf_size)
+                self.iring.resize(igulp_size, 10*igulp_size)
+                self.oring.resize(ogulp_size)#, ogulp_size)
                 
                 ticksPerTime = int(FS) / int(CHAN_BW)
                 base_time_tag = iseq.time_tag
@@ -591,8 +591,8 @@ class DualPacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
@@ -717,8 +717,8 @@ class TriplePacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
@@ -743,7 +743,7 @@ class TriplePacketizeOp(object):
                                           'reserve_time': -1, 
                                           'process_time': process_time,})
 
-class QuadrupalPacketizeOp(object):
+class QuadruplePacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
         self.log   = log
@@ -847,8 +847,8 @@ class QuadrupalPacketizeOp(object):
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'skip', t, data0.shape[0]
-                        continue
+                        print 'speedup', t, data0.shape[0]
+                        pass
                     except (socket.timeout, socket.error):
                         pass
                         
@@ -1049,7 +1049,7 @@ def main(argv):
     elif nbeam == 3:
         PacketizerOp = TriplePacketizeOp
     elif nbeam == 4:
-        PacketizerOp = QuadrupalPacketizeOp
+        PacketizerOp = QuadruplePacketizeOp
     else:
         raise RuntimeError("Unsupported number of beams: %i" % nbeam)
     ops.append(PacketizerOp(log, tengine_ring,
