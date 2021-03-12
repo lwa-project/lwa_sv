@@ -43,7 +43,10 @@ def main(args):
         freqs[i,:,:] = ((ch0 + np.arange(nservers*nchan_server)) * CHAN_BW).reshape((nservers, nchan_server))
   
     #Set up the pointings.
-    beamPointings = np.load('/home/adp/Achromatic_Beam_Step_Info.npz')
+    if args.fringe != 0:
+        beamPointings = np.load('/home/adp/Achromatic_Basket_Weave.npz')
+    else:
+        beamPointings = np.load('/home/adp/Achromatic_Beam_Step_Info.npz')
     azimuths, elevations = beamPointings['azs'], beamPointings['alts']
 
     #Now lets build the complex gains for all frequencies. 
@@ -104,8 +107,12 @@ def main(args):
                         delays = delays.max() - delays
 
                         #Put it all together.
-                        cgains[j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
-                        cgains[j,2*k+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
+                        if args.fringe != 0:
+                            cgains[j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                            cgains[j,2*k+1,m,2*(args.fringe-1)] = 5*np.exp(-2j*np.pi*(freq/1e9)*delays[2*(args.fringe-1)]) #Fringing dipole X alone on Beam Y
+                        else:
+                            cgains[j,2*k,m,::2] = wgt[::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[::2]) #Beam X
+                            cgains[j,2*k+1,m,1::2] = wgt[1::2]*np.exp(-2j*np.pi*(freq/1e9)*delays[1::2]) #Beam Y
 
                     else:
                         cgains[j,2*k:2*(k+1),m,:] = np.zeros((2,512))
@@ -126,5 +133,8 @@ if __name__ == '__main__':
 
 	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
 				help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
-	args = parser.parse_args()
+        parser.add_argument('-f','--fringe', type=int, default=0,
+                help='Reference stand for a fringing basket weave run. (Beam on X pol, reference stand on Y pol. 0 = no fringing)')
+	
+        args = parser.parse_args()
 	main(args)
