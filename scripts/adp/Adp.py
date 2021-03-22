@@ -521,6 +521,11 @@ class AdpServerMonitorClient(object):
         ret = subprocess.check_output(['ipmitool', '-H', self.host_ipmi,
                                        '-U', username, '-P', password] +
                                        cmd.split())
+        try:
+            ret = ret.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         return ret
         #return True
         #except CalledProcessError as e:
@@ -653,6 +658,11 @@ class AdpServerMonitorClient(object):
                                        'ssh', '-o', 'StrictHostKeyChecking=no',
                                        'root@'+self.host,
                                        cmd])
+        try:
+            ret = ret.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         #self.log.info("SSHPASS DONE: " + ret)
         #self.log.info("Command executed: "+ret)
         return ret
@@ -1273,6 +1283,11 @@ class MsgProcessor(ConsumerThread):
         for s in (1,2,3,4,5,6):
             cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
             latestTBF = subprocess.check_output(cmd, shell=True)
+            try:
+                latestTBF = latestTBF.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             lines = latestTBF.split('\n')
             for f,line in enumerate(lines):
                 if len(line) < 3:
@@ -1334,7 +1349,12 @@ class MsgProcessor(ConsumerThread):
             # Verify the offsets
             output = subprocess.check_output("python /home/adp/lwa_sv/scripts/check_roach_sync.py %s" % ' '.join(filenames), shell=True)
             
-            # Load in the delays
+            # Load in the delays\
+            try:
+                output = output.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             output = output.split('\n')
             offsets = []
             for line in output:
@@ -1405,6 +1425,11 @@ class MsgProcessor(ConsumerThread):
             output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
             
             # Load in the delays
+            try:
+                output = output.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             output = output.split('\n')
             delays = {}
             for line in output:
@@ -1455,6 +1480,11 @@ class MsgProcessor(ConsumerThread):
                 output = subprocess.check_output("python /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
                 
                 # Load in the delays
+                try:
+                    output = output.decode()
+                except AttributeError:
+                    # Python2 catch
+                    pass
                 output = output.split('\n')
                 delays = []
                 for line in output:
