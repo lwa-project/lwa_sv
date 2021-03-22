@@ -45,7 +45,7 @@ Note: The only param changes required for the ROACHes are: TBN mode or DRX chan 
 
 Recv thread:
   while not stop_requested():
-    cmds_this_second = [[] for _ in xrange(self.nsubslot)]
+    cmds_this_second = [[] for _ in range(self.nsubslot)]
     while time_left_this_second > 0:
       new_cmd = wait_for_new_cmd(timeout=time_left_this_second)
       cmds_this_second[new_cmd.subslot].append( new_cmd )
@@ -67,6 +67,11 @@ Process thread:
 
 """
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from adp import MCS2, Adp
 
 import signal
@@ -212,8 +217,8 @@ def main(argv):
 
 if __name__ == "__main__":
 	import sys
-	print "--- Start of application ---"
+	print("--- Start of application ---")
 	ret = main(sys.argv)
-	print "--- End of application ---"
+	print("--- End of application ---")
 	sys.exit(ret)
 	

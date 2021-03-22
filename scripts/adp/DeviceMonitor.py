@@ -5,6 +5,11 @@ Disk, CPU, GPU and ROACH2 device monitoring
 TODO: `impmitool sensor list` shows there are also thermal-region and PSU temps available
 """
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 import os
 # TODO: Replace this with katcp (commands remain the same)
 #from telnetlib import Telnet # For reading ROACH2 sensors
@@ -64,7 +69,7 @@ class GPUSystem(object):
     #def device(self, idx):
     #	return NVMLDevice(idx)
     def devices(self):
-        return [GPUDevice(i) for i in xrange(self.device_count())]
+        return [GPUDevice(i) for i in range(self.device_count())]
 
 class GPUDevice(object):
     def __init__(self, idx):
@@ -123,7 +128,7 @@ class ROACH2Device(object):
         except subprocess.CalledProcessError:
             return np.zeros(data_shape, dtype=np.int8)
         #cmd = ' '.join([cmd, "-l", str(nsamps), self.host])
-        #print cmd
+        #print(cmd)
         #out = subprocess.check_output(cmd)
         data = np.fromstring(out, sep=' ', dtype=np.int8)
         try:

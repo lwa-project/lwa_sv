@@ -1,4 +1,6 @@
 
+from __future__ import print_function
+
 import threading
 
 class ConsumerThread(threading.Thread):
@@ -21,8 +23,8 @@ class ConsumerThread(threading.Thread):
                 break
             try:
                 self.process(task)
-            except Exception, e:
-                print "ERROR: Uncaught exception in %s: %s" % (self, e)
+            except Exception as e:
+                print("ERROR: Uncaught exception in %s: %s" % (self, e))
             self.input_queue.task_done()
         self.shutdown()
     def process(self, task):

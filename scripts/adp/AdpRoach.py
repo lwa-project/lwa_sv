@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 #try:
 import corr
 #except ImportError:
-#	print "ERROR: Module 'corr' not installed; roaches cannot be controlled"
+#	print("ERROR: Module 'corr' not installed; roaches cannot be controlled")
 import subprocess
 import time
 import numpy as np
@@ -60,7 +65,7 @@ class AdpRoach(object):
                 ok, _ = self.check_serdes()
             except ValueError:
                 ok = True # Fine if non-ADC16 firmware
-            print out
+            print(out)
             
         ###
         ### NOTE:  These next several parameters are only active after adc_rst
@@ -71,7 +76,7 @@ class AdpRoach(object):
         self._fpgaState = {}
         
         # Zero out the ADC delays (or 512 them out, as it were)
-        for i in xrange(32):
+        for i in range(32):
             self.fpga.write_int('adc_delay%i' % i, 512)
             #self._fpgaState['adc_delay%i' % i] = 512
             
@@ -127,9 +132,9 @@ class AdpRoach(object):
         if 'device not found' in out:
             raise ValueError("Not an ADC16 firmware")
         if err is not None or 'deskew' not in out:
-            print out
+            print(out)
             raise RuntimeError("Firmware status request failed: "+str(err))
-        ok = not ('X' in out or 'BAD' in out)
+        ok = not (b'X' in out or b'BAD' in out)
         return ok, out
         
     def configure_10gbe(self, gbe_idx, dst_ips, dst_ports, arp_table, src_ip_base="192.168.40.50", src_port_base=4000):

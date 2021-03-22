@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 from AdpLogging import AdpFileLogger
 import AdpConfig
 from DeviceMonitor import CPUDevice, GPUDevice
@@ -30,7 +32,7 @@ class AdpServerTempLogger(AdpFileLogger):
 if __name__ == "__main__":
 	import sys
 	if len(sys.argv) <= 1:
-		print "Usage:", sys.argv[0], "config_file"
+		print("Usage:", sys.argv[0], "config_file")
 		sys.exit(-1)
 	config_filename = sys.argv[1]
 	config = AdpConfig.parse_config_file(config_filename)

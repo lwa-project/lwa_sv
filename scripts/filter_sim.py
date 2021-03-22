@@ -69,14 +69,14 @@ plt.show()
 def channelise_real(a, nchan):
 	"""Real short-time Fourier transform"""
 	print a.size, 2*nchan
-	wrapped = a.reshape(a.size/(2*nchan),2*nchan)
+	wrapped = a.reshape(a.size//(2*nchan),2*nchan)
 	#return np.fft.rfft(wrapped, axis=1)
 	return np.fft.rfft(wrapped, axis=1)[:,:nchan] # Note: Crops off Nyquist sample
 	#return np.fft.rfft(wrapped, axis=1)[:,1:] # Note: Crops off DC sample
 	#return np.fft.fft(wrapped, axis=1)
 def channelise(a, nchan, bitrev=False):
 	"""Complex short-time Fourier transform"""
-	wrapped = a.reshape(a.size/nchan,nchan)
+	wrapped = a.reshape(a.size//nchan,nchan)
 	"""
 	if bitrev:
 		inds = np.arange(nchan, dtype=np.uint32)
@@ -113,7 +113,7 @@ def test_overlap_fft():
 	np.random.seed(1234)
 	#t  = np.random.normal(size=ncourse*2*nchan_course)
 	#t = np.zeros(ncourse*2*nchan_course)
-	#t[t.size/2] = 1
+	#t[t.size//2] = 1
 	#t = np.sin(np.linspace(0, 100, ncourse*2*nchan_course))
 	#t = np.sin(3*np.linspace(0, 100, ncourse*nchan_course))
 	t = np.sin(0.2*np.linspace(0, 100, ncourse*nchan_course))
@@ -147,7 +147,7 @@ def test_overlap_fft():
 	inds = np.arange(nchan, dtype=np.uint32)
 	#fa = np.fft.fftshift(fa)
 	#fa = np.abs(fa)
-	#fa += fa[0,inds/2]# + fa[0,1*inds/4] + fa[0,3*inds/4]
+	#fa += fa[0,inds//2]# + fa[0,1*inds//4] + fa[0,3*inds//4]
 	
 	#fa_gold = fa_gold[:,revinds]
 	#fa_gold[:,revinds] = fa_gold
@@ -169,15 +169,15 @@ def test_filter():
 	npulse = 1
 	oversample = 32
 	t = np.zeros(ntime*oversample)
-	t[(nchan/2-npulse/2)*oversample:(nchan/2+(npulse-1)/2+1)*oversample] = 1
+	t[(nchan//2-npulse//2)*oversample:(nchan//2+(npulse-1)//2+1)*oversample] = 1
 	#plt.plot(db(t))
 	#plt.show()
-	f = np.fft.rfft(t.reshape(ntime/(2*nchan),2*nchan*oversample), axis=1)
+	f = np.fft.rfft(t.reshape(ntime//(2*nchan),2*nchan*oversample), axis=1)
 	#plt.plot(db(f[0]))
 	#plt.show()
-	npass = nchan/2
+	npass = nchan//2
 	window = np.zeros(f.shape[1])
-	window[(nchan/2-npass/2)*oversample:(nchan/2+(npass-1)/2+1)*oversample] = 1 * 2*nchan/npass
+	window[(nchan//2-npass//2)*oversample:(nchan//2+(npass-1)//2+1)*oversample] = 1 * 2*nchan/npass
 	#window /= window.sum()
 	tnew1 = np.fft.irfft(f*window, axis=1).flatten()
 	
@@ -197,8 +197,8 @@ def test_filter():
 	plt.xlabel("Frequency")
 	plt.show()
 	
-	#f[:,:(nchan/2-npass/2)*oversample] = 0
-	#f[:,(nchan/2+npass/2)*oversample:] = 0
+	#f[:,:(nchan//2-npass//2)*oversample] = 0
+	#f[:,(nchan//2+npass//2)*oversample:] = 0
 	#tnew = np.fft.irfft(f, axis=1).flatten()# * nchan/npass
 	plt.plot(db(t),     color='blue', label="Original")
 	plt.plot(db(tnew1), color='red', label="Boxcar")
@@ -237,18 +237,18 @@ if __name__ == "__main__":
 	plt.show()
 	
 	t = np.zeros(ntime, dtype=np.float32)
-	t[t.size/2+nfft/2] = 1
-	#t[t.size/2] = 1
-	#*f = np.fft.rfft(t.reshape(ntime/nfft,nfft), axis=1)[:,:nchan]
-	f = np.fft.rfft(t.reshape(ntime/nfft,nfft), axis=1)
+	t[t.size//2+nfft//2] = 1
+	#t[t.size//2] = 1
+	#*f = np.fft.rfft(t.reshape(ntime//nfft,nfft), axis=1)[:,:nchan]
+	f = np.fft.rfft(t.reshape(ntime//nfft,nfft), axis=1)
 	f *= window_f
 	#print f.shape
 	#plt.plot(t)
 	#plt.plot(np.abs(f))
 	#plt.show()
-	npass = nchan/2#2048#1024
-	f[:,:nchan/2-npass/2] = 0
-	f[:,nchan/2+npass/2:] = 0
+	npass = nchan//2#2048#1024
+	f[:,:nchan//2-npass//2] = 0
+	f[:,nchan//2+npass//2:] = 0
 	#tnew = np.fft.irfft(f, 2*nchan*oversample, axis=1).flatten()# * nchan/npass
 	tnew = np.fft.irfft(f, axis=1).flatten()# * nchan/npass
 	plt.plot(db(t),    color='blue')

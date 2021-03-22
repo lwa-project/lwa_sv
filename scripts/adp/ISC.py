@@ -9,6 +9,8 @@ $LastChangedBy$
 $LastChangedDate$
 """
 
+from __future__ import print_function
+
 import zmq
 import time
 import numpy
@@ -414,13 +416,13 @@ class PipelineSynchronizationServer(object):
                 if client not in clients:
                     clients.append( client )
                     nAct += 1
-                    print "FOUND '%s'" % client
+                    print("FOUND '%s'" % client)
                     
             elif msg == 'LEAVE':
                 try:
                     del clients[clients.index(client)]
                     nAct -= 1
-                    print "LOST '%s'" % client
+                    print("LOST '%s'" % client)
                 except ValueError:
                     pass
                     

@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *
@@ -52,13 +57,13 @@ FILTER2BW = {1:   250000,
              5:  4900000, 
              6:  9800000, 
              7: 19600000}
-FILTER2CHAN = {1:   250000/25000, 
-               2:   500000/25000, 
-               3:  1000000/25000, 
-               4:  2000000/25000, 
-               5:  4900000/25000, 
-               6:  9800000/25000, 
-               7: 19600000/25000}
+FILTER2CHAN = {1:   250000//25000, 
+               2:   500000//25000, 
+               3:  1000000//25000, 
+               4:  2000000//25000, 
+               5:  4900000//25000, 
+               6:  9800000//25000, 
+               7: 19600000//25000}
 
 __version__    = "0.1"
 __date__       = '$LastChangedDate: 2016-08-09 15:44:00 -0600 (Fri, 25 Jul 2014) $'
@@ -90,8 +95,8 @@ class CaptureOp(object):
         timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
         time_tag0  = timestamp0 * int(FS)
         time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
-        print "++++++++++++++++ seq0     =", seq0
-        print "                 time_tag =", time_tag
+        print("++++++++++++++++ seq0     =", seq0)
+        print("                 time_tag =", time_tag)
         time_tag_ptr[0] = time_tag
         hdr = {'time_tag': time_tag,
                'chan0':    chan0,
@@ -103,7 +108,7 @@ class CaptureOp(object):
                'npol':     2,
                'complex':  True,
                'nbit':     32}
-        print "******** CFREQ:", hdr['cfreq']
+        print("******** CFREQ:", hdr['cfreq'])
         hdr_str = json.dumps(hdr)
         # TODO: Can't pad with NULL because returned as C-string
         #hdr_str = json.dumps(hdr).ljust(4096, '\0')
@@ -120,7 +125,7 @@ class CaptureOp(object):
                         **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
                 status = capture.recv()
-                #print status
+                #print(status)
         del capture
 
 class TEngineOp(object):
@@ -221,7 +226,7 @@ class TEngineOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print("No pending configuration at %.1f" % pipeline_time)
                 pass
                 
         if config:
@@ -307,7 +312,7 @@ class TEngineOp(object):
                 self.iring.resize(igulp_size, 10*igulp_size)
                 self.oring.resize(ogulp_size)#, ogulp_size)
                 
-                ticksPerTime = int(FS) / int(CHAN_BW)
+                ticksPerTime = int(FS) // int(CHAN_BW)
                 base_time_tag = iseq.time_tag
                 sample_count = 0
                 copy_array(self.sampleCount, np.array([sample_count,], dtype=np.int64))
@@ -354,11 +359,11 @@ class TEngineOp(object):
                                 ## Prune and shift the data ahead of the IFFT
                                 if idata.shape[1] != self.nchan_out:
                                     try:
-                                        pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
                                     except NameError:
                                         pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
                                         pdata = BFArray(shape=pshape, dtype=np.complex64, space='system')
-                                        pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
                                 else:
                                     pdata = idata
                                     
@@ -471,7 +476,7 @@ class TEngineOp(object):
 
 def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
     bw = FILTER2BW[filter]
-    decim = int(FS) / bw
+    decim = int(FS) // bw
     sync_word    = 0xDEC0DE5C
     idval        = ((pol&0x1)<<7) | ((tune&0x7)<<3) | (beam&0x7)
     frame_num    = 0
@@ -479,8 +484,8 @@ def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
     assert( 0 <= cfreq < FS )
     tuning_word  = int(round(cfreq / FS * 2**32))    # This should already be on the DP frequency grid from the control software so we need to use round()
     #if stand == 0 and pol == 0:
-    #    print cfreq, bw, gain, time_tag, time_tag0
-    #    print nframe_per_sample, nframe_per_packet
+    #    print(cfreq, bw, gain, time_tag, time_tag0)
+    #    print(nframe_per_sample, nframe_per_packet)
     return struct.pack('>IIIhhqII',
                        sync_word,
                        id_frame_num,
@@ -545,7 +550,7 @@ class DualPacketizeOp(object):
             
             self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
             
-            #print 'PacketizeOp', ihdr
+            #print('PacketizeOp', ihdr)
             cfreq  = ihdr['cfreq']
             bw     = ihdr['bw']
             gain   = ihdr['gain']
@@ -565,7 +570,7 @@ class DualPacketizeOp(object):
             if soffset != 0:
                 soffset = NPACKET_SET*ntime_pkt - soffset
             boffset = soffset*nbeam*npol
-            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            print('!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset)
             
             time_tag += soffset*ticksPerSample                  # Correct for offset
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
@@ -586,12 +591,12 @@ class DualPacketizeOp(object):
                 data0 = data[:,0,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 
-                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                for t in range(0, data0.shape[0], NPACKET_SET):
                     time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'speedup', t, data0.shape[0]
+                        print('speedup', t, data0.shape[0])
                         pass
                     except (socket.timeout, socket.error):
                         pass
@@ -604,7 +609,7 @@ class DualPacketizeOp(object):
                                 udt1.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(1+self.beam0), 128, 
                                           data1[t:t+NPACKET_SET,:,:])
                     except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                        print(type(self).__name__, 'Sending Error', str(e))
                             
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
@@ -670,7 +675,7 @@ class TriplePacketizeOp(object):
             
             self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
             
-            #print 'PacketizeOp', ihdr
+            #print('PacketizeOp', ihdr)
             cfreq  = ihdr['cfreq']
             bw     = ihdr['bw']
             gain   = ihdr['gain']
@@ -690,7 +695,7 @@ class TriplePacketizeOp(object):
             if soffset != 0:
                 soffset = NPACKET_SET*ntime_pkt - soffset
             boffset = soffset*nbeam*npol
-            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            print('!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset)
             
             time_tag += soffset*ticksPerSample                  # Correct for offset
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
@@ -712,12 +717,12 @@ class TriplePacketizeOp(object):
                 data1 = data[:,1,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 data2 = data[:,2,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 
-                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                for t in range(0, data0.shape[0], NPACKET_SET):
                     time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'speedup', t, data0.shape[0]
+                        print('speedup', t, data0.shape[0])
                         pass
                     except (socket.timeout, socket.error):
                         pass
@@ -732,7 +737,7 @@ class TriplePacketizeOp(object):
                                 udt2.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(2+self.beam0), 128, 
                                           data2[t:t+NPACKET_SET,:,:])
                     except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                        print(type(self).__name__, 'Sending Error', str(e))
                             
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
@@ -799,7 +804,7 @@ class QuadruplePacketizeOp(object):
             
             self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
             
-            #print 'PacketizeOp', ihdr
+            #print('PacketizeOp', ihdr)
             cfreq  = ihdr['cfreq']
             bw     = ihdr['bw']
             gain   = ihdr['gain']
@@ -819,7 +824,7 @@ class QuadruplePacketizeOp(object):
             if soffset != 0:
                 soffset = NPACKET_SET*ntime_pkt - soffset
             boffset = soffset*nbeam*npol
-            print '!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            print('!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset)
             
             time_tag += soffset*ticksPerSample                  # Correct for offset
             time_tag -= int(round(fdly*ticksPerSample))         # Correct for FIR filter delay
@@ -842,12 +847,12 @@ class QuadruplePacketizeOp(object):
                 data2 = data[:,2,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 data3 = data[:,3,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy()
                 
-                for t in xrange(0, data0.shape[0], NPACKET_SET):
+                for t in range(0, data0.shape[0], NPACKET_SET):
                     time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print 'speedup', t, data0.shape[0]
+                        print('speedup', t, data0.shape[0])
                         pass
                     except (socket.timeout, socket.error):
                         pass
@@ -864,7 +869,7 @@ class QuadruplePacketizeOp(object):
                                 udt3.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, desc_src+(3+self.beam0), 128, 
                                           data3[t:t+NPACKET_SET,:,:])
                     except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                        print(type(self).__name__, 'Sending Error', str(e))
                             
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
@@ -889,9 +894,9 @@ def get_utc_start(shutdown_event=None):
                 utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
             got_utc_start = True
         except Exception as ex:
-            print ex
+            print(ex)
             time.sleep(1)
-    #print "UTC_START:", utc_start
+    #print("UTC_START:", utc_start)
     #return utc_start
     return utc_start_dt
 
@@ -1040,7 +1045,7 @@ def main(argv):
                          nchan_max=nchan_max, nbeam=nbeam, 
                          core=cores.pop(0), gpu=gpus.pop(0)))
     rsocks = []
-    for beam in xrange(nbeam):
+    for beam in range(nbeam):
         raddr = Address(oaddr[beam], oport[beam])
         rsocks.append(UDPSocket())
         rsocks[-1].connect(raddr)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 import os
 import sys
 import time
@@ -9,7 +11,7 @@ from adp.AdpCommon import TRIGGERING_ACTIVE_FILE
 
 
 def usage(exitCode=None):
-	print """adp_enable_triggering.py - Toggle the internal triggering state of ADP
+	print("""adp_enable_triggering.py - Toggle the internal triggering state of ADP
 	
 Usage: adp_enable_triggering.py [OPTIONS]
 
@@ -18,7 +20,7 @@ Options:
 -q, --query            Display the current state but do not change it
 -e, --enable           Enabled internal triggering (Default = yes)
 -d, --disable          Disable internal triggering
-"""
+""")
 	
 	if exitCode is not None:
 		sys.exit(exitCode)
@@ -35,9 +37,9 @@ def parseConfig(args):
 	# Read in and process the command line flags
 	try:
 		opts, arg = getopt.getopt(args, "hqed", ["help", "query", "enable", "disable"])
-	except getopt.GetoptError, err:
+	except getopt.GetoptError as err:
 		# Print help information and exit:
-		print str(err) # will print something like "option -a not recognized"
+		print(str(err)) # will print something like "option -a not recognized"
 		usage(exitCode=2)
 		
 	# Work through opts
@@ -90,7 +92,7 @@ def main(args):
 			except OSError:
 				pass
 				
-	print "ADP Triggering: %s" % ('enabled' if active else 'disabled',)
+	print("ADP Triggering: %s" % ('enabled' if active else 'disabled',))
 
 
 if __name__ == '__main__':

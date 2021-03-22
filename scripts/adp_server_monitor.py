@@ -9,6 +9,8 @@ Responds to requests from the ADP main control script for:
   STAT code and INFO string
 """
 
+from __future__ import print_function
+
 __version__    = "0.1"
 __date__       = '$LastChangedDate: 2015-07-23 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -127,7 +129,7 @@ import signal
 def main(argv):
 	import sys
 	if len(sys.argv) <= 1:
-		print "Usage:", sys.argv[0], "config_file"
+		print("Usage:", sys.argv[0], "config_file")
 		sys.exit(-1)
 	config_filename = sys.argv[1]
 	config = AdpConfig.parse_config_file(config_filename)

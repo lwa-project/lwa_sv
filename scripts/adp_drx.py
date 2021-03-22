@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *
@@ -69,8 +74,8 @@ class CaptureOp(object):
         timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
         time_tag0  = timestamp0 * int(FS)
         time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
-        print "++++++++++++++++ seq0     =", seq0
-        print "                 time_tag =", time_tag
+        print("++++++++++++++++ seq0     =", seq0)
+        print("                 time_tag =", time_tag)
         time_tag_ptr[0] = time_tag
         hdr = {'time_tag': time_tag,
                'seq0':     seq0, 
@@ -83,7 +88,7 @@ class CaptureOp(object):
                'npol':     2,
                'complex':  True,
                'nbit':     4}
-        print "******** CFREQ:", hdr['cfreq']
+        print("******** CFREQ:", hdr['cfreq'])
         hdr_str = json.dumps(hdr)
         # TODO: Can't pad with NULL because returned as C-string
         #hdr_str = json.dumps(hdr).ljust(4096, '\0')
@@ -100,7 +105,7 @@ class CaptureOp(object):
                         **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
                 status = capture.recv()
-                #print status
+                #print(status)
         del capture
 
 class CopyOp(object):
@@ -193,7 +198,7 @@ class CopyOp(object):
                                     idata = ispan.data_view(np.uint8)
                                     odata = ospan.data_view(np.uint8)    
                                     BFMemCopy(odata, idata)
-                                    #print "COPY"
+                                    #print("COPY")
                                     
                                     # Internal triggering code
                                     if clear_to_trigger:
@@ -215,7 +220,7 @@ class CopyOp(object):
                                         
                                         if m > 50.0:
                                             self.internal_trigger(base_time_tag+s*ticksPerTime)
-                                            print m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
+                                            print(m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0)
                                             
                             except IOError:
                                 curr_time = time.time()
@@ -310,15 +315,15 @@ class TriggeredDumpOp(object):
                 time.sleep(0.1)
                 continue
                 
-            print "Trigger: New trigger received: %s" % str(config)
+            print("Trigger: New trigger received: %s" % str(config))
             try:
                 self.dump(time_tag=config[0], samples=config[1], mask=config[2], local=config[3])
             except Exception as e:
-                print "Error on TBF dump: %s" % str(e)
+                print("Error on TBF dump: %s" % str(e))
                 
         del self.udt
         
-        print "Writing ended, TBFOp exiting"
+        print("Writing ended, TBFOp exiting")
         
     def dump(self, samples, time_tag=0, mask=None, local=False):
         if mask is None:
@@ -326,7 +331,7 @@ class TriggeredDumpOp(object):
         if (mask >> self.tuning) & 1 == 0:
             self.log.info('Not for us: %i -> %i @ %i', mask, (mask >> self.tuning) & 1, self.tuning)
             return False
-        speed_factor = 2 / sum([mask>>i&1 for i in xrange(2)])        # TODO: Slightly hacky
+        speed_factor = 2 / sum([mask>>i&1 for i in range(2)])        # TODO: Slightly hacky
         
         ntime_pkt = 1 # TODO: Should be TBF_NTIME_PER_PKT?
         
@@ -340,7 +345,7 @@ class TriggeredDumpOp(object):
             
             utc_now = datetime.datetime.utcnow()
             dump_time_tag = get_time_tag(utc_now + time_offset)
-        #print "********* dump_time_tag =", dump_time_tag
+        #print("********* dump_time_tag =", dump_time_tag)
         #time.sleep(3)
         #ntime_dump = 0.25*1*25000
         #ntime_dump = 0.1*1*25000
@@ -355,7 +360,7 @@ class TriggeredDumpOp(object):
                 max_bytes_per_sec = 104857600 # Limit to 100 MB/s
                 speed_factor = 1
                 
-        print "TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locally' if local else ''))
+        print("TBF DUMPING %f secs at time_tag = %i (%s)%s" % (samples/FS, dump_time_tag, datetime.datetime.utcfromtimestamp(dump_time_tag/FS), (' locally' if local else '')))
         if not local:
             self.tbfLock.set()
         with self.iring.open_sequence_at(dump_time_tag, guarantee=True) as iseq:
@@ -366,7 +371,7 @@ class TriggeredDumpOp(object):
             nstand = ihdr['nstand']
             npol   = ihdr['npol']
             ninput = nstand*npol
-            print "*******", nchan, ninput
+            print("*******", nchan, ninput)
             ishape = (-1,nchan,ninput)#,2)
             frame_nbyte = nchan*ninput#*2
             igulp_size = self.ntime_gulp*nchan*ninput#*2
@@ -383,19 +388,19 @@ class TriggeredDumpOp(object):
             nchan_rounded = nchan // TBF_NCHAN_PER_PKT * TBF_NCHAN_PER_PKT
             bytesSent, bytesStart = 0.0, time.time()
             
-            print "Opening read space of %i bytes at offset = %i" % (igulp_size, dump_byte_offset)
+            print("Opening read space of %i bytes at offset = %i" % (igulp_size, dump_byte_offset))
             pkts = []
             for ispan in iseq.read(igulp_size, begin=dump_byte_offset):
-                print "**** ispan.size, offset", ispan.size, ispan.offset
-                print "**** Dumping at", ntime_dumped
+                print("**** ispan.size, offset", ispan.size, ispan.offset)
+                print("**** Dumping at", ntime_dumped)
                 if ntime_dumped >= ntime_dump:
                     break
-                #print ispan.offset, seq_offset
+                #print(ispan.offset, seq_offset)
                 seq_offset = ispan.offset // frame_nbyte
                 data = ispan.data_view('ci4').reshape(ishape)
                 data = data[:,:nchan_rounded,:].copy()
                 
-                for t in xrange(0, self.ntime_gulp, ntime_pkt):
+                for t in range(0, self.ntime_gulp, ntime_pkt):
                     if ntime_dumped >= ntime_dump:
                         break
                     ntime_dumped += 1
@@ -403,15 +408,15 @@ class TriggeredDumpOp(object):
                     #pkts = []
                     time_tag = time_tag0 + seq_to_time_tag(seq_offset + t)
                     if t == 0:
-                        print "**** first timestamp is", time_tag
-                    #for c in xrange(0, nchan_rounded, TBF_NCHAN_PER_PKT):
+                        print("**** first timestamp is", time_tag)
+                    #for c in range(0, nchan_rounded, TBF_NCHAN_PER_PKT):
                     #    pktdata = data[t:t+ntime_pkt,c:c+TBF_NCHAN_PER_PKT]
                     #    hdr = gen_tbf_header(chan0+c, time_tag, time_tag0)
                     #    try:
                     #        pkt = hdr + pktdata.tostring()
                     #        pkts.append( pkt )
                     #    except Exception as e:
-                    #            print type(self).__name__, 'Packing Error', str(e)
+                    #            print(type(self).__name__, 'Packing Error', str(e))
                     #            
                     #    if len(pkts) == 32:            
                     #        if local:
@@ -423,7 +428,7 @@ class TriggeredDumpOp(object):
                     #                self.udt.sendmany(pkts)
                     #                bytesSent += sum([len(p) for p in pkts])
                     #            except Exception as e:
-                    #                print type(self).__name__, 'Sending Error', str(e)
+                    #                print(type(self).__name__, 'Sending Error', str(e))
                     #                
                     #            while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
                     #                time.sleep(0.001)
@@ -431,20 +436,20 @@ class TriggeredDumpOp(object):
                     #        pkts = []
                     
                     sdata = data[t:t+ntime_pkt,...]
-                    sdata = sdata.reshape(1,nchan/TBF_NCHAN_PER_PKT,-1)
+                    sdata = sdata.reshape(1,nchan//TBF_NCHAN_PER_PKT,-1)
                     if local:
                         ldw.send(self.desc,
                                  time_tag, int(FS)//int(CHAN_BW), 
                                  chan0, TBF_NCHAN_PER_PKT, sdata)
-                        bytesSent += sdata.size / 6144 * 6168   # data size -> packet size
+                        bytesSent += sdata.size // 6144 * 6168   # data size -> packet size
                     else:
                         try:
                             self.udt.send(self.desc,
                                           time_tag, int(FS)//int(CHAN_BW), 
                                           chan0, TBF_NCHAN_PER_PKT, sdata)
-                            bytesSent += sdata.size / 6144 * 6168   # data size -> packet size
+                            bytesSent += sdata.size // 6144 * 6168   # data size -> packet size
                         except Exception as e:
-                            print type(self).__name__, 'Sending Error', str(e)
+                            print(type(self).__name__, 'Sending Error', str(e))
                             
                     while bytesSent/(time.time()-bytesStart) >= max_bytes_per_sec*speed_factor:
                         time.sleep(0.001)
@@ -475,14 +480,14 @@ class TriggeredDumpOp(object):
         #            self.udt.send(self.desc, 0, 0, 1, 0, 0, 1, )
         #            bytesSent += sum([len(p) for p in pkts])
         #        except Exception as e:
-        #            print type(self).__name__, 'Flush Sending Error', str(e)
+        #            print(type(self).__name__, 'Flush Sending Error', str(e))
         #            
         #    self.tbfLock.clear()
         
         if not local:
             self.tbfLock.clear()
             
-        print "TBF DUMP COMPLETE at %.3f - average rate was %.3f MB/s" % (time.time(), bytesSent/(time.time()-bytesStart)/1024**2)
+        print("TBF DUMP COMPLETE at %.3f - average rate was %.3f MB/s" % (time.time(), bytesSent/(time.time()-bytesStart)/1024**2))
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
@@ -574,7 +579,7 @@ class BeamformerOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print("No pending configuration at %.1f" % pipeline_time)
                 pass
                 
         if config:
@@ -591,7 +596,7 @@ class BeamformerOp(object):
             # Unpack and re-shape the delays (to seconds) and gains (to floating-point)
             delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
             gains = gains/32767.0
-            gains.shape = (gains.size/2, 2)
+            gains.shape = (gains.size//2, 2)
             
             # Update the internal delay and gain cache so that we can use these later
             self.delays[2*(beam-1)+0,:] = delays
@@ -617,7 +622,7 @@ class BeamformerOp(object):
             # Compute the complex gains needed for the beamformer
             freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
             freqs.shape = (freqs.size, 1)
-            for beam in xrange(1, self.nbeam_max+1):
+            for beam in range(1, self.nbeam_max+1):
                 self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
                                                  * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
                 self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
@@ -657,7 +662,7 @@ class BeamformerOp(object):
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
                 oshape = (self.ntime_gulp,nchan,self.nbeam_max*2)
                 
-                ticksPerTime = int(FS) / int(CHAN_BW)
+                ticksPerTime = int(FS) // int(CHAN_BW)
                 base_time_tag = iseq.time_tag
                 
                 ohdr = ihdr.copy()
@@ -803,7 +808,7 @@ class CorrelatorOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print("No pending configuration at %.1f" % pipeline_time)
                 pass
                 
         if config:
@@ -862,13 +867,13 @@ class CorrelatorOp(object):
                 oshape = (ochan,nstand*npol,nstand*npol)
                 
                 # Figure out where we need to be in the buffer to be at a second boundary
-                ticksPerTime = int(FS) / int(CHAN_BW)
+                ticksPerTime = int(FS) // int(CHAN_BW)
                 toffset = iseq.time_tag % int(FS)
-                soffset = toffset * int(CHAN_BW) / int(FS)
+                soffset = toffset * int(CHAN_BW) // int(FS)
                 if soffset != 0:
                     soffset = int(CHAN_BW) - soffset
                 boffset = soffset * nchan*nstand*npol
-                print '!!', '@', 'cor', iseq.time_tag, toffset, '->', soffset, ' and ', boffset
+                print('!!', '@', 'cor', iseq.time_tag, toffset, '->', soffset, ' and ', boffset)
                 
                 base_time_tag = iseq.time_tag + soffset*ticksPerTime        # Correct for offset
                 
@@ -890,27 +895,27 @@ class CorrelatorOp(object):
                     navg_seq = self.navg * int(CHAN_BW/100.0)
                     navg_seq = int(navg_seq / self.ntime_gulp) * self.ntime_gulp
                     gain_act = 1.0 / 2**self.gain / navg_seq
-                    navg = navg_seq / int(CHAN_BW/100.0)
+                    navg = navg_seq // int(CHAN_BW/100.0)
                     
-                    navg_mod_value = navg_seq * int(FS) / int(CHAN_BW)
-                    print '??', '@', base_time_tag, last_base_time_tag
+                    navg_mod_value = navg_seq * int(FS) // int(CHAN_BW)
+                    print('??', '@', base_time_tag, last_base_time_tag)
                     if base_time_tag == last_base_time_tag:
                         ## Sometimes we get into a situation where the frequency changes
                         ## in less than an integration period.  To deal with this we need to 
                         ## skip forward to the next integration boundary and go from there
                         base_time_tag = base_time_tag + navg_mod_value
-                        nAccumulate = -navg_mod_value / ticksPerTime
-                        print '&&', '@', base_time_tag, 'with', nAccumulate
+                        nAccumulate = -navg_mod_value // ticksPerTime
+                        print('&&', '@', base_time_tag, 'with', nAccumulate)
                     start_time_tag = int(base_time_tag / navg_mod_value) * navg_mod_value
-                    nAccumulate += (base_time_tag - start_time_tag) / ticksPerTime
-                    print '&&&&', '@', start_time_tag, 'with', nAccumulate
+                    nAccumulate += (base_time_tag - start_time_tag) // ticksPerTime
+                    print('&&&&', '@', start_time_tag, 'with', nAccumulate)
                     
                     ohdr['time_tag']  = base_time_tag
                     ohdr['start_tag'] = int(base_time_tag / navg_mod_value) * navg_mod_value
                     ohdr['navg']      = navg
                     ohdr['gain']      = self.gain
                     ohdr_str = json.dumps(ohdr)
-                    print '->', '@', 'cor', ohdr['time_tag'], 'vs', ohdr['start_tag']
+                    print('->', '@', 'cor', ohdr['time_tag'], 'vs', ohdr['start_tag'])
                     
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
@@ -1054,7 +1059,7 @@ class RetransmitOp(object):
                     try:
                         udt.send(desc, seq, 1, self.server-1, 1, idata)
                     except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                        print(type(self).__name__, 'Sending Error', str(e))
                         
                     seq += self.ntime_gulp
                     
@@ -1073,8 +1078,8 @@ def gen_cor_header(server, stand0, stand1, chan0, time_tag, time_tag0, navg, gai
     frame_num    = (nservers << 8) | server
     id_frame_num = idval << 24 | frame_num
     #if stand == 0 and pol == 0:
-    #    print cfreq, bw, gain, time_tag, time_tag0
-    #    print nframe_per_sample, nframe_per_packet
+    #    print(cfreq, bw, gain, time_tag, time_tag0)
+    #    print(nframe_per_sample, nframe_per_packet)
     return struct.pack('>IIIhhqihh',
                        sync_word,
                        id_frame_num,
@@ -1143,7 +1148,7 @@ class PacketizeOp(object):
                 
                 self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
                 
-                #print 'PacketizeOp', ihdr
+                #print('PacketizeOp', ihdr)
                 chan0  = ihdr['chan0']
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
@@ -1158,7 +1163,7 @@ class PacketizeOp(object):
                 desc.set_chan0(chan0)
                 desc.set_gain(gain)
                 desc.set_decimation(navg)
-                desc.set_nsrc(nstand*(nstand+1)/2)
+                desc.set_nsrc(nstand*(nstand+1)//2)
                 
                 ticksPerFrame = int(round(navg*0.01*FS))
                 tInt = int(round(navg*0.01))
@@ -1188,15 +1193,15 @@ class PacketizeOp(object):
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
-                        for i in xrange(nstand):
+                        for i in range(nstand):
                             sdata = odata[i,i:,:,:].copy(space='system')
                             sdata = sdata.reshape(1,-1,nchan*npol*npol)
                             
                             try:
                                 #if ACTIVE_COR_CONFIG.is_set():
-                                udt.send(desc, time_tag_cur, ticksPerFrame, i*(2*(nstand-1)+1-i)/2+i, 1, sdata)
+                                udt.send(desc, time_tag_cur, ticksPerFrame, i*(2*(nstand-1)+1-i)//2+i, 1, sdata)
                             except Exception as e:
-                                print type(self).__name__, 'Sending Error', str(e)
+                                print(type(self).__name__, 'Sending Error', str(e))
                                 
                             bytesSent += sdata.size*8 + sdata.shape[0]*32   # data size -> packet size
                             while bytesSent/(time.time()-bytesStart) >= rate_limit:
@@ -1204,7 +1209,7 @@ class PacketizeOp(object):
                                 
                             del sdata
                             if time.time()-t0 > tBail:
-                                print 'WARNING: vis write bail', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2, '->', time.time()
+                                print('WARNING: vis write bail', time.time()-t0, '@', bytesSent/(time.time()-bytesStart)/1024**2, '->', time.time())
                                 break
                                 
                         time_tag += ticksPerFrame
@@ -1235,9 +1240,9 @@ def get_utc_start(shutdown_event=None):
                 utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
             got_utc_start = True
         except Exception as ex:
-            print ex
+            print(ex)
             time.sleep(1)
-    #print "UTC_START:", utc_start
+    #print("UTC_START:", utc_start)
     #return utc_start
     return utc_start_dt
 

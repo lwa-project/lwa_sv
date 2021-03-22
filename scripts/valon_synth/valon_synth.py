@@ -24,6 +24,8 @@
 Provides a serial interface to the Valon 500x.
 """
 
+from __future__ import division
+
 # Python modules
 import struct
 # Third party modules
@@ -131,8 +133,8 @@ class Synthesizer:
         mod = int(EPDF / float(chan_spacing) + 0.5)
         if frac != 0 and mod != 0:
             while not (frac & 1) and not (mod & 1):
-                frac /= 2
-                mod /= 2
+                frac //= 2
+                mod //= 2
         else:
             frac = 0
             mod = 1

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 from AdpLogging import AdpFileLogger
 import AdpConfig
 from DeviceMonitor import ROACH2Device
@@ -26,7 +28,7 @@ class AdpRoachTempLogger(AdpFileLogger):
 if __name__ == "__main__":
 	import sys
 	if len(sys.argv) <= 2:
-		print "Usage:", sys.argv[0], "config_file roach_host"
+		print("Usage:", sys.argv[0], "config_file roach_host")
 		sys.exit(-1)
 	config_filename = sys.argv[1]
 	roach_host      = sys.argv[2]

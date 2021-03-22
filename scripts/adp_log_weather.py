@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+	
 from AdpLogging import AdpFileLogger
 import AdpConfig
 import weather
@@ -16,7 +21,7 @@ class AdpWeatherLogger(AdpFileLogger):
 		self.nattempts = nattempts
 	def get_ground_weather(self):
 		gnd = None
-		for attempt in xrange(self.nattempts):
+		for attempt in range(self.nattempts):
 			try:
 				gnd = weather.GroundWeather(self.station)
 			except HTTPError:
@@ -26,7 +31,7 @@ class AdpWeatherLogger(AdpFileLogger):
 		return gnd
 	def get_ionosphere_weather(self):
 		tec = None
-		for attempt in xrange(self.nattempts):
+		for attempt in range(self.nattempts):
 			try:
 				tec = weather.TotalElectronContent()
 			except HTTPError:
@@ -48,7 +53,7 @@ class AdpWeatherLogger(AdpFileLogger):
 if __name__ == "__main__":
 	import sys
 	if len(sys.argv) <= 1:
-		print "Usage:", sys.argv[0], "config_file"
+		print("Usage:", sys.argv[0], "config_file")
 		sys.exit(-1)
 	config_filename = sys.argv[1]
 	config = AdpConfig.parse_config_file(config_filename)

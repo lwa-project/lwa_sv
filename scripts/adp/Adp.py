@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from AdpCommon  import *
 from AdpConfig  import *
 from AdpLogging import *
@@ -256,8 +260,8 @@ class Bam(SlotCommandProcessor):
         self.roaches = roaches
         self.ntuning = 2
         self.cur_beam = [0]*self.ntuning
-        self.cur_delays = [[0 for i in xrange(512)]]*self.ntuning
-        self.cur_gains = [[0 for i in xrange(1024)]]*self.ntuning
+        self.cur_delays = [[0 for i in range(512)]]*self.ntuning
+        self.cur_gains = [[0 for i in range(1024)]]*self.ntuning
         self.cur_tuning = [0]*self.ntuning
         
     @ISC.logException
@@ -329,8 +333,8 @@ class Fst(object):
         self.log    = log
         hosts = config['server_hosts']
         ports = config['fst']['control_ports']
-        self.addrs = ['tcp://%s:%i'%(hosts[i/2],ports[i%2]) \
-                    for i in xrange(len(hosts)*len(ports))]
+        self.addrs = ['tcp://%s:%i'%(hosts[i//2],ports[i%2]) \
+                    for i in range(len(hosts)*len(ports))]
         self.socks = ObjectPool([_g_zmqctx.socket(zmq.REQ) \
                                 for _ in self.addrs])
         for sock,addr in zip(self.socks,self.addrs):
@@ -372,7 +376,7 @@ class Fst(object):
                 # Apply same coefs to all inputs
                 self.fir_coefs[slot][...] = cmd.coefs[None,None,:,:]
             else:
-                stand = (cmd.index-1) / 2
+                stand = (cmd.index-1) // 2
                 pol   = (cmd.index-1) % 2
                 self.fir_coefs[slot][stand,pol] = cmd.coefs
         self._send_update(slot)
@@ -765,8 +769,8 @@ class Roach2MonitorClient(object):
                 tbn_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
             drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
             tbn_arp_table   = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
-            drx_0_dst_ports = [dst_ports[0] for i in xrange(len(drx_dst_ips))]
-            drx_1_dst_ports = [dst_ports[1] for i in xrange(len(drx_dst_ips))]
+            drx_0_dst_ports = [dst_ports[0] for i in range(len(drx_dst_ips))]
+            drx_1_dst_ports = [dst_ports[1] for i in range(len(drx_dst_ips))]
             tbn_dst_ports   = [dst_ports[2]] * len(tbn_dst_ips)
             ret0 = self.roach.configure_10gbe(self.GBE_DRX_0, drx_dst_ips, drx_0_dst_ports, drx_arp_table, src_ip_base, src_port_base)
             ret1 = self.roach.configure_10gbe(self.GBE_DRX_1, drx_dst_ips, drx_1_dst_ports, drx_arp_table, src_ip_base, src_port_base)
@@ -888,7 +892,7 @@ class MsgProcessor(ConsumerThread):
         #nroach = len(self.config['host']['roaches'])
         nroach = NBOARD
         self.roaches = ObjectPool([Roach2MonitorClient(config, log, num+1)
-                                for num in xrange(nroach)])
+                                for num in range(nroach)])
         for arc in self.roaches:
             arc.syncFunction = self.roaches[0].roach.wait_for_pps
             
@@ -1044,7 +1048,7 @@ class MsgProcessor(ConsumerThread):
                     
         ## Stop the pipelines
         self.log.info('Stopping pipelines')
-        for tuning in xrange(2):
+        for tuning in range(2):
             self.servers.stop_drx(tuning=tuning)
             self.headnode.stop_tengine(tuning=tuning)
         self.servers.stop_tbn()
@@ -1054,7 +1058,7 @@ class MsgProcessor(ConsumerThread):
             self._wait_until_pipelines_stopped(max_wait=40)
         except RuntimeError:
             self.log.warning('Some pipelines have failed to stop, trying harder')
-            for tuning in xrange(2):
+            for tuning in range(2):
                 for server in self.headnode:
                     pids = server.pid_tengine(tuning=tuning)
                     for pid in filter(lambda x: x > 0, pids):
@@ -1104,7 +1108,7 @@ class MsgProcessor(ConsumerThread):
         self.log.info("Can ssh: "+can_ssh_status)
         if all(self.servers.can_ssh()) or 'FORCE' in arg:
             self.log.info("Restarting pipelines")
-            for tuning in xrange(len(self.config['drx'])):
+            for tuning in range(len(self.config['drx'])):
                 if not self.check_success(lambda: self.headnode.restart_tengine(tuning=tuning),
                                           'Restarting pipelines - DRX/T-engine',
                                           self.headnode.host):
@@ -1204,7 +1208,7 @@ class MsgProcessor(ConsumerThread):
                 return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
         ## DRX
         pipeline_pids = []
-        for tuning in xrange(len(self.config['drx'])):
+        for tuning in range(len(self.config['drx'])):
             pipeline_pids = [p for s in self.servers.pid_drx(tuning=tuning) for p in s]
             pipeline_pids = filter(lambda x: x>0, pipeline_pids)
             print 'DRX-%i:' % tuning, len(pipeline_pids), pipeline_pids
@@ -1213,7 +1217,7 @@ class MsgProcessor(ConsumerThread):
                 if 'FORCE' not in arg:
                     return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
         ## T-engine
-        for tuning in xrange(len(self.config['drx'])):
+        for tuning in range(len(self.config['drx'])):
             pipeline_pids = [p for s in self.headnode.pid_tengine(tuning=tuning) for p in s]
             pipeline_pids = filter(lambda x: x>0, pipeline_pids)
             print 'TEngine-%i:' % tuning, len(pipeline_pids), pipeline_pids
@@ -1231,14 +1235,14 @@ class MsgProcessor(ConsumerThread):
         #		return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
         self.log.info("Initializing DRX")
         self.roaches[0].roach.wait_for_pps()
-        for tuning in xrange(len(self.config['drx'])):
+        for tuning in range(len(self.config['drx'])):
             if not self.check_success(lambda: self.drx.tune(tuning=tuning, freq=34.1e6, internal=True),
                                       'Initializing DRX - %i' % tuning,
                                       self.roaches.host):
                 if 'FORCE' not in arg:
                     return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
                     
-        for tuning in xrange(len(self.config['drx'])):
+        for tuning in range(len(self.config['drx'])):
             if not all(self.roaches.drx_data_enabled(tuning)):
                 return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
         #if not all(self.roaches.tbn_data_enabled()):
@@ -1417,7 +1421,7 @@ class MsgProcessor(ConsumerThread):
                     try:
                         delays[r][i] = d
                     except KeyError:
-                        delays[r] = [0 for j in xrange(32)]
+                        delays[r] = [0 for j in range(32)]
                         delays[r][i] = d
                         
             # Update the roach delay FIFOs
@@ -1615,7 +1619,7 @@ class MsgProcessor(ConsumerThread):
         t0, t1 = time.time(), time.time()
         while nRunning > 0:
             pids = []
-            for tuning in xrange(2):
+            for tuning in range(2):
                 for server in self.servers:
                     pids.extend( server.pid_drx(tuning=tuning) )
                 for server in self.headnode:
@@ -1713,7 +1717,7 @@ class MsgProcessor(ConsumerThread):
                             self.state['status'] = 'WARNING'
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
-                for side in xrange(n_tunings):
+                for side in range(n_tunings):
                     if self.drx.cur_freq[side] > 0 and not tbf_lock.is_set() and total_tengine_bw[side] == 0:
                         problems_found = True
                         msg = "T-Engine-%i -- TX rate of %.1f MB/s" % (side, total_tengine_bw[side]/1024.0**2)
@@ -1746,7 +1750,7 @@ class MsgProcessor(ConsumerThread):
                             self.state['status'] = 'WARNING'
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
-                for side in xrange(n_tunings):
+                for side in range(n_tunings):
                     if self.drx.cur_freq[side] > 0 and total_drx_inactive[side] > 0:
                         problems_found = True
                         msg = "DRX-%i -- TX rate of %.1f MB/s" % (side, total_drx_bw[side]/1024.0**2)

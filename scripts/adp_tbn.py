@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *
@@ -56,17 +61,17 @@ FILTER2BW = { 1:    1000,
               9:  400000,
              10:  800000,
              11: 1600000}
-FILTER2CHAN = { 1:    1000/25000, 
-                2:    3125/25000, 
-                3:    6250/25000, 
-                4:   12500/25000, 
-                5:   25000/25000, 
-                6:   50000/25000, 
-                7:  100000/25000,
-                8:  200000/25000, 
-                9:  400000/25000,
-               10:  800000/25000,
-               11: 1600000/25000}
+FILTER2CHAN = { 1:    1000//25000, 
+                2:    3125//25000, 
+                3:    6250//25000, 
+                4:   12500//25000, 
+                5:   25000//25000, 
+                6:   50000//25000, 
+                7:  100000//25000,
+                8:  200000//25000, 
+                9:  400000//25000,
+               10:  800000//25000,
+               11: 1600000//25000}
 
 __version__    = "0.1"
 __date__       = '$LastChangedDate: 2015-07-23 15:44:00 -0600 (Fri, 25 Jul 2014) $'
@@ -96,8 +101,8 @@ class CaptureOp(object):
         timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
         time_tag0  = timestamp0 * int(FS)
         time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
-        print "++++++++++++++++ seq0     =", seq0
-        print "                 time_tag =", time_tag
+        print("++++++++++++++++ seq0     =", seq0)
+        print("                 time_tag =", time_tag)
         time_tag_ptr[0] = time_tag
         hdr = {'time_tag': time_tag,
                'seq0':     seq0, 
@@ -111,7 +116,7 @@ class CaptureOp(object):
                'npol':     2,
                'complex':  True,
                'nbit':     4}
-        print "******** CFREQ:", hdr['cfreq']
+        print("******** CFREQ:", hdr['cfreq'])
         hdr_str = json.dumps(hdr)
         # TODO: Can't pad with NULL because returned as C-string
         #hdr_str = json.dumps(hdr).ljust(4096, '\0')
@@ -128,7 +133,7 @@ class CaptureOp(object):
                         **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
                 status = capture.recv()
-                #print status
+                #print(status)
         del capture
 
 class TEngineOp(object):
@@ -229,7 +234,7 @@ class TEngineOp(object):
                 if pipeline_time >= stored_time:
                     config_time, config = self._pending.popleft()
             except IndexError:
-                #print "No pending configuration at %.1f" % pipeline_time
+                #print("No pending configuration at %.1f" % pipeline_time)
                 pass
                 
         if config:
@@ -310,7 +315,7 @@ class TEngineOp(object):
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
                 
-                ticksPerTime = int(FS) / int(CHAN_BW)
+                ticksPerTime = int(FS) // int(CHAN_BW)
                 base_time_tag = iseq.time_tag
                 sample_count = 0
                 copy_array(self.sampleCount, np.array([sample_count,], dtype=np.int64))
@@ -357,11 +362,11 @@ class TEngineOp(object):
                                 ## Prune the data
                                 if idata.shape[1] != self.nchan_out:
                                     try:
-                                        pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
                                     except NameError:
                                         pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
                                         pdata = BFArray(shape=pshape, dtype='ci4', native=False, space='system')
-                                        pdata[...] = idata[:,nchan/2-self.nchan_out/2:nchan/2+self.nchan_out/2]
+                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
                                 else:
                                     pdata = idata
                                     
@@ -509,7 +514,7 @@ class PacketizeOp(object):
             
             self.log.info("Packetizer: Start of new sequence: %s", str(ihdr))
             
-            #print 'PacketizeOp', ihdr
+            #print('PacketizeOp', ihdr)
             cfreq  = ihdr['cfreq']
             bw     = ihdr['bw']
             gain   = ihdr['gain']
@@ -527,7 +532,7 @@ class PacketizeOp(object):
             if soffset != 0:
                 soffset = ntime_pkt - soffset
             boffset = soffset*nstand*npol*2
-            print '!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset
+            print('!!', toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset)
             
             time_tag += soffset*ticksPerSample              # Correct for offset
             time_tag -= int(round(fdly*ticksPerSample))     # Correct for FIR filter delay
@@ -547,7 +552,7 @@ class PacketizeOp(object):
                 shape = (-1,nstand,npol)
                 data = ispan.data_view('ci8').reshape(shape)
                 
-                for t in xrange(0, ntime_gulp, ntime_pkt):
+                for t in range(0, ntime_gulp, ntime_pkt):
                     time_tag_cur = time_tag + int(t)*ticksPerSample
                     try:
                         self.sync_tbn_pipelines(time_tag_cur)
@@ -562,7 +567,7 @@ class PacketizeOp(object):
                         if ACTIVE_TBN_CONFIG.is_set():
                             udt.send(desc, time_tag_cur, ticksPerSample*ntime_pkt, 2*stand0, 1, sdata)
                     except Exception as e:
-                        print type(self).__name__, 'Sending Error', str(e)
+                        print(type(self).__name__, 'Sending Error', str(e))
                         
                 time_tag += int(ntime_gulp)*ticksPerSample
                 
@@ -587,9 +592,9 @@ def get_utc_start(shutdown_event=None):
                 utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
             got_utc_start = True
         except Exception as ex:
-            print ex
+            print(ex)
             time.sleep(1)
-    #print "UTC_START:", utc_start
+    #print("UTC_START:", utc_start)
     #return utc_start
     return utc_start_dt
 
@@ -603,13 +608,13 @@ def get_numeric_suffix(s):
 
 def partition_balanced(nitem, npart, part_idx):
     rem = nitem % npart
-    part_nitem  = nitem / npart + (part_idx < rem)
+    part_nitem  = nitem // npart + (part_idx < rem)
     part_offset = (part_idx*part_nitem if part_idx < rem else
                    rem*(part_nitem+1) + (part_idx-rem)*part_nitem)
     return part_nitem, part_offset
 
 def partition_packed(nitem, npart, part_idx):
-    part_nitem  = (nitem-1) / npart + 1
+    part_nitem  = (nitem-1) // npart + 1
     part_offset = part_idx * part_nitem
     part_nitem  = min(part_nitem, nitem-part_offset)
     return part_nitem, part_offset

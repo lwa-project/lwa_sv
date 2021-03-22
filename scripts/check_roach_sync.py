@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 import os
 import sys
 import ephem
@@ -21,7 +26,7 @@ def main(args):
     
     for filename in filenames:
         fh = open(filename, 'rb')
-        nFrames = os.path.getsize(filename) / tbf.FRAME_SIZE
+        nFrames = os.path.getsize(filename) // tbf.FRAME_SIZE
         if nFrames < 3:
             fh.close()
             continue
@@ -40,11 +45,11 @@ def main(args):
         nSamples = 7840
         
         # Figure out how many chunks we need to work with
-        nChunks = nFrames / nFramesPerObs
+        nChunks = nFrames // nFramesPerObs
         
         # Pre-load the channel mapper
         mapper = []
-        for i in xrange(2*nFramesPerObs):
+        for i in range(2*nFramesPerObs):
             cFrame = tbf.read_frame(fh)
             if cFrame.header.first_chan not in mapper:
                 mapper.append( cFrame.header.first_chan )
@@ -64,27 +69,27 @@ def main(args):
             continue
             
         # File summary
-        print "Filename: %s" % filename
-        print "Date of First Frame: %s" % str(beginDate)
-        print "Frames per Observation: %i" % nFramesPerObs
-        print "Channel Count: %i" % nchannels
-        print "Frames: %i" % nFrames
-        print "==="
-        print "Chunks: %i" % nChunks
-        print "==="
+        print("Filename: %s" % filename)
+        print("Date of First Frame: %s" % str(beginDate))
+        print("Frames per Observation: %i" % nFramesPerObs)
+        print("Channel Count: %i" % nchannels)
+        print("Frames: %i" % nFrames)
+        print("===")
+        print("Chunks: %i" % nChunks)
+        print("===")
         
         data = numpy.zeros((256*2,nChunks,nchannels), dtype=numpy.complex64)
         clipping = 0
-        for i in xrange(nChunks):
+        for i in range(nChunks):
             # Inner loop that actually reads the frames into the data array
-            for j in xrange(nFramesPerObs):
+            for j in range(nFramesPerObs):
                 # Read in the next frame and anticipate any problems that could occur
                 try:
                     cFrame = tbf.read_frame(fh)
                 except errors.EOFError:
                     break
                 except errors.SyncError:
-                    print "WARNING: Mark 5C sync error on frame #%i" % (int(fh.tell())/tbf.FRAME_SIZE-1)
+                    print("WARNING: Mark 5C sync error on frame #%i" % (int(fh.tell())//tbf.FRAME_SIZE-1))
                     continue
                 if not cFrame.header.is_tbf:
                     continue
@@ -115,8 +120,8 @@ def main(args):
         fh.close()
         
         # Report on clipping
-        print "Clipping: %i samples (%.1f%%)" % (clipping, 100.0*clipping/data.size)
-        print "==="
+        print("Clipping: %i samples (%.1f%%)" % (clipping, 100.0*clipping/data.size))
+        print("===")
         
         # Make a time domain data set out of these
         tdd = numpy.fft.ifft(data, axis=2)
@@ -132,12 +137,12 @@ def main(args):
         
         valid = numpy.where( numpy.abs(ccF) < 150 )[0]
         ccF = ccF[valid]
-        for i in xrange(16):
+        for i in range(16):
             subCC = cc[i*16:(i+1)*16,valid].sum(axis=0)
-            #print i, subCC
+            #print(i, subCC)
             
             peak = numpy.argmax(subCC)
-            print 'roach%i  %i' % (i+1, int(round(ccF[peak]/40.0))*40)
+            print('roach%i  %i' % (i+1, int(round(ccF[peak]/40.0))*40))
 
 
 if __name__ == "__main__":

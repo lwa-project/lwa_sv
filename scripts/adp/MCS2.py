@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 import Queue
 import time
 from datetime import datetime
@@ -40,9 +45,9 @@ def slot2mjd(slot=None):
     # Source: SkyField
     janfeb = tt.tm_mon < 3
     jd_day = tt.tm_mday
-    jd_day += 1461 *  (tt.tm_year + 4800 - janfeb) / 4
-    jd_day +=  367 *  (tt.tm_mon  -    2 + janfeb * 12) / 12
-    jd_day -=    3 * ((tt.tm_year + 4900 - janfeb) / 100) / 4
+    jd_day += 1461 *  (tt.tm_year + 4800 - janfeb) // 4
+    jd_day +=  367 *  (tt.tm_mon  -    2 + janfeb * 12) // 12
+    jd_day -=    3 * ((tt.tm_year + 4900 - janfeb) // 100) // 4
     jd_day -= 32075
     mjd = tt.tm_sec
     mjd = mjd*(1./60) + tt.tm_min
@@ -180,7 +185,7 @@ class MsgReceiver(UDPRecvThread):
                 self.msg_queue.put(msg)
     def shutdown(self):
         self.msg_queue.put(ConsumerThread.STOP)
-        #print self.name, "shutdown"
+        #print(self.name, "shutdown")
     def get(self, timeout=None):
         try:
             return self.msg_queue.get(True, timeout)
@@ -204,8 +209,8 @@ class MsgSender(ConsumerThread):
         pkt      = msg.encode()
         dst_ip   = msg.dst_ip if msg.dst_ip is not None else self.dst_ip
         dst_addr = (dst_ip, self.dst_port)
-        #print "Sending msg to", dst_addr
-        for attempt in xrange(self.max_attempts-1):
+        #print("Sending msg to", dst_addr)
+        for attempt in range(self.max_attempts-1):
             try:
                 #self.socket.send(pkt)
                 self.socket.sendto(pkt, dst_addr)
@@ -216,7 +221,7 @@ class MsgSender(ConsumerThread):
         #self.socket.send(pkt)
         self.socket.sendto(pkt, dst_addr)
     def shutdown(self):
-        #print self.name, "shutdown"
+        #print(self.name, "shutdown")
         pass
 
 # Simple interface for communicating with adp-control service
@@ -301,7 +306,7 @@ class SynchronizerGroup(object):
     #def __del__(self):
     #    self.shutdown()
     def log(self, value):
-        print "[%.3f] %s" % (time.time()-self.tStart, value)
+        print("[%.3f] %s" % (time.time()-self.tStart, value))
     def shutdown(self):
         self.shutdown_event.set()
         self.log("SynchronizerGroup "+self.group+": run joining")
@@ -361,7 +366,7 @@ class SynchronizerGroup(object):
             # Elect tag0, the reference time tag
             try:
                 tag0 = max(tags)
-                #print "ELECTED %i as tag0 for %s" % (tag0, self.group)
+                #print("ELECTED %i as tag0 for %s" % (tag0, self.group))
             except ValueError:
                 continue
                 
@@ -396,7 +401,7 @@ class SynchronizerGroup(object):
                             self.log("WARNING: Synchronizer (2d): Unexpected message %s client %i: %s" % (self.group, i, e))
                             continue
                         tags[i] = int(tag_msg[4:22], 10)
-                        #print "Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0)
+                        #print("Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0))
                         
                     ## Evaluate the latest batch of timetags
                     slow = [i for i,tag in enumerate(tags) if tag < tag0]
@@ -405,8 +410,8 @@ class SynchronizerGroup(object):
                     j += 1
                     
                 ### Report on what we've done
-                #for i,v in slowFactors.iteritems():
-                #	print "WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v)
+                #for i,v in slowFactors.items():
+                #	print("WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v))
                     
             # Send to everyone regardless to make sure the fast ones don't falter
             i = 0
@@ -426,7 +431,7 @@ class SynchronizerGroup(object):
                 i += 1
                 
             # Done with the iteration
-            ##print "SYNCED "+str(len(self.socks))+" clients in "+self.group
+            ##print("SYNCED "+str(len(self.socks))+" clients in "+self.group)
             
         self.log("SynchronizerGroup "+self.group+": shut down")
 
@@ -452,7 +457,7 @@ class SynchronizerServer(object):
             group_msg = sock.recv(4096)
             if not group_msg.startswith('GROUP:'):
                 #raise ValueError("Unexpected message: "+group_msg)
-                print "WARNING: Synchronizer: Unexpected message: "+group_msg
+                print("WARNING: Synchronizer: Unexpected message: "+group_msg)
             group = group_msg[len('GROUP:'):]
             if group not in self.groups:
                 self.groups[group] = SynchronizerGroup(group)
