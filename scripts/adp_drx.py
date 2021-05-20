@@ -16,7 +16,7 @@ import bifrost.ndarray as BFArray
 from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.reduce import reduce as Reduce
-from bifrost.quantize import Quantize
+from bifrost.quantize import quantize as Quantize
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
@@ -862,9 +862,9 @@ class CorrelatorOp(object):
                 npol   = ihdr['npol']
                 ochan  = nchan // self.decim
                 igulp_size = self.ntime_gulp*nchan*nstand*npol        # 4+4 complex
-                ogulp_size = ochan*nstand*npol*nstand*npol*8            # 32+32 complex
+                ogulp_size = ochan*nstand*(nstand+1)//2*npol*npol*8   # 32+32 complex
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
-                oshape = (ochan,nstand*npol,nstand*npol)
+                oshape = (ochan,nstand*(nstand+1)//2*npol*npol)
                 
                 # Figure out where we need to be in the buffer to be at a second boundary
                 ticksPerTime = int(FS) / int(CHAN_BW)
@@ -944,8 +944,14 @@ class CorrelatorOp(object):
                             Reduce(self.udata, self.ddata, op='sum')
                             self.ddata = self.ddata.reshape(-1,ochan,nstand*npol)
                             Quantize(self.ddata, self.qdata, scale=1)
-                            ddata = self.qdata.copy(space='system')
                             
+                            try:
+                                ddata[:self.ntime_gulp,...] = self.qdata.copy(space='system')
+                            except NameError:
+                                ntime_xgpu = int(np.ceil((self.ntime_gulp / 16.0) * 16))
+                                ddata = BFArray(shape=(ntime_xgpu,ochan,nstand*npol), dtype='ci8', space='syste')
+                                ddata[:self.ntime_gulp,...] = self.qdata
+                                
                             ## Correlate
                             corr_dump = 0
                             if base_time_tag % navg_mod_value == 0:
@@ -1185,7 +1191,7 @@ class PacketizeOp(object):
                         acquire_time = curr_time - prev_time
                         prev_time = curr_time
                         
-                        idata = ispan.data_view(np.complex64).reshape(ishape)
+                        idata = ispan.data_view('ci32').reshape(ishape)
                         t0 = time.time()
                         odata = idata.transpose(1,0,2)
                         odata = odata.view(np.int32)
@@ -1197,9 +1203,11 @@ class PacketizeOp(object):
                         time_tag_cur = time_tag + 0*ticksPerFrame
                         k = 0
                         for i in xrange(nstand):
-                            sdata = odata[k+i:k+i+(nstand-i),:].copy()
-                            sdata = sdata.reshape(1,-1,nchan*npol*npol)
-                            k += nstand-i
+                            sdata = BFArray(shape=(1,nstand-i,nchan*npol*npol), dtype='cf32')
+                            for j in xrange(i, nstand):
+                                sdata[0,j-i,:,:] = odata[k,:,:]
+                                k += 1
+                            sdata = sdata.reshape(1,nstand-i,-1)
                             
                             try:
                                 #if ACTIVE_COR_CONFIG.is_set():
@@ -1386,7 +1394,7 @@ def main(argv):
     capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
-    vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
+    vis_ring     = Ring(name="vis-%i" % tuning, space='cuda_host')
     
     tbf_buffer_secs = int(round(config['tbf']['buffer_time_sec']))
     
