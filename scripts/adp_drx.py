@@ -16,6 +16,7 @@ import bifrost.ndarray as BFArray
 from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.reduce import reduce as Reduce
+from bifrost.quantize import Quantize
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
@@ -23,6 +24,8 @@ from bifrost.linalg import LinAlg
 from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
+
+from bxgpu import Bxgpu
 
 #import numpy as np
 import signal
@@ -750,13 +753,15 @@ class CorrelatorOp(object):
         ochan = nchan//self.decim
         nstand, npol = nroach*16, 2
         ## Object
-        self.bfcc = LinAlg()
+        self.bfcc = Bxgpu()
+        self.bfcc.init(self.ntime_gulp, ochan, nstand, npol, self.gpu)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
         self.ddata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='cf32', space='cuda')
-        self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
+        self.qdata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci8', space='cuda')
+        self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32')
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -857,7 +862,7 @@ class CorrelatorOp(object):
                 npol   = ihdr['npol']
                 ochan  = nchan // self.decim
                 igulp_size = self.ntime_gulp*nchan*nstand*npol        # 4+4 complex
-                ogulp_size = ochan*nstand*npol*nstand*npol*8            # complex64
+                ogulp_size = ochan*nstand*npol*nstand*npol*8            # 32+32 complex
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
                 oshape = (ochan,nstand*npol,nstand*npol)
                 
@@ -938,10 +943,14 @@ class CorrelatorOp(object):
                             self.ddata = self.ddata.reshape(-1,ochan,1,nstand*npol)
                             Reduce(self.udata, self.ddata, op='sum')
                             self.ddata = self.ddata.reshape(-1,ochan,nstand*npol)
+                            Quantize(self.ddata, self.qdata, scale=1)
+                            ddata = self.qdata.copy(space='system')
                             
                             ## Correlate
-                            cscale = 1.0 if nAccumulate else 0.0
-                            self.cdata = self.bfcc.matmul(gain_act, None, self.ddata.transpose((1,0,2)), cscale, self.cdata)
+                            corr_dump = 0
+                            if base_time_tag % navg_mod_value == 0:
+                                corr_dump = 1
+                            self.bfcc.execute(ddata, self.cdata, corr_dump)
                             nAccumulate += self.ntime_gulp
                             
                             curr_time = time.time()
@@ -951,9 +960,8 @@ class CorrelatorOp(object):
                             ## Dump?
                             if base_time_tag % navg_mod_value == 0:
                                 with oseq.reserve(ogulp_size) as ospan:
-                                    odata = ospan.data_view(np.complex64).reshape(oshape)
+                                    odata = ospan.data_view('ci32').reshape(oshape)
                                     odata[...] = self.cdata
-                                    BFSync()
                                 nAccumulate = 0
                             curr_time = time.time()
                             reserve_time = curr_time - prev_time
@@ -1117,9 +1125,6 @@ class PacketizeOp(object):
         ## Metadata
         nchan = self.nchan_max
         nstand, npol = nroach*16, 2
-        ## Intermidiate arrays
-        ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
-        self.ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
         
     def main(self):
         global ACTIVE_COR_CONFIG
@@ -1152,8 +1157,8 @@ class PacketizeOp(object):
                 gain   = ihdr['gain']
                 time_tag0 = ihdr['start_tag'] #iseq.time_tag
                 time_tag  = time_tag0
-                igulp_size = nchan*nstand*npol*nstand*npol*8
-                ishape = (nchan,nstand,npol,nstand,npol)
+                igulp_size = nchan*nstand*(nstand+1)//2*npol*npol*8    # 32+32 complex
+                ishape = (nchan,nstand*(nstand+1)//2,npol*npol)
                 
                 desc.set_chan0(chan0)
                 desc.set_gain(gain)
@@ -1182,15 +1187,19 @@ class PacketizeOp(object):
                         
                         idata = ispan.data_view(np.complex64).reshape(ishape)
                         t0 = time.time()
-                        copy_array(self.ldata, idata)
-                        odata = self.ldata.transpose(3,1,0,4,2)
+                        odata = idata.transpose(1,0,2)
+                        odata = odata.view(np.int32)
+                        odata = odata[...,0] + 1j*odata[...,1]
+                        odata = odata.astype(np.complex64)
                         
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
+                        k = 0
                         for i in xrange(nstand):
-                            sdata = odata[i,i:,:,:].copy(space='system')
+                            sdata = odata[k+i:k+i+(nstand-i),:].copy()
                             sdata = sdata.reshape(1,-1,nchan*npol*npol)
+                            k += nstand-i
                             
                             try:
                                 #if ACTIVE_COR_CONFIG.is_set():
