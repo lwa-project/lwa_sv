@@ -754,7 +754,7 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = Bxgpu()
-        self.bfcc.init(self.ntime_gulp, ochan, nstand, npol, self.gpu)
+        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, self.gpu)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
@@ -948,8 +948,8 @@ class CorrelatorOp(object):
                             try:
                                 ddata[:self.ntime_gulp,...] = self.qdata.copy(space='system')
                             except NameError:
-                                ntime_xgpu = int(np.ceil((self.ntime_gulp / 16.0) * 16))
-                                ddata = BFArray(shape=(ntime_xgpu,ochan,nstand*npol), dtype='ci8', space='syste')
+                                ntime_xgpu = int(np.ceil((self.ntime_gulp / 16.0)) * 16)
+                                ddata = BFArray(shape=(ntime_xgpu,ochan,nstand*npol), dtype='ci8', space='system')
                                 ddata[:self.ntime_gulp,...] = self.qdata
                                 
                             ## Correlate
@@ -1193,9 +1193,10 @@ class PacketizeOp(object):
                         
                         idata = ispan.data_view('ci32').reshape(ishape)
                         t0 = time.time()
-                        odata = idata.transpose(1,0,2)
-                        odata = odata.view(np.int32)
+                        odata = idata.view(np.int32)
+                        odata = odata.reshape(ishape+(2,))
                         odata = odata[...,0] + 1j*odata[...,1]
+                        odata = odata.transpose(1,0,2)
                         odata = odata.astype(np.complex64)
                         
                         bytesSent, bytesStart = 0, time.time()
@@ -1203,7 +1204,7 @@ class PacketizeOp(object):
                         time_tag_cur = time_tag + 0*ticksPerFrame
                         k = 0
                         for i in xrange(nstand):
-                            sdata = BFArray(shape=(1,nstand-i,nchan*npol*npol), dtype='cf32')
+                            sdata = BFArray(shape=(1,nstand-i,nchan,npol*npol), dtype='cf32')
                             for j in xrange(i, nstand):
                                 sdata[0,j-i,:,:] = odata[k,:,:]
                                 k += 1
