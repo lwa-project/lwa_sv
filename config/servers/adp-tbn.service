@@ -38,7 +38,7 @@ Environment=VMA_MTU=9000
 Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/bin/bash -ec '\
-python /usr/local/bin/adp_tbn.py \
+python3 /usr/local/bin/adp_tbn.py \
 	 --configfile /usr/local/share/adp/adp_config.json \
 	 --logfile    /home/adp/log/adp-tbn.%H.log'
 

@@ -1,11 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, division
-import sys
-if sys.version_info < (3,):
-    range = xrange
-    
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *

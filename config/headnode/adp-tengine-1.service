@@ -39,7 +39,7 @@ Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/bin/bash -ec '\
 numactl --cpunodebind=1 --membind=1 -- \
-python /usr/local/bin/adp_tengine.py \
+python3 /usr/local/bin/adp_tengine.py \
 	 --tuning     1 \
 	 --configfile /usr/local/share/adp/adp_config.json \
 	 --logfile    /home/adp/log/adp-tengine-1.%H.log'

@@ -1,11 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, division
-import sys
-if sys.version_info < (3,):
-    range = xrange
-    
 from adp import MCS2 as MCS
 from adp import Adp
 from adp.AdpCommon import *
@@ -89,7 +84,7 @@ class CaptureOp(object):
                'complex':  True,
                'nbit':     4}
         print("******** CFREQ:", hdr['cfreq'])
-        hdr_str = json.dumps(hdr)
+        hdr_str = json.dumps(hdr).encode()
         # TODO: Can't pad with NULL because returned as C-string
         #hdr_str = json.dumps(hdr).ljust(4096, '\0')
         #hdr_str = json.dumps(hdr).ljust(4096, ' ')
