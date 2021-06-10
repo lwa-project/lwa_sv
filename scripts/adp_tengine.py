@@ -1014,7 +1014,7 @@ def main(argv):
             bstat = ''
             if b >= nbeam:
                 bstat = ' (not used)'
-            log.info("Dst address:  %i @ %s:%i%s%s", b, a, p, bstat)
+            log.info("Dst address:  %i @ %s:%i%s", b, a, p, bstat)
     except TypeError:
         log.info("Dst address:  %s:%i", oaddr, oport)
     log.info("Servers:      %i-%i", server0+1, server0+nserver)
