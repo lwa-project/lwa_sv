@@ -44,7 +44,7 @@ if __name__ == "__main__":
     class MyConsumer(ConsumerThread):
         def process(self, task):
             #time.sleep(5)
-            print task
+            print(task)
             
     q = Queue()
     m = MyConsumer(q)

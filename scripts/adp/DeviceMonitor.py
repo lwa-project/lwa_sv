@@ -13,7 +13,11 @@ if sys.version_info < (3,):
 import os
 # TODO: Replace this with katcp (commands remain the same)
 #from telnetlib import Telnet # For reading ROACH2 sensors
-import corr
+try:
+    import corr
+except ImportError:
+    # Not going to work with Python3
+    print("ERROR: Module 'corr' not installed; roaches cannot be monitored")
 import time
 import subprocess            # For calling adc16_dump_chans
 import numpy as np

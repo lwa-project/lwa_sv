@@ -4,13 +4,16 @@ from __future__ import print_function, division
 import sys
 if sys.version_info < (3,):
     range = xrange
-    
-import Queue
+
+try:
+    import queue as Queue
+except ImportError:
+    import Queue
 import time
 from datetime import datetime
 import socket
-from ConsumerThread import ConsumerThread
-from SocketThread import UDPRecvThread
+from .ConsumerThread import ConsumerThread
+from .SocketThread import UDPRecvThread
 import string
 import struct
 
@@ -123,6 +126,11 @@ class Msg(object):
                      self.dst, self.data, self.data.encode('hex'),
                      self.slot))
     def decode(self, pkt):
+        try:
+            pkt = pkt.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         self.slot = get_current_slot()
         self.dst  = pkt[:3]
         self.src  = pkt[3:6]
@@ -168,6 +176,11 @@ class Msg(object):
                str(self.mpm      ).rjust(9) +
                ' ' +
                self.data)
+        try:
+            pkt = pkt.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
         return pkt
 
 class MsgReceiver(UDPRecvThread):
@@ -284,10 +297,27 @@ class Synchronizer(object):
                                 socket.SOCK_STREAM)
         self.socket.connect(addr)
         self.socket.settimeout(10) # Prevent recv() from blocking indefinitely
-        self.socket.send('GROUP:'+str(group))
+        msg = 'GROUP:'+str(group)
+        try:
+            msg = msg.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        self.socket.send(msg)
     def __call__(self, tag=None):
-        self.socket.send('TAG:'+str(tag))
+        msg = 'TAG:'+str(tag)
+        try:
+            msg = msg.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        self.socket.send(msg)
         reply = self.socket.recv(4096)
+        try:
+            reply = reply.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         expected_reply = 'GROUP:'+str(self.group) + ',TAG:'+str(tag)
         if reply != expected_reply:
             raise ValueError("Unexpected reply '%s', expected '%s'" %

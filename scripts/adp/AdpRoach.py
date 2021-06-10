@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 import sys
 if sys.version_info < (3,):
     range = xrange
     
-#try:
-import corr
-#except ImportError:
-#	print("ERROR: Module 'corr' not installed; roaches cannot be controlled")
+try:
+    import corr
+except ImportError:
+    print("ERROR: Module 'corr' not installed; roaches cannot be controlled")
 import subprocess
 import time
 import numpy as np
 import struct
 import logging
 
-from iptools import *
+from .iptools import *
 
 
 # TODO: Consider refactoring into generic ADC16Roach base class and AdpRoach specialisation

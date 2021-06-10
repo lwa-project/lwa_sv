@@ -1,8 +1,12 @@
+from __future__ import print_function
 
 import threading
 import socket
-import Queue
-
+try:
+    import queue as Queue
+except NameError:
+    import Queue
+    
 class UDPRecvThread(threading.Thread):
     #STOP = '__UDPRecvThread_STOP__'
     def __init__(self, address, bufsize=16384):
@@ -54,11 +58,11 @@ if __name__ == '__main__':
     rcv = UDPRecvThread(("localhost", port))
     #rcv.daemon = True
     rcv.start()
-    print "Waiting for packet on port", port
+    print("Waiting for packet on port", port)
     pkt,src_ip = rcv.get(timeout=5.)
     if pkt is not None:
-        print "Received packet:", pkt,src_ip
+        print("Received packet:", pkt,src_ip)
     else:
-        print "Timed out waiting for packet"
+        print("Timed out waiting for packet")
     rcv.request_stop()
     rcv.join()

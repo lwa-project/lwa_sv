@@ -9,7 +9,7 @@ $LastChangedBy$
 $LastChangedDate$
 """
 
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 
 import zmq
 import time
@@ -33,12 +33,12 @@ import logging
 import functools
 import traceback
 try:
-    import cStringIO as StringIO
+    from io import StringIO
 except ImportError:
-    import StringIO
+    from StringIO import StringIO
 
 
-from AdpCommon import DATE_FORMAT, FS
+from .AdpCommon import DATE_FORMAT, FS
 
 
 def logException(func):
@@ -54,7 +54,7 @@ def logException(func):
             logger.error("%s in %s failed with %s at line %i", func, func.func_code.co_filename, str(e), func.func_code.co_firstlineno + 1)
             
             # Grab the full traceback and save it to a string via StringIO
-            fileObject = StringIO.StringIO()
+            fileObject = StringIO()
             traceback.print_tb(exc_traceback, file=fileObject)
             tbString = fileObject.getvalue()
             fileObject.close()
@@ -181,7 +181,10 @@ class PipelineMessageClient(object):
             
         # Create the socket and configure it
         self.socket = self.context.socket(zmq.SUB)
-        self.socket.setsockopt(zmq.SUBSCRIBE, group)
+        try:
+            self.socket.setsockopt(zmq.SUBSCRIBE, group)
+        except TypeError:
+            self.socket.setsockopt_string(zmq.SUBSCRIBE, group)
         self.socket.connect('tcp://%s:%i' % addr)
         
     @logException
@@ -463,7 +466,10 @@ class PipelineSynchronizationClient(object):
         # Create the socket and configure it
         self.socket = self.context.socket(zmq.DEALER)
         if id is not None:
-            self.socket.setsockopt(zmq.IDENTITY, str(id))
+            try:
+                self.socket.setsockopt(zmq.IDENTITY, str(id))
+            except TypeError:
+                self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 0)
         self.socket.connect('tcp://%s:%i' % addr)
         
@@ -628,7 +634,10 @@ class PipelineEventClient(object):
         self.socket = self.context.socket(zmq.REQ)
         if id is None:
             id = uuid4()
-        self.socket.setsockopt(zmq.IDENTITY, str(id))
+        try:
+            self.socket.setsockopt(zmq.IDENTITY, str(id))
+        except TypeError:
+            self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 100)
         self.socket.connect('tcp://%s:%i' % addr)
         
@@ -701,7 +710,10 @@ class InternalTrigger(object):
         self.socket = self.context.socket(zmq.PUSH)
         if id is None:
             id = uuid4()
-        self.socket.setsockopt(zmq.IDENTITY, str(id))
+        try:
+            self.socket.setsockopt(zmq.IDENTITY, str(id))
+        except TypeError:
+            self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 10)
         self.socket.connect('tcp://%s:%i' % addr)
         

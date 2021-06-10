@@ -12,7 +12,7 @@ Features: Worker threads created on-demand and then re-used
           Exceptions in tasks are caught and returned as result values
 """
 
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 import sys
 if sys.version_info < (3,):
     range = xrange
@@ -21,9 +21,12 @@ if sys.version_info < (3,):
 #       called at the end. The daemon threads will just block on
 #       the empty queue and get inconsequentially killed at exit.
 
-from Queue import Queue#, Empty
+try:
+    from queue import Queue#, Empty
+except ImportError:
+    from Queue import Queue#, Empty
 #from StoppableThread import StoppableThread
-from ConsumerThread import ConsumerThread
+from .ConsumerThread import ConsumerThread
 import time
 
 class TimeoutQueue(Queue):

@@ -1,28 +1,32 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function, division, absolute_import
 import sys
 if sys.version_info < (3,):
     range = xrange
     
-from AdpCommon  import *
-from AdpConfig  import *
-from AdpLogging import *
+from .AdpCommon  import *
+from .AdpConfig  import *
+from .AdpLogging import *
 
-import MCS2
-from DeviceMonitor import ROACH2Device
-from PipelineMonitor import BifrostPipelines
-from ConsumerThread import ConsumerThread
-from SequenceDict import SequenceDict
-from ThreadPool import ThreadPool
-from ThreadPool import ObjectPool
-#from Cache      import threadsafe_lru_cache as lru_cache
-from Cache      import lru_cache_method
-from AdpRoach   import AdpRoach
-from iptools    import *
+from . import MCS2
+from .DeviceMonitor import ROACH2Device
+from .PipelineMonitor import BifrostPipelines
+from .ConsumerThread import ConsumerThread
+from .SequenceDict import SequenceDict
+from .ThreadPool import ThreadPool
+from .ThreadPool import ObjectPool
+#from .Cache      import threadsafe_lru_cache as lru_cache
+from .Cache      import lru_cache_method
+from .AdpRoach   import AdpRoach
+from .iptools    import *
 
-import ISC
+from . import ISC
 
-from Queue import Queue
+try:
+    from queue import Queue
+except NameError:
+    from Queue import Queue
 import numpy as np
 import time
 import math
@@ -1211,7 +1215,7 @@ class MsgProcessor(ConsumerThread):
         ## TBN
         pipeline_pids = [p for s in self.servers.pid_tbn() for p in s]
         pipeline_pids = filter(lambda x: x>0, pipeline_pids)
-        print 'TBN:', len(pipeline_pids), pipeline_pids
+        print('TBN:', len(pipeline_pids), pipeline_pids)
         if len(pipeline_pids) != len(self.servers):
             self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
             if 'FORCE' not in arg:
@@ -1221,7 +1225,7 @@ class MsgProcessor(ConsumerThread):
         for tuning in range(len(self.config['drx'])):
             pipeline_pids = [p for s in self.servers.pid_drx(tuning=tuning) for p in s]
             pipeline_pids = filter(lambda x: x>0, pipeline_pids)
-            print 'DRX-%i:' % tuning, len(pipeline_pids), pipeline_pids
+            print('DRX-%i:' % tuning, len(pipeline_pids), pipeline_pids)
             if len(pipeline_pids) != len(self.servers):
                 self.log.error('Found %i DRX-%i pipelines running, expected %i', len(pipeline_pids), tuning, len(self.servers))
                 if 'FORCE' not in arg:
@@ -1230,7 +1234,7 @@ class MsgProcessor(ConsumerThread):
         for tuning in range(len(self.config['drx'])):
             pipeline_pids = [p for s in self.headnode.pid_tengine(tuning=tuning) for p in s]
             pipeline_pids = filter(lambda x: x>0, pipeline_pids)
-            print 'TEngine-%i:' % tuning, len(pipeline_pids), pipeline_pids
+            print('TEngine-%i:' % tuning, len(pipeline_pids), pipeline_pids)
             if len(pipeline_pids) != 1:
                 self.log.error('Found %i TEngine-%i pipelines running, expected %i', len(pipeline_pids), tuning,  1)
                 if 'FORCE' not in arg:
@@ -1296,7 +1300,7 @@ class MsgProcessor(ConsumerThread):
                 try:
                     fields = line.split()
                     mtime, filename = float(fields[5]), fields[6]
-                    print '!!', tTrigger, mtime, tTrigger - mtime
+                    print('!!', tTrigger, mtime, tTrigger - mtime)
                     if abs(tTrigger - mtime) < ageLimit:
                         outname = '/data0/adc_cal_%i_%i' % (s, f+1)
                         subprocess.check_output("scp adp%i:%s %s" % (s, filename, outname), shell=True)
@@ -1988,7 +1992,7 @@ class MsgProcessor(ConsumerThread):
         self.run_monitor_thread.join(self.shutdown_timeout)
         if self.run_monitor_thread.isAlive():
             self.log.warning("run_monitor thread still exists and will be killed")
-        print self.name, "shutdown"
+        print(self.name, "shutdown")
         
     def process_msg(self, msg, process_func):
         accept, reply_data = process_func(msg)
