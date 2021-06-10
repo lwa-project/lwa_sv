@@ -153,7 +153,7 @@ class TEngineOp(object):
         self.configMessage = ISC.DRXConfigurationClient(addr=('adp',5832))
         self._pending = deque()
         self.gain = 7
-        self.filt = filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
+        self.filt = list(filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN))[-1]
         self.nchan_out = FILTER2CHAN[self.filt]
         
         coeffs = np.array([ 0.0111580, -0.0074330,  0.0085684, -0.0085984,  0.0070656, -0.0035905, 
