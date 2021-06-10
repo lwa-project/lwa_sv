@@ -17,6 +17,7 @@ from .ConsumerThread import ConsumerThread
 from .SocketThread import UDPRecvThread
 import string
 import struct
+from binascii import hexlify
 
 import socket
 from threading import Thread, Event, Semaphore
@@ -116,22 +117,25 @@ class Msg(object):
             self.decode(pkt)
         self.src_ip = src_ip
     def __str__(self):
+        hdata = self.data
+        try:
+            hdata = hdata.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        hdata = hexlify(hdata)
+
         if self.slot is None:
             return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
                     (self.ref, self.cmd, self.src, self.dst,
-                    self.data, self.data.encode('hex')))
+                    self.data, hdata))
         else:
             return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s' (0x%s), "+
                      "rcv'd in slot %i>") %
                      (self.ref, self.cmd, self.src, self.src_ip,
-                     self.dst, self.data, self.data.encode('hex'),
+                     self.dst, self.data, hdata,
                      self.slot))
     def decode(self, pkt):
-        try:
-            pkt = pkt.decode()
-        except AttributeError:
-            # Python2 catch
-            pass
         self.slot = get_current_slot()
         self.dst  = pkt[:3]
         self.src  = pkt[3:6]
@@ -262,8 +266,13 @@ class Communicator(object):
         if reply is None:
             raise RuntimeError("MCS request timed out")
         data = reply.data
-        accepted, status, data = data[0]=='A', data[1:8], data[8:]
-        if not accepted:
+        accepted, status, data = data[:1], data[1:8], data[8:]
+        try:
+            accepted = accepted.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        if accepted != 'A':
             raise ValueError(data)
         return status, data
     def _send(self, msg, timeout):
@@ -274,6 +283,11 @@ class Communicator(object):
         msg = Msg(dst='ADP', cmd='RPT', data=data)
         data = self._send(msg, timeout)
         if fmt is None or fmt == 's':
+            try:
+                data = data.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             return data
         else:
             return struct.unpack('>'+fmt, data)
