@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 """
 A thread pool class with a few useful features
@@ -13,9 +14,10 @@ Features: Worker threads created on-demand and then re-used
 """
 
 from __future__ import print_function, absolute_import
-import sys
-if sys.version_info < (3,):
+try:
     range = xrange
+except NameError:
+    pass
     
 # Note: No need to join() workers here as long as wait() is always
 #       called at the end. The daemon threads will just block on

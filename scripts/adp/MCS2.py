@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
-import sys
-if sys.version_info < (3,):
-    range = xrange
-
 try:
-    import queue as Queue
+    range = xrange
+except NameError:
+    pass
+    
+try:
+    import queue
 except ImportError:
-    import Queue
+    import Queue as queue
 import time
 from datetime import datetime
 import socket
@@ -187,7 +188,7 @@ class MsgReceiver(UDPRecvThread):
     def __init__(self, address, subsystem='ALL'):
         UDPRecvThread.__init__(self, address)
         self.subsystem = subsystem
-        self.msg_queue = Queue.Queue()
+        self.msg_queue = queue.Queue()
         self.name      = 'MCS.MsgReceiver'
     def process(self, pkt, src_ip):
         if len(pkt):
@@ -202,7 +203,7 @@ class MsgReceiver(UDPRecvThread):
     def get(self, timeout=None):
         try:
             return self.msg_queue.get(True, timeout)
-        except Queue.Empty:
+        except queue.Empty:
             return None
 
 class MsgSender(ConsumerThread):
@@ -244,7 +245,7 @@ class Communicator(object):
         #sender   = MsgSender(("localhost",1742), subsystem=subsystem)
         self.sender   = MsgSender(("adp",1742), subsystem=subsystem)
         self.receiver = MsgReceiver(("0.0.0.0",1743))
-        self.sender.input_queue = Queue.Queue()
+        self.sender.input_queue = queue.Queue()
         self.sender.daemon = True
         self.receiver.daemon = True
         self.sender.start()

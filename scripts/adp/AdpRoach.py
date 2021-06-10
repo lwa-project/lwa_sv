@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, absolute_import
-import sys
-if sys.version_info < (3,):
+try:
     range = xrange
+except NameError:
+    pass
     
 try:
     import corr

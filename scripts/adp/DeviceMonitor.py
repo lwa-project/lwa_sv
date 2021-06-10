@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 """
 Disk, CPU, GPU and ROACH2 device monitoring
@@ -6,9 +7,10 @@ TODO: `impmitool sensor list` shows there are also thermal-region and PSU temps 
 """
 
 from __future__ import print_function
-import sys
-if sys.version_info < (3,):
+try:
     range = xrange
+except NameError:
+    pass
     
 import os
 # TODO: Replace this with katcp (commands remain the same)

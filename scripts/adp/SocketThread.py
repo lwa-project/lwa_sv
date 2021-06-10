@@ -1,11 +1,13 @@
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function
 
 import threading
 import socket
 try:
-    import queue as Queue
+    import queue
 except NameError:
-    import Queue
+    import Queue as queue
     
 class UDPRecvThread(threading.Thread):
     #STOP = '__UDPRecvThread_STOP__'
@@ -13,7 +15,7 @@ class UDPRecvThread(threading.Thread):
         threading.Thread.__init__(self)
         self._addr      = address
         self._bufsize   = bufsize
-        self._msg_queue = Queue.Queue() # For default behaviour
+        self._msg_queue = queue.Queue() # For default behaviour
         self.socket     = socket.socket(socket.AF_INET,
                                         socket.SOCK_DGRAM)
         self.socket.bind(address)
@@ -50,7 +52,7 @@ class UDPRecvThread(threading.Thread):
     def get(self, timeout=None):
         try:
             return self._msg_queue.get(True, timeout)
-        except Queue.Empty:
+        except queue.Empty:
             return None
 
 if __name__ == '__main__':

@@ -3,10 +3,6 @@
 """
 Inter-Server Communication (ISC) for ADP.  This allows messages to be send to 
 the different servers for on-the-fly pipeline reconfiguration.
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 from __future__ import print_function, absolute_import

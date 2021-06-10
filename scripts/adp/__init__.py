@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 """
 LWA Advanced Digital Processor control library
