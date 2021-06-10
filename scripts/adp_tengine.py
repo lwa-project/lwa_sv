@@ -1011,11 +1011,14 @@ def main(argv):
     log.info("Src address:  %s:%i", iaddr, iport)
     try:
         for b,a,p in zip(range(len(oaddr)), oaddr, oport):
-            log.info("Dst address:  %i @ %s:%i", b, a, p)
+            bstat = ''
+            if b >= nbeam:
+                bstat = ' (not used)'
+            log.info("Dst address:  %i @ %s:%i%s%s", b, a, p, bstat)
     except TypeError:
         log.info("Dst address:  %s:%i", oaddr, oport)
     log.info("Servers:      %i-%i", server0+1, server0+nserver)
-    log.info("Tunings:      %i (of %i)", tuning+1, ntuning)
+    log.info("Tuning:       %i (of %i)", tuning+1, ntuning)
     log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
     log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
     
