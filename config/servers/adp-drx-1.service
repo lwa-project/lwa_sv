@@ -23,10 +23,9 @@ SyslogIdentifier=adp-drx-1
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
 # Setup the environment
-Environment=BIFROST_PATH=/home/adp/bifrost8_verbs_py3
-Environment=BIFROST_INCLUDE_PATH=$BIFROST_PATH/src/bifrost
-Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:$BIFROST_PATH/lib:$LD_LIBRARY_PATH
-Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:$BIFROST_PATH/python:$PYTHONPATH
+Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:$LD_LIBRARY_PATH
+Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH
 
 Environment=LD_PRELOAD=libvma.so
 Environment=VMA_TRACELEVEL=0
