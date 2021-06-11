@@ -79,7 +79,7 @@
         "date_format":    "%Y-%m-%d %H:%M:%S",
         "files": {
             "server_temps": "/home/adp/log/server_temps.log",
-            "roach_temps":  "/home/adp/log/roach_temps.log",
+            "roach_temps":  "/home/adp/log/roach_temps.log"
         }
     },
     "server": {
