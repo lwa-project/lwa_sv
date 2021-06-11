@@ -272,7 +272,7 @@ class Communicator(object):
         if reply is None:
             raise RuntimeError("MCS request timed out")
         # Parse the data section of the reply
-        response, status, payload = reply.data[:1], reply.data[1:8], reply.data[8:]
+        response, status, data = reply.data[:1], reply.data[1:8], reply.data[8:]
         try:
             response = response.decode()
             status = status.decode()
