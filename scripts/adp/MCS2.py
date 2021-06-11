@@ -280,7 +280,7 @@ class Communicator(object):
             # Python2 catch
             pass
         if response != 'A':
-            raise ValueError(data)
+            raise ValueError("Message not accepted: response=%r, status=%r, data=%r" % (response, status, data))
         return status, data
     def _send(self, msg, timeout):
         self.sender.put(msg)
