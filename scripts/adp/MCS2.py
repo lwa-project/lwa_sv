@@ -167,7 +167,7 @@ class Msg(object):
         try:
             self.response = rsp[0]
             self.status = rsp[1:]
-        except TypeError:
+        except (TypeError, IndexError):
             pass
         self.data = pkt[38:38+datalen]
         # WAR for DATALEN parameter being wrong for BAM commands (FST too?)
