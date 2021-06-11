@@ -47,7 +47,10 @@ def logException(func):
             
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            logger.error("%s in %s failed with %s at line %i", func, func.func_code.co_filename, str(e), func.func_code.co_firstlineno + 1)
+            try:
+                logger.error("%s in %s failed with %s at line %i", func, func.func_code.co_filename, str(e), func.func_code.co_firstlineno + 1)
+            except AttributeError:
+                logger.error("%s in %s failed with %s at line %i", func, func.__code__.co_filename, str(e), func.__code__.co_firstlineno + 1)
             
             # Grab the full traceback and save it to a string via StringIO
             fileObject = StringIO()
@@ -597,7 +600,10 @@ class PipelineEventServer(object):
                         status = self._clear(id)
                     else:
                         status = False
-                    self.socket.send(str(status))
+                    try:
+                        self.socket.send(str(status))
+                    except TypeError:
+                        self.socket.send_string(str(status))
                     
     def close(self):
         """
@@ -642,7 +648,10 @@ class PipelineEventClient(object):
         
     @logException
     def is_set(self):
-        self.socket.send('%s %s' % (self.id, 'IS_SET'))
+        try:
+            self.socket.send('%s %s' % (self.id, 'IS_SET'))
+        except TypeError:
+            self.socket.send_string('%s %s' % (self.id, 'IS_SET'))
         return True if self.socket.recv() == 'True' else False
         
     @logException
@@ -651,12 +660,18 @@ class PipelineEventClient(object):
         
     @logException
     def set(self):
-        self.socket.send('%s %s' % (self.id, 'SET'))
+        try:
+            self.socket.send('%s %s' % (self.id, 'SET'))
+        except TypeError:
+            self.socket.send_string('%s %s' % (self.id, 'SET'))
         return True if self.socket.recv() == 'True' else False
         
     @logException
     def clear(self):
-        self.socket.send('%s %s' % (self.id, 'CLEAR'))
+        try:
+            self.socket.send('%s %s' % (self.id, 'CLEAR'))
+        except TypeError:
+            self.socket.send_string('%s %s' % (self.id, 'CLEAR'))
         return True if self.socket.recv() == 'True' else False
         
     @logException
@@ -676,8 +691,11 @@ class PipelineEventClient(object):
         Leave the synchronization pool and close out the client.
         """
         
-        self.socket.send('%s %s' % (self.id, 'LEAVE'))
-        status = True if self.socket.recv() == 'True' else False
+        try:
+            self.socket.send('%s %s' % (self.id, 'LEAVE'))
+        except TypeError:
+            self.socket.send_string('%s %s' % (self.id, 'LEAVE'))
+        status = True if self.socket.recv() in ('True', b'True') else False
         
         self.socket.close()
         if self.newContext:
@@ -722,7 +740,10 @@ class InternalTrigger(object):
         int(UNIX time * 196e6).
         """
         
-        self.socket.send('%s %s' % (self.id, str(timestamp)))
+        try:
+            self.socket.send('%s %s' % (self.id, str(timestamp)))
+        except TypeError:
+            self.socket.send_string('%s %s' % (self.id, str(timestamp)))
         
     def close(self):
         """
