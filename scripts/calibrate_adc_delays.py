@@ -139,10 +139,10 @@ def main(args):
                 
             ## Input -> ??? mappings
             r0, r1 = a0//32, a1//32      # input -> roach
-            c0, c1 = a0%16, a1%16        # input -> ARX channel
-            s0, s1 = a0// 2, a1/ 2       # input -> stand
+            c0, c1 = a0% 16, a1% 16      # input -> ARX channel
+            s0, s1 = a0// 2, a1// 2      # input -> stand
             l0, l1 = a0// 4, a1// 4      # input -> ADC lane
-            i0, i1 = a0% 4, a1% 4        # input -> ADC lane input
+            i0, i1 = a0%  4, a1%  4      # input -> ADC lane input
             if r0 != 0:
                 continue
                 
