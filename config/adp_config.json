@@ -80,7 +80,6 @@
         "files": {
             "server_temps": "/home/adp/log/server_temps.log",
             "roach_temps":  "/home/adp/log/roach_temps.log",
-            "down_hosts":   "/home/adp/log/down_hosts.log"
         }
     },
     "server": {
