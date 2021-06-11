@@ -20,4 +20,6 @@
 #	P. O. Box 2
 #	Green Bank, WV 24944-0002 USA
 
-from valon_synth import Synthesizer, SYNTH_A, SYNTH_B, INT_REF, EXT_REF
+from __future__ import absolute_import
+
+from .valon_synth import Synthesizer, SYNTH_A, SYNTH_B, INT_REF, EXT_REF
