@@ -144,15 +144,17 @@ class Msg(object):
         hdr = pkt[:38]
         try:
             hdr = hdr.decode()
-        except AttributeError:
-            # Python2 catch
+        except Exception as e:
+            # Python2 catch/binary data catch
+            print('hdr error:', str(e), '@')
             pass
             
         try:
             rsp = pkt[38:38+8]
             rsp = rsp.decode()
-        except (IndexError, AttributeError, UnicodeDecodeError):
+        except Exception as e:
             # Missing response catch/Python2 catch/binary data catch
+            print('rsp error:', str(e), '@')
             rsp = None
             
         self.slot = get_current_slot()
@@ -227,8 +229,8 @@ class MsgReceiver(UDPRecvThread):
         if len(pkt):
             msg = Msg(pkt=pkt, src_ip=src_ip)
             if ( self.subsystem == 'ALL' or
-                msg.dst        == 'ALL' or
-                self.subsystem == msg.dst ):
+                 msg.dst        == 'ALL' or
+                 self.subsystem == msg.dst ):
                 self.msg_queue.put(msg)
     def shutdown(self):
         self.msg_queue.put(ConsumerThread.STOP)
