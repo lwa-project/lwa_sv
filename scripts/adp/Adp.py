@@ -1525,8 +1525,8 @@ class MsgProcessor(ConsumerThread):
                 self.log.warning("  %s", filename)
             status = False
             
-        ## Cleanup
-        #self._delete_tbf_files(filenames)
+        # Cleanup
+        self._delete_tbf_files(filenames)
         
         # Final report
         if status:
