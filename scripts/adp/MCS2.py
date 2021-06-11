@@ -3,9 +3,15 @@
 from __future__ import print_function, division
 try:
     range = xrange
+    def data_to_hex(data):
+        return data.encode('hex')
 except NameError:
-    pass
-    
+    def data_to_hex(data):
+        try:
+            return data.hex()
+        except TypeError:
+            return data.encode().hex()
+            
 try:
     import queue
 except ImportError:
@@ -17,7 +23,6 @@ from .ConsumerThread import ConsumerThread
 from .SocketThread import UDPRecvThread
 import string
 import struct
-from binascii import hexlify
 
 import socket
 from threading import Thread, Event, Semaphore
@@ -117,28 +122,15 @@ class Msg(object):
             self.decode(pkt)
         self.src_ip = src_ip
     def __str__(self):
-        hdata = self.data
-        try:
-            hdata = hdata.encode()
-        except AttributeError:
-            # Python2 catch
-            pass
-        hdata = hexlify(hdata)
-        try:
-            hdata = hdata.decode()
-        except AttributeError:
-            # Python2 catch
-            pass
-
         if self.slot is None:
-            return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
+            return ("<MCS Msg %i: '%s' from %s to %s, data=%r (0x%s)>" %
                     (self.ref, self.cmd, self.src, self.dst,
-                     self.data, hdata))
+                     self.data, data_to_hex(self.data)))
         else:
-            return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s' (0x%s), "+
+            return (("<MCS Msg %i: '%s' from %s (%s) to %s, data=%r (0x%s), "+
                      "rcv'd in slot %i>") %
                      (self.ref, self.cmd, self.src, self.src_ip,
-                      self.dst, self.data, hdata,
+                      self.dst, self.data, data_to_hex(self.data),
                       self.slot))
     def decode(self, pkt):
         hdr = pkt[:38]
