@@ -124,6 +124,11 @@ class Msg(object):
             # Python2 catch
             pass
         hdata = hexlify(hdata)
+        try:
+            hdata = hdata.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
 
         if self.slot is None:
             return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
@@ -136,20 +141,31 @@ class Msg(object):
                      self.dst, self.data, hdata,
                      self.slot))
     def decode(self, pkt):
+        hdr = pkt[:38+8]
+        try:
+            hdr = hdr.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+            
         self.slot = get_current_slot()
-        self.dst  = pkt[:3]
-        self.src  = pkt[3:6]
-        self.cmd  = pkt[6:9]
-        self.ref  = int(pkt[9:18])
-        datalen   = int(pkt[18:22])
-        self.mjd  = int(pkt[22:28])
-        self.mpm  = int(pkt[28:37])
-        space     = pkt[37]
+        self.dst  = hdr[:3]
+        self.src  = hdr[3:6]
+        self.cmd  = hdr[6:9]
+        self.ref  = int(hdr[9:18])
+        datalen   = int(hdr[18:22])
+        self.mjd  = int(hdr[22:28])
+        self.mpm  = int(hdr[28:37])
+        space     = hdr[37]
+        self.response = hdr[38]
+        self.status = hdr[39:46]
         self.data = pkt[38:38+datalen]
         # WAR for DATALEN parameter being wrong for BAM commands (FST too?)
         broken_commands = ['BAM']#, 'FST']
         if self.cmd in broken_commands:
             self.data = pkt[38:]
+        self.payload = self.data[8:]
+        
     def create_reply(self, accept, status, data=''):
         msg = Msg(#src=self.dst,
                   dst=self.src,
@@ -265,14 +281,8 @@ class Communicator(object):
         reply = self.receiver.get(timeout=timeout)
         if reply is None:
             raise RuntimeError("MCS request timed out")
-        data = reply.data
-        accepted, status, data = data[:1], data[1:8], data[8:]
-        try:
-            accepted = accepted.decode()
-        except AttributeError:
-            # Python2 catch
-            pass
-        if accepted != 'A':
+        accepted, status, data = reply.response == 'A', reply.status, reply.payload
+        if not accepted:
             raise ValueError(data)
         return status, data
     def _send(self, msg, timeout):
