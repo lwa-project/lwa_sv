@@ -78,8 +78,6 @@
         "stats_format":   "[%(asctime)s] %(message)s",
         "date_format":    "%Y-%m-%d %H:%M:%S",
         "files": {
-            "weather":      "/home/adp/log/weather.log",
-            "disk_usage":   "/home/adp/log/disk_usage.log",
             "server_temps": "/home/adp/log/server_temps.log",
             "roach_temps":  "/home/adp/log/roach_temps.log",
             "down_hosts":   "/home/adp/log/down_hosts.log"
