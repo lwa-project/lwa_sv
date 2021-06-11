@@ -133,29 +133,21 @@ class Msg(object):
         if self.slot is None:
             return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
                     (self.ref, self.cmd, self.src, self.dst,
-                    self.data, hdata))
+                     self.data, hdata))
         else:
             return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s' (0x%s), "+
                      "rcv'd in slot %i>") %
                      (self.ref, self.cmd, self.src, self.src_ip,
-                     self.dst, self.data, hdata,
-                     self.slot))
+                      self.dst, self.data, hdata,
+                      self.slot))
     def decode(self, pkt):
         hdr = pkt[:38]
         try:
             hdr = hdr.decode()
         except Exception as e:
             # Python2 catch/binary data catch
-            print('hdr error:', str(e), '@')
+            print('hdr error:', str(e), '@', hdr)
             pass
-            
-        try:
-            rsp = pkt[38:38+8]
-            rsp = rsp.decode()
-        except Exception as e:
-            # Missing response catch/Python2 catch/binary data catch
-            print('rsp error:', str(e), '@')
-            rsp = None
             
         self.slot = get_current_slot()
         self.dst  = hdr[:3]
@@ -166,20 +158,11 @@ class Msg(object):
         self.mjd  = int(hdr[22:28])
         self.mpm  = int(hdr[28:37])
         space     = hdr[37]
-        try:
-            self.response = rsp[0]
-            self.status = rsp[1:]
-        except (TypeError, IndexError):
-            pass
         self.data = pkt[38:38+datalen]
         # WAR for DATALEN parameter being wrong for BAM commands (FST too?)
         broken_commands = ['BAM']#, 'FST']
         if self.cmd in broken_commands:
             self.data = pkt[38:]
-        try:
-            self.payload = self.data[8:]
-        except IndexError:
-            pass
             
     def create_reply(self, accept, status, data=''):
         msg = Msg(#src=self.dst,
@@ -296,8 +279,15 @@ class Communicator(object):
         reply = self.receiver.get(timeout=timeout)
         if reply is None:
             raise RuntimeError("MCS request timed out")
-        accepted, status, data = reply.response == 'A', reply.status, reply.payload
-        if not accepted:
+        # Parse the data section of the reply
+        response, status, payload = reply.data[:1], reply.data[1:8], reply.data[8:]
+        try:
+            response = response.decode()
+            status = status.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        if response != 'A':
             raise ValueError(data)
         return status, data
     def _send(self, msg, timeout):
