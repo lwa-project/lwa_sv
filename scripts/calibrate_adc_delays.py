@@ -3,7 +3,6 @@
 
 import os
 import sys
-import ephem
 import numpy
 
 from astropy.constants import c as speedOfLight
@@ -11,6 +10,7 @@ speedOfLight = speedOfLight.to('m/s').value
 
 from lsl.reader import tbf, errors
 from lsl.astro import MJD_OFFSET
+from lsl.common.adp import fC
 from lsl.correlator._core import XEngine2
 
 
@@ -42,8 +42,7 @@ def main(args):
         # Figure out how many frames there are per observation and the number of
         # channels that are in the file
         nFramesPerObs = tbf.get_frames_per_obs(fh)
-        nchannels = tbf.get_channel_count(fh)
-        nSamples = 7840
+        nChannels = tbf.get_channel_count(fh)
         
         # Figure out how many chunks we need to work with
         nChunks = nFrames // nFramesPerObs
@@ -58,10 +57,10 @@ def main(args):
         mapper.sort()
         
         # Calculate the frequencies
-        freq = numpy.zeros(nchannels)
+        freq = numpy.zeros(nChannels)
         for i,c in enumerate(mapper):
             freq[i*12:i*12+12] = c + numpy.arange(12)
-        freq *= 25e3
+        freq *= fC
         
         # Validate and skip over files that don't contain the tone
         if freq.min() > TONE_FREQ_HZ or freq.max() < TONE_FREQ_HZ:
@@ -72,13 +71,13 @@ def main(args):
         print("Filename: %s" % filename)
         print("Date of First Frame: %s" % str(beginDate))
         print("Frames per Observation: %i" % nFramesPerObs)
-        print("Channel Count: %i" % nchannels)
+        print("Channel Count: %i" % nChannels)
         print("Frames: %i" % nFrames)
         print("===")
         print("Chunks: %i" % nChunks)
         print("===")
         
-        data = numpy.zeros((256*2,nchannels,nChunks), dtype=numpy.complex64)
+        data = numpy.zeros((256*2,nChannels,nChunks), dtype=numpy.complex64)
         clipping = 0
         for i in range(nChunks):
             # Inner loop that actually reads the frames into the data array

@@ -3,18 +3,15 @@
 
 import os
 import sys
-import ephem
 import numpy
-
-from astropy.constants import c as speedOfLight
-speedOfLight = speedOfLight.to('m/s').value
 
 from lsl.reader import tbf, errors
 from lsl.astro import MJD_OFFSET
-from lsl.correlator._core import XEngine2
+from lsl.common.adp import fC
 
 
 SKY_FREQ_HZ = 38.0e6
+
 
 def main(args):
     filenames = args
@@ -36,8 +33,7 @@ def main(args):
         # Figure out how many frames there are per observation and the number of
         # channels that are in the file
         nFramesPerObs = tbf.get_frames_per_obs(fh)
-        nchannels = tbf.get_channel_count(fh)
-        nSamples = 7840
+        nChannels = tbf.get_channel_count(fh)
         
         # Figure out how many chunks we need to work with
         nChunks = nFrames // nFramesPerObs
@@ -52,10 +48,10 @@ def main(args):
         mapper.sort()
         
         # Calculate the frequencies
-        freq = numpy.zeros(nchannels)
+        freq = numpy.zeros(nChannels)
         for i,c in enumerate(mapper):
             freq[i*12:i*12+12] = c + numpy.arange(12)
-        freq *= 25e3
+        freq *= fC
         
         # Validate and skip over files that don't contain the sky frequency
         # we are interested in looking at
@@ -67,13 +63,13 @@ def main(args):
         print("Filename: %s" % filename)
         print("Date of First Frame: %s" % str(beginDate))
         print("Frames per Observation: %i" % nFramesPerObs)
-        print("Channel Count: %i" % nchannels)
+        print("Channel Count: %i" % nChannels)
         print("Frames: %i" % nFrames)
         print("===")
         print("Chunks: %i" % nChunks)
         print("===")
         
-        data = numpy.zeros((256*2,nChunks,nchannels), dtype=numpy.complex64)
+        data = numpy.zeros((256*2,nChunks,nChannels), dtype=numpy.complex64)
         clipping = 0
         for i in range(nChunks):
             # Inner loop that actually reads the frames into the data array
@@ -128,7 +124,7 @@ def main(args):
         cc  = numpy.abs( numpy.fft.ifft( numpy.fft.fft(tdd[0::2,:], axis=1) * refX ) )**2
         cc += numpy.abs( numpy.fft.ifft( numpy.fft.fft(tdd[1::2,:], axis=1) * refY ) )**2
         cc = numpy.fft.fftshift(cc, axes=1)
-        ccF = (numpy.arange(cc.shape[1]) - cc.shape[1]/2) / (nchannels*25e3) * 1e6
+        ccF = (numpy.arange(cc.shape[1]) - cc.shape[1]/2) / (nChannels*fC) * 1e6
         
         valid = numpy.where( numpy.abs(ccF) < 150 )[0]
         ccF = ccF[valid]
