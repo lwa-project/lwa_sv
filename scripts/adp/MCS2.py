@@ -141,12 +141,19 @@ class Msg(object):
                      self.dst, self.data, hdata,
                      self.slot))
     def decode(self, pkt):
-        hdr = pkt[:38+8]
+        hdr = pkt[:38]
         try:
             hdr = hdr.decode()
         except AttributeError:
             # Python2 catch
             pass
+            
+        try:
+            rsp = pkt[38:38+8]
+            rsp = rsp.decode()
+        except (IndexError, AttributeError, UnicodeDecodeError):
+            # Missing response catch/Python2 catch/binary data catch
+            rsp = None
             
         self.slot = get_current_slot()
         self.dst  = hdr[:3]
@@ -157,15 +164,21 @@ class Msg(object):
         self.mjd  = int(hdr[22:28])
         self.mpm  = int(hdr[28:37])
         space     = hdr[37]
-        self.response = hdr[38]
-        self.status = hdr[39:46]
+        try:
+            self.response = rsp[0]
+            self.status = rsp[1:]
+        except TypeError:
+            pass
         self.data = pkt[38:38+datalen]
         # WAR for DATALEN parameter being wrong for BAM commands (FST too?)
         broken_commands = ['BAM']#, 'FST']
         if self.cmd in broken_commands:
             self.data = pkt[38:]
-        self.payload = self.data[8:]
-        
+        try:
+            self.payload = self.data[8:]
+        except IndexError:
+            pass
+            
     def create_reply(self, accept, status, data=''):
         msg = Msg(#src=self.dst,
                   dst=self.src,
