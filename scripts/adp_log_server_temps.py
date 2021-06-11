@@ -1,10 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import print_function
-
-from AdpLogging import AdpFileLogger
-import AdpConfig
-from DeviceMonitor import CPUDevice, GPUDevice
+from adp.AdpLogging import AdpFileLogger
+from adp import AdpConfig
+from adp.DeviceMonitor import CPUDevice, GPUDevice
 
 class AdpServerTempLogger(AdpFileLogger):
 	def __init__(self, config, filename):
