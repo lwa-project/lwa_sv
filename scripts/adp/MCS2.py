@@ -196,14 +196,14 @@ class Msg(object):
                str(len(self.data)).rjust(4) +
                str(self.mjd      ).rjust(6) +
                str(self.mpm      ).rjust(9) +
-               ' ' +
-               self.data)
+               ' ')
         try:
             pkt = pkt.encode()
-        except AttributeError:
+            self.data = self.data.encode()
+        except (AttributeError, UnicdoeDecodeError):
             # Python2 catch
             pass
-        return pkt
+        return pkt+self.data
 
 class MsgReceiver(UDPRecvThread):
     def __init__(self, address, subsystem='ALL'):
@@ -241,7 +241,10 @@ class MsgSender(ConsumerThread):
         self.name = 'MCS.MsgSender'
     def process(self, msg):
         msg.src  = self.subsystem
-        pkt      = msg.encode()
+        try:
+            pkt      = msg.encode()
+        except UnicodeDecodeError:
+            pkt      = msg.data
         dst_ip   = msg.dst_ip if msg.dst_ip is not None else self.dst_ip
         dst_addr = (dst_ip, self.dst_port)
         #print("Sending msg to", dst_addr)
