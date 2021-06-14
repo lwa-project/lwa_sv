@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, division
+from __future__ import print_function, division, absolute_import
 try:
     range = xrange
     def data_to_hex(data):
@@ -164,7 +164,18 @@ class Msg(object):
                   dst_ip=self.src_ip)
         #msg.mjd, msg.mpm = getTime()
         response = 'A' if accept else 'R'
-        msg.data = response + str(status).rjust(7) + data
+        msg.data = response + str(status).rjust(7)
+        try:
+            msg.data = msg.data.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        try:
+            data = data.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        msg.data = msg.data+data
         return msg
     def is_valid(self):
         return (self.dst is not None and len(self.dst) <= 3 and
