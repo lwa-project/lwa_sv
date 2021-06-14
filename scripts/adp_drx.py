@@ -326,7 +326,7 @@ class TriggeredDumpOp(object):
         if (mask >> self.tuning) & 1 == 0:
             self.log.info('Not for us: %i -> %i @ %i', mask, (mask >> self.tuning) & 1, self.tuning)
             return False
-        speed_factor = 2 / sum([mask>>i&1 for i in range(2)])        # TODO: Slightly hacky
+        speed_factor = 2 // sum([mask>>i&1 for i in range(2)])        # TODO: Slightly hacky
         
         ntime_pkt = 1 # TODO: Should be TBF_NTIME_PER_PKT?
         
