@@ -754,11 +754,12 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = Bxgpu()
-        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim, ochan, nstand, npol, self.gpu)
+        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, self.gpu)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
-        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim,ochan,nstand*npol), dtype='ci8', space='cuda')
+        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda')
+        self.ddata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda_host')
         self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32')
         
     #@ISC.logException
@@ -932,36 +933,38 @@ class CorrelatorOp(object):
                             ## Copy
                             copy_array(self.tdata, idata)
                             
-                            ## Unpack and reorder
+                            ## Unpack and decimate
                             BFMap("""
-                                  // Unpack into real and imaginary
+                                  // Unpack into real and imaginary, and then sum
+                                  int jF;
                                   signed char sample, re, im;
-                                  sample = a(i,j,k).real_imag;
-                                  re =  sample & 0xF0;
-                                  im = (sample & 0x0F) << 4;
+                                  re = im = 0;
                                   
-                                  // Reorder
-                                  auto jD = j / DECIM;
-                                  auto jM = j % DECIM;
-                                  b(jM*NTIME+i,jD,k) = Complex<signed char>(re, im);
+                                  #pragma unroll
+                                  for(int l=0; l<DECIM; l++) {
+                                      jF = j*DECIM + l;
+                                      sample = a(i,jF,k).real_imag;
+                                      re += ( (sample & 0xF0)       / 16);
+                                      im += (((sample & 0x0F) << 4) / 16);
+                                  }
+                                  
+                                  // Save
+                                  b(i,j,k) = Complex<signed char>(re, im);
                                   """,
                                   {'a': self.tdata, 'b': self.udata},
                                   axis_names=('i','j','k'),
-                                  shape=(self.ntime_gulp,nchan,nstand*npol),
-                                  extra_code="""
-                                             #define NTIME %i
-                                             #define DECIM %i
-                                             """ % (self.ntime_gulp, self.decim)
+                                  shape=(self.ntime_gulp,ochan,nstand*npol),
+                                  extra_code="#define DECIM %i" % (self.decim,)
                                  )
                             
                             ## Copy back
-                            ddata = self.udata.copy(space='system')
+                            copy_array(self.ddata, self.udata)
                             
                             ## Correlate
                             corr_dump = 0
                             if base_time_tag % navg_mod_value == 0:
                                 corr_dump = 1
-                            self.bfcc.execute(ddata, self.cdata, corr_dump)
+                            self.bfcc.execute(self.ddata, self.cdata, corr_dump)
                             nAccumulate += self.ntime_gulp
                             
                             curr_time = time.time()
