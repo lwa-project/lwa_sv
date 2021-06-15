@@ -758,7 +758,7 @@ class CorrelatorOp(object):
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
-        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim,nchan,nstand*npol), dtype='ci8', space='cuda')
+        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim,ochan,nstand*npol), dtype='ci8', space='cuda')
         self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32')
         
     #@ISC.logException
@@ -935,7 +935,7 @@ class CorrelatorOp(object):
                             ## Unpack and reorder
                             BFMap("""
                                   // Unpack into real and imaginary
-                                  int8_t sample, re, im;
+                                  signed char sample, re, im;
                                   sample = a(i,j,k).real_imag;
                                   re =  sample & 0xF0;
                                   im = (sample & 0x0F) << 4;
@@ -943,10 +943,10 @@ class CorrelatorOp(object):
                                   // Reorder
                                   auto jD = j / DECIM;
                                   auto jM = j % DECIM;
-                                  b(jM*NTIME+i,jD,k) = Complex<int8>(re, im);
+                                  b(jM*NTIME+i,jD,k) = Complex<signed char>(re, im);
                                   """,
                                   {'a': self.tdata, 'b': self.udata},
-                                  axis_name=('i','j','k'),
+                                  axis_names=('i','j','k'),
                                   shape=(self.ntime_gulp,nchan,nstand*npol),
                                   extra_code="""
                                              #define NTIME %i
