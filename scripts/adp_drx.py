@@ -754,13 +754,11 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = Bxgpu()
-        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, self.gpu)
+        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim, ochan, nstand, npol, self.gpu)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
-        self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
-        self.ddata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='cf32', space='cuda')
-        self.qdata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='ci8', space='cuda')
+        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16)*self.decim,nchan,nstand*npol), dtype='ci8', space='cuda')
         self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32')
         
     #@ISC.logException
@@ -934,24 +932,31 @@ class CorrelatorOp(object):
                             ## Copy
                             copy_array(self.tdata, idata)
                             
-                            ## Unpack
-                            self.udata = self.udata.reshape(*self.tdata.shape)
-                            Unpack(self.tdata, self.udata)
-
-                            ## Decimate
-                            self.udata = self.udata.reshape(-1,ochan,self.decim,nstand*npol)
-                            self.ddata = self.ddata.reshape(-1,ochan,1,nstand*npol)
-                            Reduce(self.udata, self.ddata, op='sum')
-                            self.ddata = self.ddata.reshape(-1,ochan,nstand*npol)
-                            Quantize(self.ddata, self.qdata, scale=1)
+                            ## Unpack and reorder
+                            BFMap("""
+                                  // Unpack into real and imaginary
+                                  int8_t sample, re, im;
+                                  sample = a(i,j,k).real_imag;
+                                  re =  sample & 0xF0;
+                                  im = (sample & 0x0F) << 4;
+                                  
+                                  // Reorder
+                                  auto jD = j / DECIM;
+                                  auto jM = j % DECIM;
+                                  b(jM*NTIME+i,jD,k) = Complex<int8>(re, im);
+                                  """,
+                                  {'a': self.tdata, 'b': self.udata},
+                                  axis_name=('i','j','k'),
+                                  shape=(self.ntime_gulp,nchan,nstand*npol),
+                                  extra_code="""
+                                             #define NTIME %i
+                                             #define DECIM %i
+                                             """ % (self.ntime_gulp, self.decim)
+                                 )
                             
-                            try:
-                                ddata[:self.ntime_gulp,...] = self.qdata.copy(space='system')
-                            except NameError:
-                                ntime_xgpu = int(np.ceil((self.ntime_gulp / 16.0)) * 16)
-                                ddata = BFArray(shape=(ntime_xgpu,ochan,nstand*npol), dtype='ci8', space='system')
-                                ddata[:self.ntime_gulp,...] = self.qdata
-                                
+                            ## Copy back
+                            ddata = self.udata.copy(space='system')
+                            
                             ## Correlate
                             corr_dump = 0
                             if base_time_tag % navg_mod_value == 0:
