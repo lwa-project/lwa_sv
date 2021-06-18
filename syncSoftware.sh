@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 			echo "-h,--help            Show this help message"
 			echo "-c,--config-only     Only update the configuration file and restart the ADP services"
 			echo "-s,--software-only   Only update the ADP software and restart the ADP services"
-			echo "-u,--upstart-only    Only update the ADP upstart service definitions"
+			echo "-u,--upstart-only    Only update the ADP systemd service definitions"
 			echo "-r,--restart         Rrestart the ADP services after an update"
 			echo "-o,--restart-only    Do not udpdate, only restart the ADP services"
 			echo "-q,--query           Query the status of the ADP services"
@@ -127,15 +127,15 @@ fi
 
 if [ "${DO_UPSTART}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/config
-	DST_PATH=/etc/init
+	DST_PATH=/etc/systemd/system
 	
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then
-			rsync -e ssh -avH ${SRC_PATH}/headnode/adp-*.conf adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${SRC_PATH}/headnode/adp-*.service adp${node}:${DST_PATH}/
 		else
-			rsync -e ssh -avH ${SRC_PATH}/servers/adp-*.conf adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${SRC_PATH}/servers/adp-*.service adp${node}:${DST_PATH}/
 		fi
-		ssh adp${node} "initctl reload-configuration"
+		ssh adp${node} "systemctl daemon-reload"
 	done
 fi
 
@@ -166,4 +166,3 @@ if [ "${DO_QUERY}" == "1" ]; then
                 fi
         done
 fi
-
