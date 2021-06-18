@@ -759,8 +759,7 @@ class CorrelatorOp(object):
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda')
-        self.ddata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda_host')
-        self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32')
+        self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32', space='cuda')
         
     #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
@@ -944,8 +943,8 @@ class CorrelatorOp(object):
                                   for(int l=0; l<DECIM; l++) {
                                       jF = j*DECIM + l;
                                       sample = a(i,jF,k).real_imag;
-                                      re += ( (sample & 0xF0)       / (16*DECIM));
-                                      im += (((sample & 0x0F) << 4) / (16*DECIM));
+                                      re += ((signed char)  (sample & 0xF0)       / 16;
+                                      im += ((signed char) ((sample & 0x0F) << 4) / 16;
                                   }
                                   
                                   // Save
@@ -957,14 +956,11 @@ class CorrelatorOp(object):
                                   extra_code="#define DECIM %i" % (self.decim,)
                                  )
                             
-                            ## Copy back
-                            copy_array(self.ddata, self.udata)
-                            
                             ## Correlate
                             corr_dump = 0
                             if base_time_tag % navg_mod_value == 0:
                                 corr_dump = 1
-                            self.bfcc.execute(self.ddata, self.cdata, corr_dump)
+                            self.bfcc.execute(self.udata, self.cdata, corr_dump)
                             nAccumulate += self.ntime_gulp
                             
                             curr_time = time.time()
@@ -1172,7 +1168,7 @@ class PacketizeOp(object):
                 time_tag0 = ihdr['start_tag'] #iseq.time_tag
                 time_tag  = time_tag0
                 igulp_size = nchan*nstand*(nstand+1)//2*npol*npol*8    # 32+32 complex
-                ishape = (nchan,nstand*(nstand+1)//2,npol*npol)
+                ishape = (nchan,nstand*(nstand+1)//2,npol,npol)
                 
                 desc.set_chan0(chan0)
                 desc.set_gain(gain)
@@ -1182,6 +1178,8 @@ class PacketizeOp(object):
                 ticksPerFrame = int(round(navg*0.01*FS))
                 tInt = int(round(navg*0.01))
                 tBail = navg*0.01 - 0.2
+                
+                scale_factor = navg * int(CHAN_BW / 100)
                 
                 rate_limit = (7.7*(nchan/72.0)*10/(navg*0.01-0.5)) * 1024**2
                 
@@ -1204,19 +1202,19 @@ class PacketizeOp(object):
                         odata = idata.view(np.int32)
                         odata = odata.reshape(ishape+(2,))
                         odata = odata[...,0] + 1j*odata[...,1]
-                        odata = odata.transpose(1,0,2)
-                        odata = odata.astype(np.complex64)
+                        odata = odata.transpose(1,0,2,3)
+                        odata = odata.astype(np.complex64) / scale_factor
                         
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
                         k = 0
                         for i in xrange(nstand):
-                            sdata = BFArray(shape=(1,nstand-i,nchan,npol*npol), dtype='cf32')
+                            sdata = BFArray(shape=(1,nstand-i,nchan,npol,npol), dtype='cf32')
                             for j in xrange(i, nstand):
-                                sdata[0,j-i,:,:] = odata[k,:,:]
+                                sdata[0,j-i,:,:,:] = odata[k,:,:,:]
                                 k += 1
-                            sdata = sdata.reshape(1,nstand-i,-1)
+                            sdata = sdata.reshape(1,-1,nchan*npol*npol)
                             
                             try:
                                 #if ACTIVE_COR_CONFIG.is_set():
