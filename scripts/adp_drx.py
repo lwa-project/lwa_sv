@@ -25,7 +25,7 @@ from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
-from bxgpu import Bxgpu
+from btcc import Btcc
 
 #import numpy as np
 import signal
@@ -753,8 +753,8 @@ class CorrelatorOp(object):
         ochan = nchan//self.decim
         nstand, npol = nroach*16, 2
         ## Object
-        self.bfcc = Bxgpu()
-        self.bfcc.init(int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, self.gpu)
+        self.bfcc = Btcc()
+        self.bfcc.init(8, int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
