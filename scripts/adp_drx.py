@@ -943,8 +943,8 @@ class CorrelatorOp(object):
                                   for(int l=0; l<DECIM; l++) {
                                       jF = j*DECIM + l;
                                       sample = a(i,jF,k).real_imag;
-                                      re += ((signed char)  (sample & 0xF0)       / 16;
-                                      im += ((signed char) ((sample & 0x0F) << 4) / 16;
+                                      re += ((signed char)  (sample & 0xF0))       / 16;
+                                      im += ((signed char) ((sample & 0x0F) << 4)) / 16;
                                   }
                                   
                                   // Save
