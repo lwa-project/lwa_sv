@@ -8,7 +8,7 @@ CC=			gcc
 CXX=			g++ #-Wno-deprecated-declarations
 NVCC=			nvcc
 INCLUDES=		-I.
-#INCLUDES+=		-I$(CUDA)/include
+INCLUDES+=		-I$(CUDA)/include
 #INCLUDES+=		-I$(POWER_SENSOR)/include
 CXXFLAGS+=		-std=c++11 -O3 -g -fpic -fopenmp $(INCLUDES) -DNDEBUG
 NVCCFLAGS=		$(INCLUDES)
@@ -35,7 +35,7 @@ SIMPLE_EXAMPLE_SOURCES=	test/SimpleExample/SimpleExample.cu
 LIBTCC_OBJECTS=		$(LIBTCC_SOURCES:%.cc=%.o) libtcc/TCCorrelator.o
 SIMPLE_EXAMPLE_OBJECTS=	$(SIMPLE_EXAMPLE_SOURCES:%.cu=%.o)
 CORRELATOR_TEST_OBJECTS=$(CORRELATOR_TEST_SOURCES:%.cc=%.o)
-OPENCL_TEST_OBJECTS=	$(OPENCL_TEST_SOURCES:%.cc=%.o)
+#OPENCL_TEST_OBJECTS=	$(OPENCL_TEST_SOURCES:%.cc=%.o)
 
 OBJECTS=		$(LIBTCC_OBJECTS)\
 			$(SIMPLE_EXAMPLE_OBJECTS)\
@@ -47,8 +47,8 @@ SHARED_OBJECTS=		libtcc/libtcc.so libtcc/libtcc.so.$(VERSION)
 DEPENDENCIES=		$(OBJECTS:%.o=%.d)
 
 EXECUTABLES=		test/SimpleExample/SimpleExample\
-			test/CorrelatorTest/CorrelatorTest\
-			test/OpenCLCorrelatorTest/OpenCLCorrelatorTest
+			test/CorrelatorTest/CorrelatorTest
+#			test/OpenCLCorrelatorTest/OpenCLCorrelatorTest
 
 LIBRARIES=		-L$(CUDA)/lib64 \
 			-L$(CUDA)/lib64/stubs -lcuda -lnvrtc #\
