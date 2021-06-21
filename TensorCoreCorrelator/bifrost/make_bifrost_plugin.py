@@ -302,8 +302,12 @@ def main(args):
     if not status:
         sys.exit(status)
         
-    # Part 2(b):  Copy the xGPU library over
-    shutil.copy('../libtcc/libtcc.so', 'libtcc.so')
+    # Part 2(b):  Copy the TCC library over
+    if not os.path.exists('libtcc'):
+        os.mkdir('libtcc')
+    for filename in glob.glob('../libtcc/libtcc.so*'):
+        newname = os.path.join('./libtcc', os.path.basename(filename))
+        shutil.copy(filename, newname)
         
     # Part 3:  Clean up
     os.unlink(makename)
