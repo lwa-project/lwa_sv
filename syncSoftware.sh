@@ -90,6 +90,21 @@ if [ `whoami` != "root" ]; then
 fi
 
 #
+# TCC setup function
+#
+
+build_tcc() {
+	cdir=`pwd`
+	cd TensorCoreCorrelator
+	make clean
+	make
+	
+	cd ${cdir}
+	cd TensorCoreCorrelator/bifrost
+	python make_bifrost_plugin.py -b ${BIFROST_PATH} btcc.cu
+}
+
+#
 # Configuration
 #
 
@@ -109,13 +124,17 @@ fi
 
 if [ "${DO_SOFTWARE}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/scripts
+	TCC_PATH=/home/adp/lwa_sv/TensorCoreCorrelator/bifrost
 	DST_PATH=/usr/local/bin
+	
+	build_tcc
 	
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_control.py ${SRC_PATH}/adp_tengine.py ${SRC_PATH}/adp_enable_triggering.py adp${node}:${DST_PATH}/
 		else
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_tbn.py ${SRC_PATH}/adp_drx.py adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${TCC_PATH}/bt*.py ${TCC_PATH}/libtcc adp${node}:${DST_PATH}/
 		fi
 	done
 fi
