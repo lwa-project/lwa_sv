@@ -92,6 +92,9 @@ class Tbn(SlotCommandProcessor):
         self.roaches = roaches
         self.cur_freq = self.cur_filt = self.cur_gain = 0
         
+    def _reset_state(self):
+        self.cur_freq = self.cur_filt = self.cur_gain = 0
+        
     def tune(self, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
@@ -156,6 +159,12 @@ class Drx(SlotCommandProcessor):
         self.cur_filt = [0]*self.ntuning
         self.cur_gain = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_freq[i] = 0
+            self.cur_filt[i] = 0
+            self.cur_gain[i] = 0
+            
     def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
@@ -219,6 +228,9 @@ class Tbf(SlotCommandProcessor):
         self.roaches = roaches
         self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
         
+    def _reset_state(self):
+        self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
+        
     @ISC.logException
     def start(self, bits, trigger, samples, mask):
         self.log.info('Starting TBF: bits=%i, trigger=%i, samples=%i, mask=%i' % (bits, trigger, samples, mask))
@@ -260,6 +272,13 @@ class Bam(SlotCommandProcessor):
         self.cur_gains = [[0 for i in xrange(1024)]]*self.ntuning
         self.cur_tuning = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_beam[i] = 0
+            self.cur_delays[i] = [0 for j in xrange(512)]
+            self.cur_gains[i] = [0 for j in xrange(1024)]
+            self.cur_tuning[i] = 0
+            
     @ISC.logException
     def start(self, beam, delays, gains, tuning, subslot):
         self.log.info("Setting BAM: beam=%i, tuning=%i, subslot=%i" % (beam, tuning, subslot))
@@ -299,6 +318,12 @@ class Cor(SlotCommandProcessor):
         self.cur_tuning = [0]*self.ntuning
         self.cur_gain = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_navg[i] = 0
+            self.cur_tuning[i] = 0
+            self.cur_gain[i] = 0
+            
     @ISC.logException
     def start(self, navg, tuning, gain, subslot):
         self.log.info("Setting COR: navg=%i, tuning=%i, gain=%i, subslot=%i" % (navg, tuning, gain, subslot))
@@ -1098,6 +1123,13 @@ class MsgProcessor(ConsumerThread):
         # Note: Must do this to ensure pipelines wait for the new UTC_START
         self.utc_start     = None
         self.utc_start_str = 'NULL'
+        
+        # Reset the internal state for the various modes/commands 
+        self.drx._reset_state()
+        self.tbf._reset_state()
+        self.bam._reset_state()
+        self.cor._reset_state()
+        self.tbn._reset_state()
         
         # Bring up the pipelines
         can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
