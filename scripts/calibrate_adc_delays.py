@@ -14,7 +14,7 @@ from lsl.astro import MJD_OFFSET
 from lsl.correlator._core import XEngine2
 
 
-TONE_FREQ_HZ = 30e6
+TONE_FREQ_HZ = 32.768e6
 
 
 ARX_PATH_IN_CM  = [17, 15, 11,    8,  6,  3,  1,  1,  3,  5,  8, 11, 15, 17, 19, 21]
