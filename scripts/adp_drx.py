@@ -213,7 +213,7 @@ class CopyOp(object):
                                         s = np.argmax(pdata)
                                         m = pdata[s]
                                         
-                                        if m > 50.0:
+                                        if m > 75.0:
                                             self.internal_trigger(base_time_tag+s*ticksPerTime)
                                             print m, '@', base_time_tag+s*ticksPerTime, '>', time.time()-t0
                                             
