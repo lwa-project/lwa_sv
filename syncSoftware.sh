@@ -94,6 +94,12 @@ fi
 #
 
 build_tcc() {
+	## Path setup for CUDA
+	PATH=$PATH:/usr/local/bin
+	
+	## The Bifrost source to build against
+	BIFROST_PATH=`grep -e "BIFROST_INCLUDE" config/servers/adp-tbn.service | sed -e 's/.*=//g;s/\/src\/bifrost//g;'`
+	
 	cdir=`pwd`
 	cd TensorCoreCorrelator
 	make clean
