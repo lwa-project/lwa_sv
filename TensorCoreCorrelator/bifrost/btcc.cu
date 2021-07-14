@@ -167,7 +167,7 @@ __global__ void reorder_kernel(int          nchan,
 
     for (i=0; i<=j; i++) {
         int k = f*(nstand+1)*(nstand/2) + j*(j+1)/2 + i;
-        int ku = f*(nstand+1)*(nstand/2) + j*(2*(nstand-1)+1-j)/2 + i;
+        int ku = f*(nstand+1)*(nstand/2) + i*(2*(nstand-1)+1-i)/2 + j;
         #pragma unroll
         for (pol1=0; pol1<npol; pol1++) {
             #pragma unroll
