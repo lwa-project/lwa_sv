@@ -116,7 +116,7 @@ endif
 
 CPPFLAGS += -I{bifrost_include} -I. -I$(CUDA_INCDIR)
 
-LDFLAGS += -L{bifrost_library} -lbifrost -L../libtcc -ltcc
+LDFLAGS += -L{bifrost_library} -lbifrost -L. -ltcc
 
 GCCFLAGS += -fmessage-length=80 #-fdiagnostics-color=auto
 
@@ -291,6 +291,13 @@ def main(args):
     # Get the name of the Makefile for this plugin
     makename = get_makefile_name(libname)
     
+    # Part 0:  Copy the TCC library over
+    if not os.path.exists('libtcc'):
+        os.mkdir('libtcc')
+    for filename in glob.glob('../libtcc/libtcc.so*'):
+        newname = os.path.basename(filename)
+        shutil.copy(filename, newname)
+        
     # Part 1:  Build the Makefile
     create_makefile(libname, incname, bifrost_path=args.bifrost_path)
         
@@ -301,13 +308,6 @@ def main(args):
     status = build(makename)
     if not status:
         sys.exit(status)
-        
-    # Part 2(b):  Copy the TCC library over
-    if not os.path.exists('libtcc'):
-        os.mkdir('libtcc')
-    for filename in glob.glob('../libtcc/libtcc.so*'):
-        newname = os.path.join('./libtcc', os.path.basename(filename))
-        shutil.copy(filename, newname)
         
     # Part 3:  Clean up
     os.unlink(makename)
