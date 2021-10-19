@@ -1134,7 +1134,7 @@ class PacketizeOp(object):
         
         with UDPTransmit('cor_%i' % self.nchan_max, sock=self.sock, core=self.core) as udt:
             desc = HeaderInfo()
-            desc.set_tuning((6 << 8) | self.server)
+            desc.set_tuning((4 << 16) | (6 << 8) | self.server)
             
             for iseq in self.iring.read():
                 ihdr = json.loads(iseq.header.tostring())
