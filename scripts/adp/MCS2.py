@@ -172,8 +172,8 @@ class Msg(object):
             pass
         try:
             data = data.encode()
-        except AttributeError:
-            # Python2 catch
+        except (AttributeError, UnicodeDecodeError):
+            # Python2/binary data catch
             pass
         msg.data = msg.data+data
         return msg
@@ -199,8 +199,12 @@ class Msg(object):
                ' ')
         try:
             pkt = pkt.encode()
+        except (AttributeError, UnicodeDecodeError):
+            # Python2 catch
+            pass
+        try:
             self.data = self.data.encode()
-        except (AttributeError, UnicdoeDecodeError):
+        except (AttributeError, UnicodeDecodeError):
             # Python2 catch
             pass
         return pkt+self.data
