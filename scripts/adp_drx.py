@@ -437,23 +437,6 @@ class TriggeredDumpOp(object):
                     while time.time() < int(ts)+2:
                         time.sleep(0.001)
                         
-        #if local:
-        #    for pkt in pkts:
-        #        ofile.write(pkt)
-        #        bytesSent += len(pkt)
-        #        
-        #    ofile.close()
-        #else:
-        #    if len(pkts) > 0:
-        #        try:
-        #            pkts = 
-        #            self.udt.send(self.desc, 0, 0, 1, 0, 0, 1, )
-        #            bytesSent += sum([len(p) for p in pkts])
-        #        except Exception as e:
-        #            print(type(self).__name__, 'Flush Sending Error', str(e))
-        #            
-        #    self.tbfLock.clear()
-        
         if not local:
             self.tbfLock.clear()
             
