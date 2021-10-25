@@ -251,24 +251,6 @@ def seq_to_time_tag(seq):
 def time_tag_to_seq_float(time_tag):
     return time_tag*CHAN_BW/FS
 
-def gen_tbf_header(chan0, time_tag, time_tag0):
-    sync_word    = 0xDEC0DE5C
-    idval        = 0x01
-    #frame_num    = (time_tag % int(FS)) // NFRAME_PER_SPECTRUM # Spectrum no.
-    frame_num_wrap = 10*60 * int(CHAN_BW) # 10 mins = 15e6, just fits within a uint24
-    frame_num    = ((time_tag - time_tag0) // NFRAME_PER_SPECTRUM) % frame_num_wrap + 1 # Spectrum no.
-    id_frame_num = idval << 24 | frame_num
-    secs_count   = time_tag // int(FS) - M5C_OFFSET
-    freq_chan    = chan0
-    unassigned   = 0
-    return struct.pack('>IIIhhq',
-                       sync_word,
-                       id_frame_num,
-                       secs_count,
-                       freq_chan,
-                       unassigned,
-                       time_tag)
-
 class TriggeredDumpOp(object):
     def __init__(self, log, osock, iring, ntime_gulp, ntime_buf, tuning=0, nchan_max=256, core=-1, max_bytes_per_sec=None):
         self.log = log
@@ -931,17 +913,6 @@ class CorrelatorOp(object):
                         last_base_time_tag = base_time_tag
                         break
 
-def gen_chips_header(server, nchan, chan0, seq, gbe=0, nservers=6):
-    return struct.pack('>BBBBBBHQ', 
-                       server, 
-                       gbe, 
-                       nchan,
-                       1, 
-                       0,
-                       nservers,
-                       chan0-nchan*(server-1), 
-                       seq)
-    
 class RetransmitOp(object):
     def __init__(self, log, osock, iring, tuning=0, nchan_max=256, ntime_gulp=2500, nbeam_max=1, guarantee=True, core=-1):
         self.log   = log
@@ -1020,25 +991,6 @@ class RetransmitOp(object):
                                               'process_time': process_time,})
                     
         del udt
-
-def gen_cor_header(server, stand0, stand1, chan0, time_tag, time_tag0, navg, gain, nservers=6):
-    sync_word    = 0xDEC0DE5C
-    idval        = 0x02
-    frame_num    = (nservers << 8) | server
-    id_frame_num = idval << 24 | frame_num
-    #if stand == 0 and pol == 0:
-    #    print(cfreq, bw, gain, time_tag, time_tag0)
-    #    print(nframe_per_sample, nframe_per_packet)
-    return struct.pack('>IIIhhqihh',
-                       sync_word,
-                       id_frame_num,
-                       0,
-                       chan0,
-                       gain, 
-                       time_tag,
-                       navg,
-                       stand0,
-                       stand1)
 
 class PacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]

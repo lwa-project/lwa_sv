@@ -466,28 +466,6 @@ class TEngineOp(object):
                             
                         break
 
-def gen_drx_header(beam, tune, pol, cfreq, filter, time_tag):
-    bw = FILTER2BW[filter]
-    decim = int(FS) // bw
-    sync_word    = 0xDEC0DE5C
-    idval        = ((pol&0x1)<<7) | ((tune&0x7)<<3) | (beam&0x7)
-    frame_num    = 0
-    id_frame_num = idval << 24 | frame_num
-    assert( 0 <= cfreq < FS )
-    tuning_word  = int(round(cfreq / FS * 2**32))    # This should already be on the DP frequency grid from the control software so we need to use round()
-    #if stand == 0 and pol == 0:
-    #    print(cfreq, bw, gain, time_tag, time_tag0)
-    #    print(nframe_per_sample, nframe_per_packet)
-    return struct.pack('>IIIhhqII',
-                       sync_word,
-                       id_frame_num,
-                       0, 
-                       decim, 
-                       0, 
-                       time_tag, 
-                       tuning_word, 
-                       0)
-
 class MultiPacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
     def __init__(self, log, iring, osocks, nbeam_max=1, beam0=1, tuning=0, npkt_gulp=128, core=-1):
