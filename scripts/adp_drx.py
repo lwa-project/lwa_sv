@@ -531,7 +531,6 @@ class BeamformerOp(object):
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
-    #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
         if self.gpu != -1:
             BFSetGPU(self.gpu)
@@ -630,7 +629,6 @@ class BeamformerOp(object):
         else:
             return False
         
-    #@ISC.logException
     def main(self):
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:
@@ -758,7 +756,6 @@ class CorrelatorOp(object):
         self.ddata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='cf32', space='cuda')
         self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
         
-    #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
         if self.gpu != -1:
             BFSetGPU(self.gpu)
@@ -830,7 +827,6 @@ class CorrelatorOp(object):
         else:
             return False
             
-    #@ISC.logException
     def main(self):
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:

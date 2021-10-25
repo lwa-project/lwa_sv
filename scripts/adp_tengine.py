@@ -178,7 +178,6 @@ class TEngineOp(object):
         sampleCount = np.array((0,), dtype=np.int64)
         self.sampleCount = BFArray(sampleCount, space='cuda')
         
-    #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
         global ACTIVE_DRX_CONFIG
         
@@ -275,7 +274,6 @@ class TEngineOp(object):
         else:
             return False
             
-    #@ISC.logException
     def main(self):
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:
@@ -517,7 +515,6 @@ class DualPacketizeOp(object):
         
         self.sync_drx_pipelines = MCS.Synchronizer('DRX')
         
-    #@ISC.logException
     def main(self):
         global ACTIVE_DRX_CONFIG
         
@@ -641,7 +638,6 @@ class TriplePacketizeOp(object):
         
         self.sync_drx_pipelines = MCS.Synchronizer('DRX')
         
-    #@ISC.logException
     def main(self):
         global ACTIVE_DRX_CONFIG
         
@@ -769,7 +765,6 @@ class QuadruplePacketizeOp(object):
         
         self.sync_drx_pipelines = MCS.Synchronizer('DRX')
         
-    #@ISC.logException
     def main(self):
         global ACTIVE_DRX_CONFIG
         

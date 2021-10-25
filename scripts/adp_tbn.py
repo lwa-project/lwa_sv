@@ -193,7 +193,6 @@ class TEngineOp(object):
         sampleCount = np.array((0,), dtype=np.int64)
         self.sampleCount = BFArray(sampleCount, space='cuda')
         
-    #@ISC.logException
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
         global ACTIVE_TBN_CONFIG
         
@@ -280,7 +279,6 @@ class TEngineOp(object):
         else:
             return False
             
-    #@ISC.logException
     def main(self):
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:
