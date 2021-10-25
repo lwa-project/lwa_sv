@@ -18,10 +18,11 @@ from collections import deque
 
 __version__ = '0.3'
 __revision__ = '$Rev$'
-__all__ = ['PipelineMessageServer', 'StartTimeClient', 'TriggerClient', 'TBNConfigurationClient',
-           'DRXConfigurationClient', 'BAMConfigurationClient', 'CORConfigurationClient', 
-           'PipelineSynchronizationServer',  'PipelineSynchronizationClient', 
-           'PipelineEventServer', 'PipelineEventClient', '__version__', '__revision__', '__all__']
+__all__ = ['logException', 'PipelineMessageServer', 'StartTimeClient', 'TriggerClient',
+           'TBNConfigurationClient', 'DRXConfigurationClient', 'BAMConfigurationClient',
+           'CORConfigurationClient', 'PipelineSynchronizationServer',
+           'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient',
+           '__version__', '__revision__', '__all__']
 
 
 import sys
