@@ -404,32 +404,7 @@ class TriggeredDumpOp(object):
                     time_tag = time_tag0 + seq_to_time_tag(seq_offset + t)
                     if t == 0:
                         print("**** first timestamp is", time_tag)
-                    #for c in range(0, nchan_rounded, TBF_NCHAN_PER_PKT):
-                    #    pktdata = data[t:t+ntime_pkt,c:c+TBF_NCHAN_PER_PKT]
-                    #    hdr = gen_tbf_header(chan0+c, time_tag, time_tag0)
-                    #    try:
-                    #        pkt = hdr + pktdata.tostring()
-                    #        pkts.append( pkt )
-                    #    except Exception as e:
-                    #            print(type(self).__name__, 'Packing Error', str(e))
-                    #            
-                    #    if len(pkts) == 32:            
-                    #        if local:
-                    #            for pkt in pkts:
-                    #                ofile.write(pkt)
-                    #                bytesSent += len(pkt)
-                    #        else:
-                    #            try:
-                    #                self.udt.sendmany(pkts)
-                    #                bytesSent += sum([len(p) for p in pkts])
-                    #            except Exception as e:
-                    #                print(type(self).__name__, 'Sending Error', str(e))
-                    #                
-                    #            while bytesSent/(time.time()-bytesStart) >= self.max_bytes_per_sec*speed_factor:
-                    #                time.sleep(0.001)
-                    #                
-                    #        pkts = []
-                    
+                        
                     sdata = data[t:t+ntime_pkt,...]
                     sdata = sdata.reshape(1,nchan//TBF_NCHAN_PER_PKT,-1)
                     if local:
