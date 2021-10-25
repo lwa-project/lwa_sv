@@ -17,12 +17,10 @@ from collections import deque
 
 
 __version__ = '0.3'
-__revision__ = '$Rev$'
 __all__ = ['logException', 'PipelineMessageServer', 'StartTimeClient', 'TriggerClient',
            'TBNConfigurationClient', 'DRXConfigurationClient', 'BAMConfigurationClient',
            'CORConfigurationClient', 'PipelineSynchronizationServer',
-           'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient',
-           '__version__', '__revision__', '__all__']
+           'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient']
 
 
 import sys
@@ -39,6 +37,11 @@ from .AdpCommon import DATE_FORMAT, FS
 
 
 def logException(func):
+    """
+    Decorator for wrapping a function call and catching any exception thrown so
+    that it can go into the current logging instance.
+    """
+    
     logger = logging.getLogger('__main__')
     
     @functools.wraps(func)
