@@ -755,9 +755,9 @@ def main(argv):
         rsocks.append(UDPSocket())
         rsocks[-1].connect(raddr)
     ops.append(MultiPacketizerOp(log, tengine_ring,
-                            osocks=rsocks,
-                            nbeam_max=nbeam, beam0=1, tuning=tuning, 
-                            npkt_gulp=32, core=cores.pop(0)))
+                                 osocks=rsocks,
+                                 nbeam_max=nbeam, beam0=1, tuning=tuning,
+                                 npkt_gulp=32, core=cores.pop(0)))
     
     threads = [threading.Thread(target=op.main) for op in ops]
     
