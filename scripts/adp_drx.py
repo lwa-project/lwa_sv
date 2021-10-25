@@ -42,7 +42,6 @@ from collections import deque
 ACTIVE_COR_CONFIG = threading.Event()
 
 __version__    = "0.2"
-__date__       = '$LastChangedDate: 2016-08-09 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
 __copyright__  = "Copyright 2016, The LWA-SV Project"
 __credits__    = ["Ben Barsdell", "Daniel Price", "Jayce Dowell"]
@@ -1191,11 +1190,9 @@ def main(argv):
     elif verbosity == 0: log.setLevel(logging.INFO)
     elif verbosity <  0: log.setLevel(logging.WARNING)
     
-    short_date = ' '.join(__date__.split()[1:4])
     log.info("Starting %s with PID %i", argv[0], os.getpid())
     log.info("Cmdline args: \"%s\"", ' '.join(argv[1:]))
     log.info("Version:      %s", __version__)
-    log.info("Last changed: %s", short_date)
     log.info("Current MJD:  %f", Adp.MCS2.slot2mjd())
     log.info("Current MPM:  %i", Adp.MCS2.slot2mpm())
     log.info("Config file:  %s", args.configfile)
