@@ -101,6 +101,9 @@ class Tbn(SlotCommandProcessor):
         self.roaches = roaches
         self.cur_freq = self.cur_filt = self.cur_gain = 0
         
+    def _reset_state(self):
+        self.cur_freq = self.cur_filt = self.cur_gain = 0
+        
     def tune(self, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
@@ -165,6 +168,12 @@ class Drx(SlotCommandProcessor):
         self.cur_filt = [0]*self.ntuning
         self.cur_gain = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_freq[i] = 0
+            self.cur_filt[i] = 0
+            self.cur_gain[i] = 0
+            
     def tune(self, tuning=0, freq=38.00e6, filt=1, gain=1, internal=False):
         ## Convert to the DP frequency scale
         freq = FS * int(freq / FS * 2**32) / 2**32
@@ -228,6 +237,9 @@ class Tbf(SlotCommandProcessor):
         self.roaches = roaches
         self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
         
+    def _reset_state(self):
+        self.cur_bits = self.cur_trigger = self.cur_samples = self.cur_mask = 0
+        
     @ISC.logException
     def start(self, bits, trigger, samples, mask):
         self.log.info('Starting TBF: bits=%i, trigger=%i, samples=%i, mask=%i' % (bits, trigger, samples, mask))
@@ -269,6 +281,13 @@ class Bam(SlotCommandProcessor):
         self.cur_gains = [[0 for i in range(1024)]]*self.ntuning
         self.cur_tuning = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_beam[i] = 0
+            self.cur_delays[i] = [0 for j in xrange(512)]
+            self.cur_gains[i] = [0 for j in xrange(1024)]
+            self.cur_tuning[i] = 0
+            
     @ISC.logException
     def start(self, beam, delays, gains, tuning, subslot):
         self.log.info("Setting BAM: beam=%i, tuning=%i, subslot=%i" % (beam, tuning, subslot))
@@ -308,6 +327,12 @@ class Cor(SlotCommandProcessor):
         self.cur_tuning = [0]*self.ntuning
         self.cur_gain = [0]*self.ntuning
         
+    def _reset_state(self):
+        for i in range(self.ntuning):
+            self.cur_navg[i] = 0
+            self.cur_tuning[i] = 0
+            self.cur_gain[i] = 0
+            
     @ISC.logException
     def start(self, navg, tuning, gain, subslot):
         self.log.info("Setting COR: navg=%i, tuning=%i, gain=%i, subslot=%i" % (navg, tuning, gain, subslot))
@@ -974,8 +999,8 @@ class MsgProcessor(ConsumerThread):
             self.log.info('Processing internal trigger at %.6fs', 1.0*timestamp/FS)
             # Wait 1 second to make sure the data is in the buffer
             time.sleep(1.0)
-            # Dump 250 ms of data locally from both tunings, starting 50 ms prior to the trigger
-            self.messageServer.trigger(timestamp-9800000, 49000000, 3, local=True)
+            # Dump 300 ms of data locally from both tunings, starting 100 ms prior to the trigger
+            self.messageServer.trigger(timestamp-19600000, 58800000, 3, local=True)
             
     def start_internal_trigger_thread(self):
         self.internal_trigger_server = ISC.InternalTriggerProcessor(callback=self.internal_trigger_callback)
@@ -1117,6 +1142,13 @@ class MsgProcessor(ConsumerThread):
         # Note: Must do this to ensure pipelines wait for the new UTC_START
         self.utc_start     = None
         self.utc_start_str = 'NULL'
+        
+        # Reset the internal state for the various modes/commands 
+        self.drx._reset_state()
+        self.tbf._reset_state()
+        self.bam._reset_state()
+        self.cor._reset_state()
+        self.tbn._reset_state()
         
         # Bring up the pipelines
         can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
@@ -1393,7 +1425,7 @@ class MsgProcessor(ConsumerThread):
             self.log.error('Roach boards FFT windows out of sync')
             
         # Done
-        return status
+        return True
         
     def adc_cal(self, arg=None):
         """
@@ -1404,8 +1436,8 @@ class MsgProcessor(ConsumerThread):
         aligned = None
         self.log.info("Starting ADC offset calibration")
         
-        # Move the tone down to 30 MHz
-        subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 30", shell=True)
+        # Move the tone down to 32.768 MHz
+        subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 32.768", shell=True)
         
         # Tune to 30 MHz
         freq = 30.1e6
@@ -1454,6 +1486,24 @@ class MsgProcessor(ConsumerThread):
                         delays[r] = [0 for j in range(32)]
                         delays[r][i] = d
                         
+            # Sanity check for if the FFT windows are in sync
+            windows = {}
+            for roach in delays.keys():
+                windows[roach] = []
+                for d in delays[roach]:
+                    windows[roach].append(1 if abs(d) > 3 else 0)
+            goodCount = 0
+            for roach in windows.keys():
+                if sum(windows[roach]) == 0:
+                    goodCount += 1
+            self.log.info('There are %i roach boards in sync.', goodCount)
+            
+            if goodCount == len(windows.keys()):
+                status &= True
+            else:
+                status &= False
+                aligned = False
+                
             # Update the roach delay FIFOs
             self.log.info("Setting roach FIFO delays")
             badCount = 0
