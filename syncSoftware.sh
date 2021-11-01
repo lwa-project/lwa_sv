@@ -101,12 +101,12 @@ build_tcc() {
 	BIFROST_PATH=`grep -e "BIFROST_INCLUDE" config/servers/adp-tbn.service | sed -e 's/.*=//g;s/\/src\/bifrost//g;'`
 	
 	cdir=`pwd`
-	cd TensorCoreCorrelator
+	cd bifrost_tcc_wrapper/tensor-core-correlator
 	make clean
 	make
 	
 	cd ${cdir}
-	cd TensorCoreCorrelator/bifrost
+	cd bifrost_tcc_wrapper/bifrost
 	python make_bifrost_plugin.py -b ${BIFROST_PATH} btcc.cu
 }
 
@@ -130,7 +130,7 @@ fi
 
 if [ "${DO_SOFTWARE}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/scripts
-	TCC_PATH=/home/adp/lwa_sv/TensorCoreCorrelator/bifrost
+	TCC_PATH=/home/adp/lwa_sv/bifrost_tcc_wrapper/bifrost
 	DST_PATH=/usr/local/bin
 	
 	build_tcc
