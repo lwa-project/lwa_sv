@@ -27,7 +27,6 @@ Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8/src/bifrost
 Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8/lib:/usr/local/bin:$LD_LIBRARY_PATH
 Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8/python:$PYTHONPATH
 
-Environment=LD_PRELOAD=libvma.so
 Environment=VMA_TRACELEVEL=0
 Environment=VMA_RX_POLL=1000
 Environment=VMA_INTERNAL_THREAD_AFFINITY=0
