@@ -284,8 +284,8 @@ class Bam(SlotCommandProcessor):
     def _reset_state(self):
         for i in range(self.ntuning):
             self.cur_beam[i] = 0
-            self.cur_delays[i] = [0 for j in xrange(512)]
-            self.cur_gains[i] = [0 for j in xrange(1024)]
+            self.cur_delays[i] = [0 for j in range(512)]
+            self.cur_gains[i] = [0 for j in range(1024)]
             self.cur_tuning[i] = 0
             
     @ISC.logException
