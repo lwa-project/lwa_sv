@@ -556,12 +556,12 @@ class MultiPacketizeOp(object):
                 data = ispan.data_view('ci4').reshape(shape)
                 pkts = [data[:,b,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy() for b in range(nbeam)]
                 
-                for t in range(0, data.shape[0], NPACKET_SET):
+                for t in range(0, pkts[0].shape[0], NPACKET_SET):
                     time_tag_cur = time_tag + t*ticksPerSample*ntime_pkt
                     try:
                         self.sync_drx_pipelines(time_tag_cur)
                     except ValueError:
-                        print('speedup', t, data.shape[0])
+                        print('speedup', t, pkts[0].shape[0])
                         pass
                     except (socket.timeout, socket.error):
                         pass
