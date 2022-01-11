@@ -159,7 +159,7 @@ class TEngineOp(object):
         self.configMessage = ISC.TBNConfigurationClient(addr=('adp',5832))
         self._pending = deque()
         self.gain = 2
-        self.filt = 7#filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN)[-1]
+        self.filt = 7#list(filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN))[-1]
         self.nchan_out = FILTER2CHAN[self.filt]
         
         #coeffs = np.array([-0.0179700,  0.0144130, -0.0111240, -0.0017506, 0.0254560, 
