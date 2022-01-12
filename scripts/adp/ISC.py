@@ -99,7 +99,7 @@ class PipelineMessageServer(object):
             utcStartTime = utcStartTime.strftime(DATE_FORMAT)
         except AttributeError:
             pass
-        self.socket.send('UTC %s' % utcStartTime)
+        self.socket.send_string('UTC %s' % utcStartTime)
         
     def tbnConfig(self, frequency, filter, gain):
         """
@@ -110,7 +110,7 @@ class PipelineMessageServer(object):
           * gain setting
         """
         
-        self.socket.send('TBN %.6f %i %i' % (frequency, filter, gain))
+        self.socket.send_string('TBN %.6f %i %i' % (frequency, filter, gain))
         
     def drxConfig(self, tuning, frequency, filter, gain):
         """
@@ -122,7 +122,7 @@ class PipelineMessageServer(object):
           * gain setting
         """
         
-        self.socket.send('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
+        self.socket.send_string('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
         
     def bamConfig(self, beam, delays, gains, tuning, subslot):
         """
@@ -136,7 +136,7 @@ class PipelineMessageServer(object):
         
         bDelays = binascii.hexlify( delays.tostring() )
         bGains = binascii.hexlify( gains.tostring() )
-        self.socket.send('BAM %i %s %s %i %i' % (beam, bDelays, bGains, tuning, subslot))
+        self.socket.send_string('BAM %i %s %s %i %i' % (beam, bDelays, bGains, tuning, subslot))
         
     def corConfig(self, navg, tuning, gain, subslot):
         """
@@ -147,7 +147,7 @@ class PipelineMessageServer(object):
           * the subslot in which the configuration is implemented
         """
         
-        self.socket.send('COR %i %i %i %i' % (navg, tuning, gain, subslot))
+        self.socket.send_string('COR %i %i %i %i' % (navg, tuning, gain, subslot))
         
     def trigger(self, trigger, samples, mask, local=False):
         """
@@ -158,7 +158,7 @@ class PipelineMessageServer(object):
           * whether or not to dump to disk
         """
         
-        self.socket.send('TRIGGER %i %i %i %i' % (trigger, samples, mask, local))
+        self.socket.send_string('TRIGGER %i %i %i %i' % (trigger, samples, mask, local))
         
     def close(self):
         self.socket.close()
@@ -201,7 +201,7 @@ class PipelineMessageClient(object):
         """
         
         try:
-            msg = self.socket.recv(flags=(0 if block else zmq.NOBLOCK))
+            msg = self.socket.recv_string(flags=(0 if block else zmq.NOBLOCK))
             return msg
         except zmq.error.ZMQError:
             return False
@@ -418,6 +418,12 @@ class PipelineSynchronizationServer(object):
         
         while self.alive.isSet():
             client, msg = self.socket.recv_multipart()
+            try:
+                msg = msg.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
+                
             if msg == 'JOIN':
                 if client not in clients:
                     clients.append( client )
@@ -477,12 +483,12 @@ class PipelineSynchronizationClient(object):
         self.socket.connect('tcp://%s:%i' % addr)
         
         # Connect to the server
-        self.socket.send('JOIN')
+        self.socket.send_string('JOIN')
         
     @logException
     def __call__(self, tag=None):
-        self.socket.send('TAG:%s' % tag)
-        return self.socket.recv()
+        self.socket.send_string('TAG:%s' % tag)
+        return self.socket.recv_string()
         
     @logException
     def close(self):
@@ -490,7 +496,7 @@ class PipelineSynchronizationClient(object):
         Leave the synchronization pool and close out the client.
         """
         
-        self.socket.send('LEAVE')
+        self.socket.send_string('LEAVE')
         
         self.socket.close()
         if self.newContext:
@@ -591,7 +597,7 @@ class PipelineEventServer(object):
             msg = dict(self.poller.poll(1000))
             if msg:
                 if msg.get(self.socket) == zmq.POLLIN:
-                    msg = self.socket.recv(zmq.NOBLOCK)
+                    msg = self.socket.recv_string(zmq.NOBLOCK)
                     id, msg = msg.split(None, 1)
                     
                     if msg == 'SET':
@@ -604,10 +610,7 @@ class PipelineEventServer(object):
                         status = self._clear(id)
                     else:
                         status = False
-                    try:
-                        self.socket.send(str(status))
-                    except TypeError:
-                        self.socket.send_string(str(status))
+                    self.socket.send_string(str(status))
                     
     def close(self):
         """
@@ -649,14 +652,16 @@ class PipelineEventClient(object):
         
         # Save the ID
         self.id = self.socket.getsockopt(zmq.IDENTITY)
-        
+        try:
+            self.id = self.id.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+            
     @logException
     def is_set(self):
-        try:
-            self.socket.send('%s %s' % (self.id, 'IS_SET'))
-        except TypeError:
-            self.socket.send_string('%s %s' % (self.id, 'IS_SET'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'IS_SET'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def isSet(self):
@@ -664,19 +669,13 @@ class PipelineEventClient(object):
         
     @logException
     def set(self):
-        try:
-            self.socket.send('%s %s' % (self.id, 'SET'))
-        except TypeError:
-            self.socket.send_string('%s %s' % (self.id, 'SET'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'SET'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def clear(self):
-        try:
-            self.socket.send('%s %s' % (self.id, 'CLEAR'))
-        except TypeError:
-            self.socket.send_string('%s %s' % (self.id, 'CLEAR'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'CLEAR'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def wait(self, timeout=None):
@@ -695,11 +694,8 @@ class PipelineEventClient(object):
         Leave the synchronization pool and close out the client.
         """
         
-        try:
-            self.socket.send('%s %s' % (self.id, 'LEAVE'))
-        except TypeError:
-            self.socket.send_string('%s %s' % (self.id, 'LEAVE'))
-        status = True if self.socket.recv() in ('True', b'True') else False
+        self.socket.send_string('%s %s' % (self.id, 'LEAVE'))
+        status = True if self.socket.recv_string() == 'True' else False
         
         self.socket.close()
         if self.newContext:
@@ -737,17 +733,19 @@ class InternalTrigger(object):
         
         # Save the ID
         self.id = self.socket.getsockopt(zmq.IDENTITY)
-        
+        try:
+            self.id = self.id.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+            
     def __call__(self, timestamp):
         """
         Send the event's timestamp as a DP/ADP timestamp value, i.e., 
         int(UNIX time * 196e6).
         """
         
-        try:
-            self.socket.send('%s %s' % (self.id, str(timestamp)))
-        except TypeError:
-            self.socket.send_string('%s %s' % (self.id, str(timestamp)))
+        self.socket.send_string('%s %s' % (self.id, str(timestamp)))
         
     def close(self):
         """
@@ -816,7 +814,7 @@ class InternalTriggerProcessor(object):
             msg = dict(self.poller.poll(5000))
             if msg:
                 if msg.get(self.socket) == zmq.POLLIN:
-                    msg = self.socket.recv(zmq.NOBLOCK)
+                    msg = self.socket.recv_string(zmq.NOBLOCK)
                     try:
                         id, timestamp = msg.split(None, 1)
                         timestamp = int(timestamp, 10)
