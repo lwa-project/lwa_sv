@@ -1113,6 +1113,7 @@ class PacketizeOp(object):
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
+                        k = 0
                         for i in range(nstand):
                             sdata = BFArray(shape=(1,nstand-i,nchan,npol,npol), dtype='cf32')
                             for j in range(i, nstand):
