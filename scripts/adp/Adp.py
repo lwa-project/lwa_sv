@@ -1425,7 +1425,7 @@ class MsgProcessor(ConsumerThread):
             self.log.error('Roach boards FFT windows out of sync')
             
         # Done
-        return True
+        return status
         
     def adc_cal(self, arg=None):
         """
@@ -1436,8 +1436,8 @@ class MsgProcessor(ConsumerThread):
         aligned = None
         self.log.info("Starting ADC offset calibration")
         
-        # Move the tone down to 32.768 MHz
-        subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 32.768", shell=True)
+        # Move the tone down to 30 MHz
+        subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 30", shell=True)
         
         # Tune to 30 MHz
         freq = 30.1e6
@@ -1486,24 +1486,6 @@ class MsgProcessor(ConsumerThread):
                         delays[r] = [0 for j in range(32)]
                         delays[r][i] = d
                         
-            # Sanity check for if the FFT windows are in sync
-            windows = {}
-            for roach in delays.keys():
-                windows[roach] = []
-                for d in delays[roach]:
-                    windows[roach].append(1 if abs(d) > 3 else 0)
-            goodCount = 0
-            for roach in windows.keys():
-                if sum(windows[roach]) == 0:
-                    goodCount += 1
-            self.log.info('There are %i roach boards in sync.', goodCount)
-            
-            if goodCount == len(windows.keys()):
-                status &= True
-            else:
-                status &= False
-                aligned = False
-                
             # Update the roach delay FIFOs
             self.log.info("Setting roach FIFO delays")
             badCount = 0
