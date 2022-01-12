@@ -712,6 +712,7 @@ def main(argv):
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
     isock.bind(iaddr)
+    isock.timeout = 0.5
     
     capture_ring = Ring(name="capture")
     tengine_ring = Ring(name="tengine")
