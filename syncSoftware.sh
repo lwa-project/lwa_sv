@@ -107,7 +107,7 @@ build_tcc() {
 	
 	cd ${cdir}
 	cd bifrost_tcc_wrapper/bifrost
-	python make_bifrost_plugin.py -b ${BIFROST_PATH} btcc.cu
+	python3 make_bifrost_plugin.py -b ${BIFROST_PATH} btcc.cu
 }
 
 #
