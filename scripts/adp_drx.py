@@ -1114,7 +1114,10 @@ class PacketizeOp(object):
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
                         for i in range(nstand):
-                            sdata = odata[i,i:,:,:].copy(space='system')
+                            sdata = BFArray(shape=(1,nstand-i,nchan,npol,npol), dtype='cf32')
+                            for j in range(i, nstand):
+                                sdata[0,j-i,:,:,:] = odata[k,:,:,:]
+                                k += 1
                             sdata = sdata.reshape(1,-1,nchan*npol*npol)
                             
                             try:
