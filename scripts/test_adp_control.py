@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+import sys
+if sys.version_info < (3,):
+    range = xrange
+	
 import MCS2
 import time
 from Queue import Queue
@@ -80,7 +84,7 @@ if __name__ == "__main__":
 			send_msg(sys.argv[1], data)
 		else:
 			send_msg(sys.argv[1])
-		for i in xrange(5):
+		for i in range(5):
 			send_rpt('SUMMARY')
 			send_rpt('INFO')
 			send_rpt('LASTLOG')

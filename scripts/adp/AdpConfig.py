@@ -1,9 +1,11 @@
 
+from __future__ import print_function
+
 import os
 try:
     import simplejson as json
 except ImportError:
-    print "Warning: Failed to import simplejson; falling back to vanilla json"
+    print("Warning: Failed to import simplejson; falling back to vanilla json")
     import json
 
 def parse_config_file(filename, log=None):
@@ -97,7 +99,7 @@ def parse_config_file_old(filename, log=None):
                 else:
                     config[paramName] = val
                     
-            except Exception, e:
+            except Exception as e:
                 if log is not None: log.error("Error parsing parameter %s: %s", paramName, str(e))
                 cfile_error = True
                 

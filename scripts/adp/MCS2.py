@@ -1,11 +1,26 @@
 # -*- coding: utf-8 -*-
 
-import Queue
+from __future__ import print_function, division, absolute_import
+try:
+    range = xrange
+    def data_to_hex(data):
+        return data.encode('hex')
+except NameError:
+    def data_to_hex(data):
+        try:
+            return data.hex()
+        except TypeError:
+            return data.encode().hex()
+            
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 import time
 from datetime import datetime
 import socket
-from ConsumerThread import ConsumerThread
-from SocketThread import UDPRecvThread
+from .ConsumerThread import ConsumerThread
+from .SocketThread import UDPRecvThread
 import string
 import struct
 
@@ -40,9 +55,9 @@ def slot2mjd(slot=None):
     # Source: SkyField
     janfeb = tt.tm_mon < 3
     jd_day = tt.tm_mday
-    jd_day += 1461 *  (tt.tm_year + 4800 - janfeb) / 4
-    jd_day +=  367 *  (tt.tm_mon  -    2 + janfeb * 12) / 12
-    jd_day -=    3 * ((tt.tm_year + 4900 - janfeb) / 100) / 4
+    jd_day += 1461 *  (tt.tm_year + 4800 - janfeb) // 4
+    jd_day +=  367 *  (tt.tm_mon  -    2 + janfeb * 12) // 12
+    jd_day -=    3 * ((tt.tm_year + 4900 - janfeb) // 100) // 4
     jd_day -= 32075
     mjd = tt.tm_sec
     mjd = mjd*(1./60) + tt.tm_min
@@ -108,30 +123,39 @@ class Msg(object):
         self.src_ip = src_ip
     def __str__(self):
         if self.slot is None:
-            return ("<MCS Msg %i: '%s' from %s to %s, data='%s' (0x%s)>" %
+            return ("<MCS Msg %i: '%s' from %s to %s, data=%r (0x%s)>" %
                     (self.ref, self.cmd, self.src, self.dst,
-                    self.data, self.data.encode('hex')))
+                     self.data, data_to_hex(self.data)))
         else:
-            return (("<MCS Msg %i: '%s' from %s (%s) to %s, data='%s' (0x%s), "+
+            return (("<MCS Msg %i: '%s' from %s (%s) to %s, data=%r (0x%s), "+
                      "rcv'd in slot %i>") %
                      (self.ref, self.cmd, self.src, self.src_ip,
-                     self.dst, self.data, self.data.encode('hex'),
-                     self.slot))
+                      self.dst, self.data, data_to_hex(self.data),
+                      self.slot))
     def decode(self, pkt):
+        hdr = pkt[:38]
+        try:
+            hdr = hdr.decode()
+        except Exception as e:
+            # Python2 catch/binary data catch
+            print('hdr error:', str(e), '@', hdr)
+            pass
+            
         self.slot = get_current_slot()
-        self.dst  = pkt[:3]
-        self.src  = pkt[3:6]
-        self.cmd  = pkt[6:9]
-        self.ref  = int(pkt[9:18])
-        datalen   = int(pkt[18:22])
-        self.mjd  = int(pkt[22:28])
-        self.mpm  = int(pkt[28:37])
-        space     = pkt[37]
+        self.dst  = hdr[:3]
+        self.src  = hdr[3:6]
+        self.cmd  = hdr[6:9]
+        self.ref  = int(hdr[9:18])
+        datalen   = int(hdr[18:22])
+        self.mjd  = int(hdr[22:28])
+        self.mpm  = int(hdr[28:37])
+        space     = hdr[37]
         self.data = pkt[38:38+datalen]
         # WAR for DATALEN parameter being wrong for BAM commands (FST too?)
         broken_commands = ['BAM']#, 'FST']
         if self.cmd in broken_commands:
             self.data = pkt[38:]
+            
     def create_reply(self, accept, status, data=''):
         msg = Msg(#src=self.dst,
                   dst=self.src,
@@ -140,7 +164,18 @@ class Msg(object):
                   dst_ip=self.src_ip)
         #msg.mjd, msg.mpm = getTime()
         response = 'A' if accept else 'R'
-        msg.data = response + str(status).rjust(7) + data
+        msg.data = response + str(status).rjust(7)
+        try:
+            msg.data = msg.data.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        try:
+            data = data.encode()
+        except (AttributeError, UnicodeDecodeError):
+            # Python2/binary data catch
+            pass
+        msg.data = msg.data+data
         return msg
     def is_valid(self):
         return (self.dst is not None and len(self.dst) <= 3 and
@@ -161,30 +196,39 @@ class Msg(object):
                str(len(self.data)).rjust(4) +
                str(self.mjd      ).rjust(6) +
                str(self.mpm      ).rjust(9) +
-               ' ' +
-               self.data)
-        return pkt
+               ' ')
+        try:
+            pkt = pkt.encode()
+        except (AttributeError, UnicodeDecodeError):
+            # Python2 catch
+            pass
+        try:
+            self.data = self.data.encode()
+        except (AttributeError, UnicodeDecodeError):
+            # Python2 catch
+            pass
+        return pkt+self.data
 
 class MsgReceiver(UDPRecvThread):
     def __init__(self, address, subsystem='ALL'):
         UDPRecvThread.__init__(self, address)
         self.subsystem = subsystem
-        self.msg_queue = Queue.Queue()
+        self.msg_queue = queue.Queue()
         self.name      = 'MCS.MsgReceiver'
     def process(self, pkt, src_ip):
         if len(pkt):
             msg = Msg(pkt=pkt, src_ip=src_ip)
             if ( self.subsystem == 'ALL' or
-                msg.dst        == 'ALL' or
-                self.subsystem == msg.dst ):
+                 msg.dst        == 'ALL' or
+                 self.subsystem == msg.dst ):
                 self.msg_queue.put(msg)
     def shutdown(self):
         self.msg_queue.put(ConsumerThread.STOP)
-        #print self.name, "shutdown"
+        #print(self.name, "shutdown")
     def get(self, timeout=None):
         try:
             return self.msg_queue.get(True, timeout)
-        except Queue.Empty:
+        except queue.Empty:
             return None
 
 class MsgSender(ConsumerThread):
@@ -201,11 +245,14 @@ class MsgSender(ConsumerThread):
         self.name = 'MCS.MsgSender'
     def process(self, msg):
         msg.src  = self.subsystem
-        pkt      = msg.encode()
+        try:
+            pkt      = msg.encode()
+        except UnicodeDecodeError:
+            pkt      = msg.data
         dst_ip   = msg.dst_ip if msg.dst_ip is not None else self.dst_ip
         dst_addr = (dst_ip, self.dst_port)
-        #print "Sending msg to", dst_addr
-        for attempt in xrange(self.max_attempts-1):
+        #print("Sending msg to", dst_addr)
+        for attempt in range(self.max_attempts-1):
             try:
                 #self.socket.send(pkt)
                 self.socket.sendto(pkt, dst_addr)
@@ -216,7 +263,7 @@ class MsgSender(ConsumerThread):
         #self.socket.send(pkt)
         self.socket.sendto(pkt, dst_addr)
     def shutdown(self):
-        #print self.name, "shutdown"
+        #print(self.name, "shutdown")
         pass
 
 # Simple interface for communicating with adp-control service
@@ -226,7 +273,7 @@ class Communicator(object):
         #sender   = MsgSender(("localhost",1742), subsystem=subsystem)
         self.sender   = MsgSender(("adp",1742), subsystem=subsystem)
         self.receiver = MsgReceiver(("0.0.0.0",1743))
-        self.sender.input_queue = Queue.Queue()
+        self.sender.input_queue = queue.Queue()
         self.sender.daemon = True
         self.receiver.daemon = True
         self.sender.start()
@@ -242,10 +289,16 @@ class Communicator(object):
         reply = self.receiver.get(timeout=timeout)
         if reply is None:
             raise RuntimeError("MCS request timed out")
-        data = reply.data
-        accepted, status, data = data[0]=='A', data[1:8], data[8:]
-        if not accepted:
-            raise ValueError(data)
+        # Parse the data section of the reply
+        response, status, data = reply.data[:1], reply.data[1:8], reply.data[8:]
+        try:
+            response = response.decode()
+            status = status.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        if response != 'A':
+            raise ValueError("Message not accepted: response=%r, status=%r, data=%r" % (response, status, data))
         return status, data
     def _send(self, msg, timeout):
         self.sender.put(msg)
@@ -255,6 +308,11 @@ class Communicator(object):
         msg = Msg(dst='ADP', cmd='RPT', data=data)
         data = self._send(msg, timeout)
         if fmt is None or fmt == 's':
+            try:
+                data = data.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             return data
         else:
             return struct.unpack('>'+fmt, data)
@@ -279,10 +337,27 @@ class Synchronizer(object):
                                 socket.SOCK_STREAM)
         self.socket.connect(addr)
         self.socket.settimeout(10) # Prevent recv() from blocking indefinitely
-        self.socket.send('GROUP:'+str(group))
+        msg = 'GROUP:'+str(group)
+        try:
+            msg = msg.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        self.socket.send(msg)
     def __call__(self, tag=None):
-        self.socket.send('TAG:'+str(tag))
+        msg = 'TAG:'+str(tag)
+        try:
+            msg = msg.encode()
+        except AttributeError:
+            # Python2 catch
+            pass
+        self.socket.send(msg)
         reply = self.socket.recv(4096)
+        try:
+            reply = reply.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         expected_reply = 'GROUP:'+str(self.group) + ',TAG:'+str(tag)
         if reply != expected_reply:
             raise ValueError("Unexpected reply '%s', expected '%s'" %
@@ -301,7 +376,7 @@ class SynchronizerGroup(object):
     #def __del__(self):
     #    self.shutdown()
     def log(self, value):
-        print "[%.3f] %s" % (time.time()-self.tStart, value)
+        print("[%.3f] %s" % (time.time()-self.tStart, value))
     def shutdown(self):
         self.shutdown_event.set()
         self.log("SynchronizerGroup "+self.group+": run joining")
@@ -361,7 +436,7 @@ class SynchronizerGroup(object):
             # Elect tag0, the reference time tag
             try:
                 tag0 = max(tags)
-                #print "ELECTED %i as tag0 for %s" % (tag0, self.group)
+                #print("ELECTED %i as tag0 for %s" % (tag0, self.group))
             except ValueError:
                 continue
                 
@@ -396,7 +471,7 @@ class SynchronizerGroup(object):
                             self.log("WARNING: Synchronizer (2d): Unexpected message %s client %i: %s" % (self.group, i, e))
                             continue
                         tags[i] = int(tag_msg[4:22], 10)
-                        #print "Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0)
+                        #print("Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0))
                         
                     ## Evaluate the latest batch of timetags
                     slow = [i for i,tag in enumerate(tags) if tag < tag0]
@@ -405,8 +480,8 @@ class SynchronizerGroup(object):
                     j += 1
                     
                 ### Report on what we've done
-                #for i,v in slowFactors.iteritems():
-                #	print "WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v)
+                #for i,v in slowFactors.items():
+                #	print("WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v))
                     
             # Send to everyone regardless to make sure the fast ones don't falter
             i = 0
@@ -426,7 +501,7 @@ class SynchronizerGroup(object):
                 i += 1
                 
             # Done with the iteration
-            ##print "SYNCED "+str(len(self.socks))+" clients in "+self.group
+            ##print("SYNCED "+str(len(self.socks))+" clients in "+self.group)
             
         self.log("SynchronizerGroup "+self.group+": shut down")
 
@@ -452,7 +527,7 @@ class SynchronizerServer(object):
             group_msg = sock.recv(4096)
             if not group_msg.startswith('GROUP:'):
                 #raise ValueError("Unexpected message: "+group_msg)
-                print "WARNING: Synchronizer: Unexpected message: "+group_msg
+                print("WARNING: Synchronizer: Unexpected message: "+group_msg)
             group = group_msg[len('GROUP:'):]
             if group not in self.groups:
                 self.groups[group] = SynchronizerGroup(group)

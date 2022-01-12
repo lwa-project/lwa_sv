@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from AdpLogging import AdpFileLogger
-import AdpConfig
-from DeviceMonitor import CPUDevice, GPUDevice
+from adp.AdpLogging import AdpFileLogger
+from adp import AdpConfig
+from adp.DeviceMonitor import CPUDevice, GPUDevice
 
 class AdpServerTempLogger(AdpFileLogger):
 	def __init__(self, config, filename):
@@ -30,7 +30,7 @@ class AdpServerTempLogger(AdpFileLogger):
 if __name__ == "__main__":
 	import sys
 	if len(sys.argv) <= 1:
-		print "Usage:", sys.argv[0], "config_file"
+		print("Usage:", sys.argv[0], "config_file")
 		sys.exit(-1)
 	config_filename = sys.argv[1]
 	config = AdpConfig.parse_config_file(config_filename)

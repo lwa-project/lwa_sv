@@ -45,7 +45,7 @@ Note: The only param changes required for the ROACHes are: TBN mode or DRX chan 
 
 Recv thread:
   while not stop_requested():
-    cmds_this_second = [[] for _ in xrange(self.nsubslot)]
+    cmds_this_second = [[] for _ in range(self.nsubslot)]
     while time_left_this_second > 0:
       new_cmd = wait_for_new_cmd(timeout=time_left_this_second)
       cmds_this_second[new_cmd.subslot].append( new_cmd )
@@ -67,6 +67,11 @@ Process thread:
 
 """
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from adp import MCS2, Adp
 
 import signal
@@ -77,7 +82,6 @@ import argparse
 from threading import Event
 
 __version__    = "0.1"
-__date__       = '$LastChangedDate: 2015-07-23 15:44:00 -0600 (Fri, 25 Jul 2014) $'
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
 __copyright__  = "Copyright 2015, The LWA-SV Project"
 __credits__    = ["Ben Barsdell", "Daniel Price", "Jayce Dowell"]
@@ -127,11 +131,9 @@ def main(argv):
 	elif verbosity == 0: log.setLevel(logging.INFO)
 	elif verbosity <  0: log.setLevel(logging.WARNING)
 	
-	short_date = ' '.join(__date__.split()[1:4])
 	log.info("Starting %s with PID %i", argv[0], os.getpid())
 	log.info("Cmdline args: \"%s\"", ' '.join(argv[1:]))
 	log.info("Version:      %s", __version__)
-	log.info("Last changed: %s", short_date)
 	log.info("Current MJD:  %f", Adp.MCS2.slot2mjd())
 	log.info("Current MPM:  %i", Adp.MCS2.slot2mpm())
 	log.info("Config file:  %s", args.configfile)
@@ -212,8 +214,8 @@ def main(argv):
 
 if __name__ == "__main__":
 	import sys
-	print "--- Start of application ---"
+	print("--- Start of application ---")
 	ret = main(sys.argv)
-	print "--- End of application ---"
+	print("--- End of application ---")
 	sys.exit(ret)
 	

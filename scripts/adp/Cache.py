@@ -1,4 +1,9 @@
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 from collections import OrderedDict
 from threading   import RLock
 import functools
@@ -69,10 +74,10 @@ if __name__ == "__main__":
     @lru_cache(maxsize=4)
     def fib(n):
         return n if n in (0,1) else fib(n-1) + fib(n-2)
-    print fib(10)
-    print fib
-    print fib(11)
-    print fib
+    print(fib(10))
+    print(fib)
+    print(fib(11))
+    print(fib)
     
     class MyObj(object):
         def __init__(self):
@@ -81,9 +86,9 @@ if __name__ == "__main__":
         def foo(self, i):
             return i
     myobj = MyObj()
-    print myobj.foo
-    print myobj.foo(10)
-    print myobj.foo(10)
+    print(myobj.foo)
+    print(myobj.foo(10))
+    print(myobj.foo(10))
     
     #@threadsafe_lru_cache(maxsize=4)
     @lru_cache(maxsize=4)
@@ -91,9 +96,9 @@ if __name__ == "__main__":
         time.sleep(1)
         return i
     def print_slow_func(i):
-        print slow_func(i)
+        print(slow_func(i))
     threads = []
-    for i in xrange(10):
+    for i in range(10):
         thread = threading.Thread(target=print_slow_func, args=(i%4,))
         threads.append(thread)
         thread.start()

@@ -152,7 +152,7 @@ fi
 
 if [ "${DO_UPSTART}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/config
-	DST_PATH=/etc/systemd/system
+	DST_PATH=/etc/systemd/system/
 	
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then

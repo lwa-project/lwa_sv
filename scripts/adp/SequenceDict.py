@@ -1,4 +1,6 @@
 
+from __future__ import print_function
+
 from bisect import bisect
 from collections import defaultdict
 
@@ -64,5 +66,5 @@ if __name__ == "__main__":
         pass
     else:
         assert(False)
-    print "All tests PASSED"
+    print("All tests PASSED")
     
