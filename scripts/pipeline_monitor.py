@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import os
@@ -33,7 +33,7 @@ def parseOptions(args):
 	# Read in and process the command line flags
 	try:
 		opts, args = getopt.getopt(args, "hct", ["help", "capture", "transmit"])
-	except getopt.GetoptError, err:
+	except getopt.GetoptError as err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
 		usage(exitCode=2)

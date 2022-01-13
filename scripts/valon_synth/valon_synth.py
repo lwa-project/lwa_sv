@@ -24,6 +24,8 @@
 Provides a serial interface to the Valon 500x.
 """
 
+from __future__ import division
+
 # Python modules
 import struct
 # Third party modules
@@ -55,7 +57,11 @@ class Synthesizer:
         self.conn.close()
 
     def _generate_checksum(self, bytes):
-        return chr(sum([ord(b) for b in bytes]) % 256)
+        try:
+            return chr(sum([ord(b) for b in bytes]) % 256)
+        except TypeError:
+            csum = chr(sum([b for b in bytes]) % 256)
+            return csum.encode()
 
     def _verify_checksum(self, bytes, checksum):
         return (self._generate_checksum(bytes) == checksum)
@@ -131,8 +137,8 @@ class Synthesizer:
         mod = int(EPDF / float(chan_spacing) + 0.5)
         if frac != 0 and mod != 0:
             while not (frac & 1) and not (mod & 1):
-                frac /= 2
-                mod /= 2
+                frac //= 2
+                mod //= 2
         else:
             frac = 0
             mod = 1
@@ -436,9 +442,9 @@ class Synthesizer:
         self.conn.close()
         #self._verify_checksum(bytes, checksum)
         if synth == SYNTH_A:
-	  mask = 1 << 4
-	else:
-	  mask = 1 << 5
+            mask = 1 << 4
+        else:
+            mask = 1 << 5
         lock = struct.unpack('>B', bytes)[0] & mask
         return lock > 0
 
@@ -458,6 +464,11 @@ class Synthesizer:
         checksum = self.conn.read(1)
         self.conn.close()
         #self._verify_checksum(bytes, checksum)
+        try:
+            bytes = bytes.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
         return bytes
 
     def set_label(self, synth, label):
