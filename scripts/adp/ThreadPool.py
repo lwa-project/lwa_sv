@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 """
 A thread pool class with a few useful features
@@ -12,13 +13,22 @@ Features: Worker threads created on-demand and then re-used
           Exceptions in tasks are caught and returned as result values
 """
 
+from __future__ import print_function, absolute_import
+try:
+    range = xrange
+except NameError:
+    pass
+    
 # Note: No need to join() workers here as long as wait() is always
 #       called at the end. The daemon threads will just block on
 #       the empty queue and get inconsequentially killed at exit.
 
-from Queue import Queue#, Empty
+try:
+    from queue import Queue#, Empty
+except ImportError:
+    from Queue import Queue#, Empty
 #from StoppableThread import StoppableThread
-from ConsumerThread import ConsumerThread
+from .ConsumerThread import ConsumerThread
 import time
 
 class TimeoutQueue(Queue):
@@ -54,11 +64,11 @@ class Worker(ConsumerThread):
         idx, func, args, kwargs = task
         try:
             ret = func(*args, **kwargs)
-        except Exception, e:
+        except Exception as e:
             ret = e
             # TODO: Any better way to report exceptions? Specify a log?
             if self.result_queue is None:
-                print ("ERROR: Uncaught exception in %s: %s %s"%
+                print("ERROR: Uncaught exception in %s: %s %s"%
                     (self.name, e, type(e)))
         finally:
             if self.result_queue is not None:
@@ -78,7 +88,7 @@ class ThreadPool(object):
     def spawn_workers(self, n):
         if self.tasks.maxsize > 0:
             n = min(n, self.tasks.maxsize)
-        for _ in xrange(n):
+        for _ in range(n):
             self.workers.append( Worker(self.tasks, daemon=True,
                                         pool_name=self.name) )
     def add_task(self, func, *args, **kwargs):
@@ -108,17 +118,17 @@ class FuturePool(object):
     def spawn_workers(self, n):
         if self.tasks.maxsize > 0:
             n = min(n, self.tasks.maxsize)
-        for _ in xrange(n):
+        for _ in range(n):
             self.workers.append( Worker(self.tasks, self.results,# daemon=True,
                                         pool_name=self.name) )
     def join_workers(self):
-        #print "Stopping workers"
+        #print("Stopping workers")
         for worker in self.workers:
             worker.request_stop()
-        #print "Joining workers"
+        #print("Joining workers")
         for worker in self.workers:
             worker.join()
-        #print "JOINED"
+        #print("JOINED")
     def add_task(self, func, *args, **kwargs):
         """Asynchronously call the given func and save the return value"""
         idx = self.ntask
@@ -130,7 +140,7 @@ class FuturePool(object):
         """Wait for completion of all the tasks in the queue and return
             list of return values sorted by original call order."""
         self.tasks.join()
-        results = [self.results.get() for _ in xrange(self.ntask)]
+        results = [self.results.get() for _ in range(self.ntask)]
         self.ntask = 0
         ret = [r[1] for r in sorted(results)]
         return ret
@@ -138,11 +148,11 @@ class FuturePool(object):
 class ObjectPool(list):
     """A specialised list that provides asynchronous parallel access to members
         E.g., objs = ObjectPool(['a', 'bb', 'ccc'])
-              print objs.upper()    # --> ['AA', 'BB', 'CCC']
-              print objs.count('b') # --> [0, 2, 0]
+              print(objs.upper()    # --> ['AA', 'BB', 'CCC'])
+              print(objs.count('b') # --> [0, 2, 0])
               objs2 = ObjectPool([MyObj(0), MyObj(1), MyObj(2)])
               objs2.val = [-1, -2, -3]
-              print objs2.val       # --> [-1, -2, -3]
+              print(objs2.val       # --> [-1, -2, -3])
     """
     def __init__(self, objs=[], future_pool=None):
         list.__init__(self, objs)
@@ -175,24 +185,24 @@ if __name__ == "__main__":
     import sys
     
     a = ObjectPool(['a', 'bb', 'ccc'])
-    print a.upper()
+    print(a.upper())
     #a.join()
     
     def delayed_print(i):
         time.sleep(random.random()*3)
         if random.randint(0,2) == 0:
             raise RuntimeError#('hello')
-        print i
+        print(i)
         return i
     n = 10
     pool = FuturePool(n)
-    for i in xrange(n):
+    for i in range(n):
         pool.add_task(delayed_print, i)
     results = pool.wait()
-    print results
+    print(results)
     for i,result in enumerate(results):
         if isinstance(result, RuntimeError):
-            print "Error caught in task", i
+            print("Error caught in task", i)
         results[i] = i
     assert( results == range(n) )
     
@@ -200,7 +210,7 @@ if __name__ == "__main__":
     
     #class C(object):
     #    def __init__(self):
-    #        self.vals = [set() for _ in xrange(3)]
+    #        self.vals = [set() for _ in range(3)]
     #        self.pool = FuturePool(len(self.vals))
         #def foo(self):
         #    self.pool.
@@ -209,43 +219,43 @@ if __name__ == "__main__":
             self.i = i
         def foo(self, j):
             return j*self.i
-    objs = [C(i) for i in xrange(3)]
+    objs = [C(i) for i in range(3)]
     obj_pool = ObjectPool(objs)
-    print obj_pool.foo(2)
-    print obj_pool.i
+    print(obj_pool.foo(2))
+    print(obj_pool.i)
     
     obj_pool.i = [7,8,9]
-    print obj_pool.i
-    print '***', obj_pool.i.real
+    print(obj_pool.i)
+    print('***', obj_pool.i.real)
     
-    #print [x for x in results]
-    #print [x for x in obj_pool.i]
-    obj_pool.i = [-i for i in xrange(len(obj_pool))]
-    print obj_pool.foo(2)
-    print len(obj_pool)
-    #print list(obj_pool)
-    #print [x for x in obj_pool]
-    #print type(obj_pool)
-    #print type(list(obj_pool))
+    #print([x for x in results])
+    #print([x for x in obj_pool.i])
+    obj_pool.i = [-i for i in range(len(obj_pool))]
+    print(obj_pool.foo(2))
+    print(len(obj_pool))
+    #print(list(obj_pool))
+    #print([x for x in obj_pool])
+    #print(type(obj_pool))
+    #print(type(list(obj_pool)))
     
-    #self.socks = ObjectPool([socket() for _ in xrange(n)])
+    #self.socks = ObjectPool([socket() for _ in range(n)])
     #for sock in self.socks:
     #	sock.connect(addr)
     #self.socks.send_multipart([hdr, data])
     #rets = self.socks.recv_json()
     
     a = ObjectPool(['a', 'bb', 'ccc'])
-    print a.upper()
-    print a.isupper()
+    print(a.upper())
+    print(a.isupper())
     #a.name = ['A', 'B', 'C']
-    #print a.name
+    #print(a.name)
     objs2 = ObjectPool([1, 2, 3])
-    print objs2
-    print objs2.real
-    print objs2[1]
+    print(objs2)
+    print(objs2.real)
+    print(objs2[1])
     #objs2.imag = [-1, -2, -3]
-    #print objs2
-    #print objs2.imag
+    #print(objs2)
+    #print(objs2.imag)
     #objs2.imag = [-1, -2, -3]
     
-    print "All tests PASSED"
+    print("All tests PASSED")

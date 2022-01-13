@@ -2,6 +2,11 @@
 bifrost pipeline monitoring
 """
 
+from __future__ import print_function
+import sys
+if sys.version_info < (3,):
+    range = xrange
+    
 import os
 import copy
 import glob
@@ -37,7 +42,7 @@ def load_by_filename(filename):
     contents = {}
     with open(filename, 'r') as fh:
         ## Read the file all at once to avoid problems but only after it has a size
-        for attempt in xrange(5):
+        for attempt in range(5):
             if os.path.getsize(filename) != 0:
                 break
             time.sleep(0.001)
@@ -125,6 +130,11 @@ def _get_command_line(pid, host="localhost"):
         try:
             cmd = subprocess.check_output(['ssh', host, "cat /proc/%i/cmdline" % pid], 
                                           stderr=subprocess.STDOUT)
+            try:
+                cmd = cmd.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
             cmd = cmd.replace('\0', ' ')
             cmd = "%s:%s" % (host, cmd)
         except subprocess.CalledProcessError:
@@ -147,6 +157,11 @@ class BifrostPipelines(object):
             try:
                 pidDirs = subprocess.check_output(['ssh', self.host, "ls -1 %s" % BIFROST_STATS_BASE_DIR], 
                                                   stderr=subprocess.STDOUT)
+                try:
+                    pidDirs = pidDirs.decode()
+                except AttributeError:
+                    # Python2 catch
+                    pass
             except subprocess.CalledProcessError:
                 pidDirs = '\n'
             pidDirs = pidDirs.split('\n')[:-1]                           
@@ -385,9 +400,9 @@ class BifrostRemotePipeline(BifrostPipeline):
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
     for pipe in pipes.pipelines():
-        print pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
+        print(pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate())
     
     pipes = BifrostPipelines()
     for pipe in pipes.pipelines():
-        print pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate()
+        print(pipe, pipe.is_alive(), pipe.rx_rate(), pipe.rx_loss(), pipe.tx_rate())
         

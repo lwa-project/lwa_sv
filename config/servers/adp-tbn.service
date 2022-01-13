@@ -23,9 +23,9 @@ SyslogIdentifier=adp-tbn
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
 # Setup the environment
-Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8/src/bifrost
-Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8/lib:$LD_LIBRARY_PATH
-Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8/python:$PYTHONPATH
+Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:$LD_LIBRARY_PATH
+Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH
 
 Environment=LD_PRELOAD=libvma.so
 Environment=VMA_TRACELEVEL=0
@@ -38,7 +38,7 @@ Environment=VMA_MTU=9000
 Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/bin/bash -ec '\
-python /usr/local/bin/adp_tbn.py \
+python3 /usr/local/bin/adp_tbn.py \
 	 --configfile /usr/local/share/adp/adp_config.json \
 	 --logfile    /home/adp/log/adp-tbn.%H.log'
 

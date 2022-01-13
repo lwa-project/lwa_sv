@@ -43,7 +43,7 @@
                 "tengine_idx":       0,
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
-                "cpus":              [0, 2, 3, 4, 5, 6],
+                "cpus":              [0, 2, 3, 4, 5],
                 "gpus":              [0]
             }, 
             {
@@ -53,7 +53,7 @@
                 "tengine_idx":       1,
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
-                "cpus":              [8, 9, 10, 11, 12, 14],
+                "cpus":              [8, 9, 10, 11, 12],
                 "gpus":              [1]
             }
     ],
@@ -78,11 +78,8 @@
         "stats_format":   "[%(asctime)s] %(message)s",
         "date_format":    "%Y-%m-%d %H:%M:%S",
         "files": {
-            "weather":      "/home/adp/log/weather.log",
-            "disk_usage":   "/home/adp/log/disk_usage.log",
             "server_temps": "/home/adp/log/server_temps.log",
-            "roach_temps":  "/home/adp/log/roach_temps.log",
-            "down_hosts":   "/home/adp/log/down_hosts.log"
+            "roach_temps":  "/home/adp/log/roach_temps.log"
         }
     },
     "server": {
@@ -123,13 +120,13 @@
                 {
                     "pipeline_idx":      0,
                     "recorder_idx":      [0, 1, 2],
-                    "cpus":              [0, 2, 3, 4, 5],
+                    "cpus":              [0, 2, 3],
                     "gpus":              [0]
                 },
                 {
                     "pipeline_idx":      1,
                     "recorder_idx":      [0, 1, 2],
-                    "cpus":              [8, 9, 10, 11, 12],
+                    "cpus":              [8, 9, 10],
                     "gpus":              [1]
                 }
     ],
