@@ -3,11 +3,9 @@
 """
 Inter-Server Communication (ISC) for ADP.  This allows messages to be send to 
 the different servers for on-the-fly pipeline reconfiguration.
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
+
+from __future__ import print_function, absolute_import
 
 import zmq
 import time
@@ -19,11 +17,10 @@ from collections import deque
 
 
 __version__ = '0.3'
-__revision__ = '$Rev$'
-__all__ = ['PipelineMessageServer', 'StartTimeClient', 'TriggerClient', 'TBNConfigurationClient',
-           'DRXConfigurationClient', 'BAMConfigurationClient', 'CORConfigurationClient', 
-           'PipelineSynchronizationServer',  'PipelineSynchronizationClient', 
-           'PipelineEventServer', 'PipelineEventClient', '__version__', '__revision__', '__all__']
+__all__ = ['logException', 'PipelineMessageServer', 'StartTimeClient', 'TriggerClient',
+           'TBNConfigurationClient', 'DRXConfigurationClient', 'BAMConfigurationClient',
+           'CORConfigurationClient', 'PipelineSynchronizationServer',
+           'PipelineSynchronizationClient', 'PipelineEventServer', 'PipelineEventClient']
 
 
 import sys
@@ -31,15 +28,20 @@ import logging
 import functools
 import traceback
 try:
-    import cStringIO as StringIO
+    from io import StringIO
 except ImportError:
-    import StringIO
+    from StringIO import StringIO
 
 
-from AdpCommon import DATE_FORMAT, FS
+from .AdpCommon import DATE_FORMAT, FS
 
 
 def logException(func):
+    """
+    Decorator for wrapping a function call and catching any exception thrown so
+    that it can go into the current logging instance.
+    """
+    
     logger = logging.getLogger('__main__')
     
     @functools.wraps(func)
@@ -49,10 +51,13 @@ def logException(func):
             
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            logger.error("%s in %s failed with %s at line %i", func, func.func_code.co_filename, str(e), func.func_code.co_firstlineno + 1)
+            try:
+                logger.error("%s in %s failed with %s at line %i", func, func.func_code.co_filename, str(e), func.func_code.co_firstlineno + 1)
+            except AttributeError:
+                logger.error("%s in %s failed with %s at line %i", func, func.__code__.co_filename, str(e), func.__code__.co_firstlineno + 1)
             
             # Grab the full traceback and save it to a string via StringIO
-            fileObject = StringIO.StringIO()
+            fileObject = StringIO()
             traceback.print_tb(exc_traceback, file=fileObject)
             tbString = fileObject.getvalue()
             fileObject.close()
@@ -94,7 +99,7 @@ class PipelineMessageServer(object):
             utcStartTime = utcStartTime.strftime(DATE_FORMAT)
         except AttributeError:
             pass
-        self.socket.send('UTC %s' % utcStartTime)
+        self.socket.send_string('UTC %s' % utcStartTime)
         
     def tbnConfig(self, frequency, filter, gain):
         """
@@ -105,7 +110,7 @@ class PipelineMessageServer(object):
           * gain setting
         """
         
-        self.socket.send('TBN %.6f %i %i' % (frequency, filter, gain))
+        self.socket.send_string('TBN %.6f %i %i' % (frequency, filter, gain))
         
     def drxConfig(self, tuning, frequency, filter, gain):
         """
@@ -117,7 +122,7 @@ class PipelineMessageServer(object):
           * gain setting
         """
         
-        self.socket.send('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
+        self.socket.send_string('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
         
     def bamConfig(self, beam, delays, gains, tuning, subslot):
         """
@@ -131,7 +136,7 @@ class PipelineMessageServer(object):
         
         bDelays = binascii.hexlify( delays.tostring() )
         bGains = binascii.hexlify( gains.tostring() )
-        self.socket.send('BAM %i %s %s %i %i' % (beam, bDelays, bGains, tuning, subslot))
+        self.socket.send_string('BAM %i %s %s %i %i' % (beam, bDelays, bGains, tuning, subslot))
         
     def corConfig(self, navg, tuning, gain, subslot):
         """
@@ -142,7 +147,7 @@ class PipelineMessageServer(object):
           * the subslot in which the configuration is implemented
         """
         
-        self.socket.send('COR %i %i %i %i' % (navg, tuning, gain, subslot))
+        self.socket.send_string('COR %i %i %i %i' % (navg, tuning, gain, subslot))
         
     def trigger(self, trigger, samples, mask, local=False):
         """
@@ -153,7 +158,7 @@ class PipelineMessageServer(object):
           * whether or not to dump to disk
         """
         
-        self.socket.send('TRIGGER %i %i %i %i' % (trigger, samples, mask, local))
+        self.socket.send_string('TRIGGER %i %i %i %i' % (trigger, samples, mask, local))
         
     def close(self):
         self.socket.close()
@@ -179,7 +184,10 @@ class PipelineMessageClient(object):
             
         # Create the socket and configure it
         self.socket = self.context.socket(zmq.SUB)
-        self.socket.setsockopt(zmq.SUBSCRIBE, group)
+        try:
+            self.socket.setsockopt(zmq.SUBSCRIBE, group)
+        except TypeError:
+            self.socket.setsockopt_string(zmq.SUBSCRIBE, group)
         self.socket.connect('tcp://%s:%i' % addr)
         
     @logException
@@ -193,7 +201,7 @@ class PipelineMessageClient(object):
         """
         
         try:
-            msg = self.socket.recv(flags=(0 if block else zmq.NOBLOCK))
+            msg = self.socket.recv_string(flags=(0 if block else zmq.NOBLOCK))
             return msg
         except zmq.error.ZMQError:
             return False
@@ -410,17 +418,23 @@ class PipelineSynchronizationServer(object):
         
         while self.alive.isSet():
             client, msg = self.socket.recv_multipart()
+            try:
+                msg = msg.decode()
+            except AttributeError:
+                # Python2 catch
+                pass
+                
             if msg == 'JOIN':
                 if client not in clients:
                     clients.append( client )
                     nAct += 1
-                    print "FOUND '%s'" % client
+                    print("FOUND '%s'" % client)
                     
             elif msg == 'LEAVE':
                 try:
                     del clients[clients.index(client)]
                     nAct -= 1
-                    print "LOST '%s'" % client
+                    print("LOST '%s'" % client)
                 except ValueError:
                     pass
                     
@@ -461,17 +475,20 @@ class PipelineSynchronizationClient(object):
         # Create the socket and configure it
         self.socket = self.context.socket(zmq.DEALER)
         if id is not None:
-            self.socket.setsockopt(zmq.IDENTITY, str(id))
+            try:
+                self.socket.setsockopt(zmq.IDENTITY, str(id))
+            except TypeError:
+                self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 0)
         self.socket.connect('tcp://%s:%i' % addr)
         
         # Connect to the server
-        self.socket.send('JOIN')
+        self.socket.send_string('JOIN')
         
     @logException
     def __call__(self, tag=None):
-        self.socket.send('TAG:%s' % tag)
-        return self.socket.recv()
+        self.socket.send_string('TAG:%s' % tag)
+        return self.socket.recv_string()
         
     @logException
     def close(self):
@@ -479,7 +496,7 @@ class PipelineSynchronizationClient(object):
         Leave the synchronization pool and close out the client.
         """
         
-        self.socket.send('LEAVE')
+        self.socket.send_string('LEAVE')
         
         self.socket.close()
         if self.newContext:
@@ -580,7 +597,7 @@ class PipelineEventServer(object):
             msg = dict(self.poller.poll(1000))
             if msg:
                 if msg.get(self.socket) == zmq.POLLIN:
-                    msg = self.socket.recv(zmq.NOBLOCK)
+                    msg = self.socket.recv_string(zmq.NOBLOCK)
                     id, msg = msg.split(None, 1)
                     
                     if msg == 'SET':
@@ -593,7 +610,7 @@ class PipelineEventServer(object):
                         status = self._clear(id)
                     else:
                         status = False
-                    self.socket.send(str(status))
+                    self.socket.send_string(str(status))
                     
     def close(self):
         """
@@ -626,17 +643,25 @@ class PipelineEventClient(object):
         self.socket = self.context.socket(zmq.REQ)
         if id is None:
             id = uuid4()
-        self.socket.setsockopt(zmq.IDENTITY, str(id))
+        try:
+            self.socket.setsockopt(zmq.IDENTITY, str(id))
+        except TypeError:
+            self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 100)
         self.socket.connect('tcp://%s:%i' % addr)
         
         # Save the ID
         self.id = self.socket.getsockopt(zmq.IDENTITY)
-        
+        try:
+            self.id = self.id.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+            
     @logException
     def is_set(self):
-        self.socket.send('%s %s' % (self.id, 'IS_SET'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'IS_SET'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def isSet(self):
@@ -644,13 +669,13 @@ class PipelineEventClient(object):
         
     @logException
     def set(self):
-        self.socket.send('%s %s' % (self.id, 'SET'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'SET'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def clear(self):
-        self.socket.send('%s %s' % (self.id, 'CLEAR'))
-        return True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'CLEAR'))
+        return True if self.socket.recv_string() == 'True' else False
         
     @logException
     def wait(self, timeout=None):
@@ -669,8 +694,8 @@ class PipelineEventClient(object):
         Leave the synchronization pool and close out the client.
         """
         
-        self.socket.send('%s %s' % (self.id, 'LEAVE'))
-        status = True if self.socket.recv() == 'True' else False
+        self.socket.send_string('%s %s' % (self.id, 'LEAVE'))
+        status = True if self.socket.recv_string() == 'True' else False
         
         self.socket.close()
         if self.newContext:
@@ -699,20 +724,28 @@ class InternalTrigger(object):
         self.socket = self.context.socket(zmq.PUSH)
         if id is None:
             id = uuid4()
-        self.socket.setsockopt(zmq.IDENTITY, str(id))
+        try:
+            self.socket.setsockopt(zmq.IDENTITY, str(id))
+        except TypeError:
+            self.socket.setsockopt_string(zmq.IDENTITY, str(id))
         self.socket.setsockopt(zmq.LINGER, 10)
         self.socket.connect('tcp://%s:%i' % addr)
         
         # Save the ID
         self.id = self.socket.getsockopt(zmq.IDENTITY)
-        
+        try:
+            self.id = self.id.decode()
+        except AttributeError:
+            # Python2 catch
+            pass
+            
     def __call__(self, timestamp):
         """
         Send the event's timestamp as a DP/ADP timestamp value, i.e., 
         int(UNIX time * 196e6).
         """
         
-        self.socket.send('%s %s' % (self.id, str(timestamp)))
+        self.socket.send_string('%s %s' % (self.id, str(timestamp)))
         
     def close(self):
         """
@@ -781,7 +814,7 @@ class InternalTriggerProcessor(object):
             msg = dict(self.poller.poll(5000))
             if msg:
                 if msg.get(self.socket) == zmq.POLLIN:
-                    msg = self.socket.recv(zmq.NOBLOCK)
+                    msg = self.socket.recv_string(zmq.NOBLOCK)
                     try:
                         id, timestamp = msg.split(None, 1)
                         timestamp = int(timestamp, 10)
