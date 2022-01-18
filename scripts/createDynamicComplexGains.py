@@ -127,14 +127,14 @@ def main(args):
         cgains = np.zeros(cgains.shape, dtype=np.complex64)
 
 if __name__ == '__main__':
-	parser = argparse.ArgumentParser(
-		description='Return the full set of complex gains given 3 beam sizes.',
-		formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description='Return the full set of complex gains given 3 beam sizes.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
-				help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
-        parser.add_argument('-f','--fringe', type=int, default=0,
-                help='Reference stand for a fringing basket weave run. (Beam on X pol, reference stand on Y pol. 0 = no fringing)')
+    parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
+        help='shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
+    parser.add_argument('-f','--fringe', type=int, default=0,
+        help='Reference stand for a fringing basket weave run. (Beam on X pol, reference stand on Y pol. 0 = no fringing)')
 	
-        args = parser.parse_args()
-	main(args)
+    args = parser.parse_args()
+    main(args)
