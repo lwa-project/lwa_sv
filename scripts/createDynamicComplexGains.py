@@ -121,7 +121,7 @@ def main(args):
         np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains)
 
         end = time.time()
-        print 'Finished in %.2f minutes' % ((end-start)/60.)
+        print('Finished in %.2f minutes' % ((end-start)/60.))
 
         #Reset cgains to all zeros.
         cgains = np.zeros(cgains.shape, dtype=np.complex64)
