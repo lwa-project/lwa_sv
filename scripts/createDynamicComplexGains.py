@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """Generate the full set of complex gains for all frequencies in the band for each custom beam as they track the Science Field and Virgo A for Cosmic Dawn observations."""
@@ -54,7 +54,7 @@ def main(args):
     cgains = np.zeros((azimuths.size, 12, nchan_server, 512), dtype=np.complex64)
 
     for i in range(6): #Loop over servers
-        print 'Generating complex gains for server %i' % (i+1)
+        print('Generating complex gains for server %i' % (i+1))
         start = time.time()
         serverFreqs = freqs[:,i,:]
 

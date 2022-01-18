@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """Given 3 pointing centers, and custom beam sizes, generate the full set of complex gains for all frequencies in the band for each beam."""
