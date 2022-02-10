@@ -180,7 +180,9 @@ class CopyOp(object):
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
+                                # Is this really needed or is ispan.size always zero when we hit this?
                                 print("too small at %i vs %i" % (ispan.size, igulp_size))
+                                base_time_tag += (ispan.size//(nchan*nstand*npol))*ticksPerTime
                                 continue # Ignore final gulp
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
@@ -438,7 +440,7 @@ class BeamformerOp(object):
         self.guarantee = guarantee
         self.core = core
         self.gpu = gpu
-        
+
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -467,13 +469,23 @@ class BeamformerOp(object):
         self.delays = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
         self.gains = np.zeros((self.nbeam_max*2,nstand*npol), dtype=np.float64)
         self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
-        ## Intermediate arrays
+        ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
         self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
         
+        ##Read in the precalculated complex gains for all of the steps of the achromatic beams.
+        hostname = socket.gethostname()
+        cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
+        self.complexGains = np.load(cgainsFile)['cgains'][:,:8,:,:]
+	
+        ##Figure out which indices to pull for the given tuning
+        good = np.where(np.arange(self.complexGains.shape[1]) // 2 % 2 == self.tuning)[0]
+        self.complexGains = self.complexGains[:,good,:,:]
+
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
+
         if self.gpu != -1:
             BFSetGPU(self.gpu)
             
@@ -524,29 +536,45 @@ class BeamformerOp(object):
             if tuning != self.tuning:
                 self.log.info("Beamformer: Not for this tuning, skipping")
                 return False
-                
-            # Byteswap to get into little endian
-            delays = delays.byteswap().newbyteorder()
-            gains = gains.byteswap().newbyteorder()
+           
+            #Search for the "code word" gain pattern which specifies an achromatic observation.
+            if ( gains[0,:,:] == np.array([[8191, 16383],[32767,65535]]) ).all():
+                #The pointing index is stored in the second gains entry. Pointings start at 1.
+                pointing = gains[1,0,0]
+
+                #Set the custom complex gains.
+                try:
+                    self.cgains[2*(beam-1)+0,:,:] = self.complexGains[pointing-1,2*(beam-1)+0,:,:]
+                    self.cgains[2*(beam-1)+1,:,:] = self.complexGains[pointing-1,2*(beam-1)+1,:,:]
+                    self.log.info("Beamformer: Custom complex gains set for pointing number %i of beam %i", pointing, beam)
+                except IndexError:
+                    self.cgains[2*(beam-1)+0,:,:] = np.zeros( (self.cgains.shape[1],self.cgains.shape[2]) )
+                    self.cgains[2*(beam-1)+1,:,:] = np.zeros( (self.cgains.shape[1],self.cgains.shape[2]) )
+                    self.log.info("Beamformer: Ran out of pointings...setting complex gains to zero.")
+                    
+            else:
+                # Byteswap to get into little endian
+                delays = delays.byteswap().newbyteorder()
+                gains = gains.byteswap().newbyteorder()
             
-            # Unpack and re-shape the delays (to seconds) and gains (to floating-point)
-            delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
-            gains = gains/32767.0
-            gains.shape = (gains.size//2, 2)
+                # Unpack and re-shape the delays (to seconds) and gains (to floating-point)
+                delays = (((delays>>4)&0xFFF) + (delays&0xF)/16.0) / FS
+                gains = gains/32767.0
+                gains.shape = (gains.size//2, 2)
             
-            # Update the internal delay and gain cache so that we can use these later
-            self.delays[2*(beam-1)+0,:] = delays
-            self.delays[2*(beam-1)+1,:] = delays
-            self.gains[2*(beam-1)+0,:] = gains[:,0]
-            self.gains[2*(beam-1)+1,:] = gains[:,1]
+                # Update the internal delay and gain cache so that we can use these later
+                self.delays[2*(beam-1)+0,:] = delays
+                self.delays[2*(beam-1)+1,:] = delays
+                self.gains[2*(beam-1)+0,:] = gains[:,0]
+                self.gains[2*(beam-1)+1,:] = gains[:,1]
             
-            # Compute the complex gains needed for the beamformer
-            freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
-            freqs.shape = (freqs.size, 1)
-            self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) * \
-                                             self.gains[2*(beam-1)+0,:]).astype(np.complex64)
-            self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) * \
-                                             self.gains[2*(beam-1)+1,:]).astype(np.complex64)
+                # Compute the complex gains needed for the beamformer
+                freqs = CHAN_BW * (hdr['chan0'] + np.arange(hdr['nchan']))
+                freqs.shape = (freqs.size, 1)
+                self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) * \
+                                                self.gains[2*(beam-1)+0,:]).astype(np.complex64)
+                self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) * \
+                                                self.gains[2*(beam-1)+1,:]).astype(np.complex64)
             BFSync()
             self.log.info('  Complex gains set - beam %i' % beam)
             
@@ -560,9 +588,9 @@ class BeamformerOp(object):
             freqs.shape = (freqs.size, 1)
             for beam in range(1, self.nbeam_max+1):
                 self.cgains[2*(beam-1)+0,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+0,:]) \
-                                                 * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
+                                                * self.gains[2*(beam-1)+0,:]).astype(np.complex64)
                 self.cgains[2*(beam-1)+1,:,:] = (np.exp(-2j*np.pi*freqs*self.delays[2*(beam-1)+1,:]) \
-                                                 * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
+                                                * self.gains[2*(beam-1)+1,:]).astype(np.complex64)
                 BFSync()
                 self.log.info('  Complex gains set - beam %i' % beam)
                 
@@ -1142,8 +1170,8 @@ class PacketizeOp(object):
                         process_time = curr_time - prev_time
                         prev_time = curr_time
                         self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                  'reserve_time': -1, 
-                                                  'process_time': process_time,})
+                                                    'reserve_time': -1, 
+                                                    'process_time': process_time,})
                           
                     # Reset to move on to the next input sequence?
                     if not reset_sequence:
