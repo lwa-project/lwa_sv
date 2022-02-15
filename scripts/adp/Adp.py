@@ -829,26 +829,34 @@ class Roach2MonitorClient(object):
         self.roach.configure_adc_delay(index, delay)
         
     @ISC.logException
-    def tune_drx(self, tuning, cfreq, shift_factor=27):
+    def tune_drx(self, tuning, cfreq, shift_factor=None):
         bw = self.config['drx'][tuning]['capture_bandwidth']
         bw = round(bw, 3) # Round to mHz to avoid precision errors
         nsubband      = len(self.config['host']['servers-data'])
         subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
         chan0         = int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
         
+        scale_factor = self.config['roach']['scale_factor']
+        if shift_factor is None:
+            shift_factor = self.config['roach']['shift_factor']
+            
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
-        self.roach.configure_fengine(gbe, chan0, shift_factor=shift_factor)
+        self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor)
         return chan0
         
     @ISC.logException
-    def tune_tbn(self, cfreq, shift_factor=27):
+    def tune_tbn(self, cfreq, shift_factor=None):
         bw = self.config['tbn']['capture_bandwidth']
         bw = round(bw, 3) # Round to mHz to avoid precision errors
         nsubband = 1
         subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
         chan0         = int(round(cfreq / CHAN_BW)) - subband_nchan//2
         
-        self.roach.configure_fengine(self.GBE_TBN, chan0, shift_factor=shift_factor)
+        scale_factor = self.config['roach']['scale_factor']
+        if shift_factor is None:
+            shift_factor = self.config['roach']['shift_factor']
+            
+        self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor)
         return chan0
         
     def reset(self):
@@ -1441,7 +1449,7 @@ class MsgProcessor(ConsumerThread):
         
         # Tune to 30 MHz
         freq = 30.1e6
-        shift_factor = 24
+        shift_factor = self.roaches[0].config['roach']['shift_factor'] - 3 
         self.check_success(lambda: self.roaches.tune_drx(0, freq, shift_factor=shift_factor),
                         'Tuning DRX to the calibration tone',
                             self.roaches.host)
