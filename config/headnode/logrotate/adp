@@ -8,10 +8,10 @@
         ifempty
 }
 
-# Keep one week worth of adp-drx logs
+# Keep three weeks worth of adp-drx logs
 /home/adp/log/adp-drx-0.adp1.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -19,7 +19,7 @@
 }
 /home/adp/log/adp-drx-1.adp1.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -27,7 +27,7 @@
 }
 /home/adp/log/adp-drx-0.adp2.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -35,7 +35,7 @@
 }
 /home/adp/log/adp-drx-1.adp2.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -43,7 +43,7 @@
 }
 /home/adp/log/adp-drx-0.adp3.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -51,7 +51,7 @@
 }
 /home/adp/log/adp-drx-1.adp3.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -59,7 +59,7 @@
 }
 /home/adp/log/adp-drx-0.adp4.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -67,7 +67,7 @@
 }
 /home/adp/log/adp-drx-1.adp4.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -75,7 +75,7 @@
 }
 /home/adp/log/adp-drx-0.adp5.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -83,7 +83,7 @@
 }
 /home/adp/log/adp-drx-1.adp5.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -91,7 +91,7 @@
 }
 /home/adp/log/adp-drx-0.adp6.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -99,17 +99,17 @@
 }
 /home/adp/log/adp-drx-1.adp6.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
         ifempty
 }
 
-# Keep one week worth of adp-tbn logs
+# Keep three weeks worth of adp-tbn logs
 /home/adp/log/adp-tbn.adp1.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -117,7 +117,7 @@
 }
 /home/adp/log/adp-tbn.adp2.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -125,7 +125,7 @@
 }
 /home/adp/log/adp-tbn.adp3.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -133,7 +133,7 @@
 }
 /home/adp/log/adp-tbn.adp4.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -141,7 +141,7 @@
 }
 /home/adp/log/adp-tbn.adp5.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -149,17 +149,17 @@
 }
 /home/adp/log/adp-tbn.adp6.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
         ifempty
 }
 
-# Keep one week worth of adp-tengine logs
+# Keep three weeks worth of adp-tengine logs
 /home/adp/log/adp-tengine-0.adp.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
@@ -167,7 +167,7 @@
 }
 /home/adp/log/adp-tengine-1.adp.log {
         daily
-        rotate 7
+        rotate 21
         compress
         delaycompress
         copytruncate
