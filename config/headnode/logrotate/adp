@@ -8,7 +8,7 @@
         ifempty
 }
 
-# Keep one week worth of adp-drx-0/1 logs
+# Keep one week worth of adp-drx logs
 /home/adp/log/adp-drx-0.adp1.log {
         daily
         rotate 7
@@ -148,6 +148,24 @@
         ifempty
 }
 /home/adp/log/adp-tbn.adp6.log {
+        daily
+        rotate 7
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+
+# Keep one week worth of adp-tengine logs
+/home/adp/log/adp-tengine-0.adp.log {
+        daily
+        rotate 7
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+/home/adp/log/adp-tengine-1.adp.log {
         daily
         rotate 7
         compress
