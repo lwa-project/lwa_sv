@@ -20,4 +20,4 @@ f = requests.post(URL,
                   files={'file': open(r, 'rb')},
                   verify=False) # We don't have a certiticate for lda10g.unm.edu
 print(f.text)
-f.c
+f.close()
