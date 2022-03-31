@@ -1,0 +1,25 @@
+# Keep three weeks worth of internal adp logs
+/var/log/adp/control.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+/var/log/adp/tengine-0.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+/var/log/adp/tengine-1.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}

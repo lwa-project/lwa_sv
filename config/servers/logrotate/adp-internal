@@ -1,0 +1,25 @@
+# Keep three weeks worth of internal adp logs
+/var/log/adp/drx-0.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+/var/log/adp/drx-1.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
+/var/log/adp/tbn.log {
+        daily
+        rotate 21
+        compress
+        delaycompress
+        copytruncate
+        ifempty
+}
