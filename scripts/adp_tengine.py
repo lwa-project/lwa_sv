@@ -42,6 +42,7 @@ from collections import deque
 #from numpy.fft import ifft
 #from scipy import ifft
 from scipy.fftpack import ifft
+from scipy.signal import get_window as scipy_window, firwin as scipy_firwin
 
 ACTIVE_DRX_CONFIG = threading.Event()
 
@@ -68,6 +69,13 @@ __license__    = "Apache v2"
 __maintainer__ = "Jayce Dowell"
 __email__      = "jdowell at unm"
 __status__     = "Development"
+
+def pfb_window(P):
+    win_coeffs = scipy_window("hamming", 4*P)
+    sinc       = scipy_firwin(4*P, cutoff=1.0/P, window="rectangular")
+    win_coeffs *= sinc
+    win_coeffs /= win_coeffs.max()
+    return win_coeffs
 
 #{"nbit": 4, "nchan": 136, "nsrc": 16, "chan0": 1456, "time_tag": 288274740432000000}
 class CaptureOp(object):
@@ -154,6 +162,10 @@ class TEngineOp(object):
         self.filt = list(filter(lambda x: FILTER2CHAN[x]<=self.nchan_max, FILTER2CHAN))[-1]
         self.nchan_out = FILTER2CHAN[self.filt]
         
+        pfb = pfb_window(self.nchan_max)
+        pfb = pfb.reshape(-1, self.nchan_max)
+        pfb.shape += (1,1)
+        
         coeffs = np.array([ 0.0111580, -0.0074330,  0.0085684, -0.0085984,  0.0070656, -0.0035905, 
                            -0.0020837,  0.0099858, -0.0199800,  0.0316360, -0.0443470,  0.0573270, 
                            -0.0696630,  0.0804420, -0.0888320,  0.0941650,  0.9040000,  0.0941650, 
@@ -166,6 +178,10 @@ class TEngineOp(object):
             BFSetGPU(self.gpu)
         ## Metadata
         nstand, npol = nbeam, 2
+        ## PFB inversion matrix
+        matrix = np.zeros((self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64)
+        matrix[:4,:,:,:] = pfb
+        self.matrix = BFArray(matrix, space='cuda')
         ## Coefficients
         coeffs.shape += (1,)
         coeffs = np.repeat(coeffs, nstand*npol, axis=1)
@@ -347,22 +363,11 @@ class TEngineOp(object):
                                 idata = ispan.data_view(np.complex64).reshape(ishape)
                                 odata = ospan.data_view(np.int8).reshape((1,)+oshape)
                                 
-                                ## Prune and shift the data ahead of the IFFT
-                                if idata.shape[1] != self.nchan_out:
-                                    try:
-                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
-                                    except NameError:
-                                        pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
-                                        pdata = BFArray(shape=pshape, dtype=np.complex64, space='system')
-                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
-                                else:
-                                    pdata = idata
-                                    
                                 ### From here until going to the output ring we are on the GPU
                                 try:
-                                    copy_array(bdata, pdata)
+                                    copy_array(bdata, idata)
                                 except NameError:
-                                    bdata = pdata.copy(space='cuda')
+                                    bdata = idata.copy(space='cuda')
                                     
                                 ## IFFT
                                 try:
@@ -375,30 +380,89 @@ class TEngineOp(object):
                                     bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
                                     bfft.execute(bdata, gdata, inverse=True)
                                     
+                                ### PFB inversion
+                                try:
+                                    pfft.execute(gdata, pfbdata, inverse=False)
+                                    
+                                    BFMap("a(i,j,k,l) = a(i,j,k,l)*b(i,j,k,l)/c(i,j,k,l).conj()",
+                                          {'a':pfbdata, 'b':fildata, 'c':invdata},
+                                          axis_names=('i','j','k','l'), 
+                                          shape=pfbdata.shape)
+                                    
+                                    pfft.execute(pfbdata, bdata2, inverse=True)
+                                    bfft.execute(bdata2, bdata, inverse=False)
+                                    
+                                except NameError:
+                                    pfbdata = BFArray(shape=gdata.shape, dtype=np.complex64, space='cuda')
+                                    invdata = BFArray(shape=gdata.shape, dtype=np.complex64, space='cuda')
+                                    fildata = BFArray(shape=gdata.shape, dtype=np.complex64, space='cuda')
+                                    bdata2 = BFArray(shape=gdata.shape, dtype=np.complex64, space='cuda')
+                                    print('here')
+                                    
+                                    pfft = Fft()
+                                    pfft.init(gdata, pfbdata, axes=0, apply_fftshift=True)
+                                    pfft.execute(gdata, pfbdata, inverse=False)
+                                    pfft.execute(self.matrix, invdata, inverse=False)
+                                    
+                                    BFMap("a(i,j,k,l) = b(i,j,k,l).mag2() / (0.6*0.6 + b(i,j,k,l).mag2()) * (1+0.6*0.6)", 
+                                          {'a':fildata, 'b':invdata},
+                                          axis_names=('i','j','k','l'), 
+                                          shape=fildata.shape)
+                                      
+                                    BFMap("a(i,j,k,l) = a(i,j,k,l)*b(i,j,k,l)/c(i,j,k,l).conj()",
+                                          {'a':pfbdata, 'b':fildata, 'c':invdata},
+                                          axis_names=('i','j','k','l'), 
+                                          shape=pfbdata.shape)
+                                    
+                                    pfft.execute(pfbdata, bdata2, inverse=True)
+                                    bfft.execute(bdata2, bdata, inverse=False)
+                                    
+                                ## Prune and shift the data ahead of the IFFT
+                                if bdata.shape[1] != self.nchan_out:
+                                    try:
+                                        pdata[...] = bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
+                                    except NameError:
+                                        pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
+                                        pdata = BFArray(shape=pshape, dtype=np.complex64, space='cuda')
+                                        pdata[...] = bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
+                                else:
+                                    pdata = bdata
+                                    
+                                ## IFFT
+                                try:
+                                    gdata2 = gdata2.reshape(*pdata.shape)
+                                    bfft2.execute(pdata, gdata2, inverse=True)
+                                except NameError:
+                                    gdata2 = BFArray(shape=pdata.shape, dtype=np.complex64, space='cuda')
+                                    
+                                    bfft2 = Fft()
+                                    bfft2.init(pdata, gdata2, axes=1, apply_fftshift=True)
+                                    bfft2.execute(pdata, gdata2, inverse=True)
+                                    
                                 ## Phase rotation
-                                gdata = gdata.reshape((-1,nstand*npol))
+                                gdata2 = gdata2.reshape((-1,nstand*npol))
                                 BFMap("a(i,j) *= exp(Complex<float>(0.0, -2*BF_PI_F*fmod(g(0)*s(0), 1.0)))*b(i)", 
-                                      {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, 
+                                      {'a':gdata2, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, 
                                       axis_names=('i','j'), 
-                                      shape=gdata.shape, 
+                                      shape=gdata2.shape, 
                                       extra_code="#define BF_PI_F 3.141592654f")
-                                gdata = gdata.reshape((-1,nstand,npol))
+                                gdata2 = gdata2.reshape((-1,nstand,npol))
                                 
                                 ## FIR filter
                                 try:
-                                    bfir.execute(gdata, fdata)
+                                    bfir.execute(gdata2, fdata)
                                 except NameError:
-                                    fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
+                                    fdata = BFArray(shape=gdata2.shape, dtype=gdata2.dtype, space='cuda')
                                     
                                     bfir = Fir()
                                     bfir.init(self.coeffs, 1)
-                                    bfir.execute(gdata, fdata)
+                                    bfir.execute(gdata2, fdata)
                                     
                                 ## Quantization
                                 try:
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                 except NameError:
-                                    qdata = BFArray(shape=gdata.shape, native=False, dtype='ci4', space='cuda')
+                                    qdata = BFArray(shape=gdata2.shape, native=False, dtype='ci4', space='cuda')
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                     
                                 ## Save
@@ -436,6 +500,12 @@ class TEngineOp(object):
                                     del bdata
                                     del gdata
                                     del bfft
+                                    del pfbdata
+                                    del invdata
+                                    del fildata
+                                    del pfft
+                                    del gdata2
+                                    del bfft2
                                     del fdata
                                     del bfir
                                     del qdata
