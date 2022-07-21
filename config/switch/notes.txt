@@ -1,0 +1,7 @@
+Arista DCS-7060CX-32S
+
+Ports  1-16: Roaches
+Ports 17-20: Unused
+Ports 21-30: ADP servers
+Ports 31-32: Uplink to the SERF building
+Ports 33-34: Uplink to the data recorders
