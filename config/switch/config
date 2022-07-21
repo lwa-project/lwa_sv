@@ -1,0 +1,108 @@
+##
+## Running database "initial"
+## Generated at 2019/07/29 21:39:59 +0000
+## Hostname: data-switch
+##
+
+##
+## Running-config temporary prefix mode setting
+##
+no cli default prefix-modes enable
+
+##
+## Chassis configuration
+##
+   fae cable-stamping-unlock 40g_lr4
+   
+##
+## Interface Split configuration
+##
+   interface ethernet 1/60 module-type qsfp-split-4 force
+   
+##
+## Interface Ethernet configuration
+##
+   interface ethernet 1/1-1/57 mtu 9000 force
+   interface ethernet 1/59 mtu 9000 force
+   interface ethernet 1/60/1-1/60/4 mtu 9000 force
+   interface ethernet 1/1-1/5 flowcontrol receive on force
+   interface ethernet 1/3 flowcontrol send on force
+   interface ethernet 1/7-1/8 flowcontrol receive on force
+   interface ethernet 1/10-1/11 flowcontrol receive on force
+   interface ethernet 1/13-1/14 flowcontrol receive on force
+   interface ethernet 1/16-1/17 flowcontrol receive on force
+   interface ethernet 1/19-1/20 flowcontrol receive on force
+   interface ethernet 1/22-1/23 flowcontrol receive on force
+   interface ethernet 1/25-1/26 flowcontrol receive on force
+   interface ethernet 1/28-1/32 flowcontrol receive on force
+   interface ethernet 1/30 flowcontrol send on force
+   interface ethernet 1/34-1/35 flowcontrol receive on force
+   interface ethernet 1/37-1/38 flowcontrol receive on force
+   interface ethernet 1/40-1/41 flowcontrol receive on force
+   interface ethernet 1/43-1/44 flowcontrol receive on force
+   interface ethernet 1/46-1/47 flowcontrol receive on force
+   interface ethernet 1/48-1/57 flowcontrol send on force
+   interface ethernet 1/49-1/55 flowcontrol receive on force
+   interface ethernet 1/59 flowcontrol send on force
+   interface ethernet 1/60/1-1/60/4 flowcontrol receive on force
+   interface ethernet 1/30 switchport mode hybrid
+   interface ethernet 1/48 switchport mode hybrid
+   interface ethernet 1/1 description roach1port1
+   interface ethernet 1/2 description roach1port2
+   interface ethernet 1/4 description roach2port1
+   interface ethernet 1/5 description roach2port2
+   
+##
+## VLAN configuration
+##
+   mac-address-table static 0C:42:A1:96:4F:10 vlan 1 interface ethernet 1/51
+   mac-address-table static E4:1D:2D:01:75:E0 vlan 1 interface ethernet 1/55
+   mac-address-table static E4:1D:2D:01:76:40 vlan 1 interface ethernet 1/53
+   mac-address-table static E4:1D:2D:01:76:50 vlan 1 interface ethernet 1/50
+   mac-address-table static E4:1D:2D:07:5A:20 vlan 1 interface ethernet 1/54
+   mac-address-table static E4:1D:2D:07:5A:B0 vlan 1 interface ethernet 1/52
+   mac-address-table static F4:52:14:68:3A:F0 vlan 1 interface ethernet 1/49
+   
+##
+## L3 configuration
+##
+   ip routing vrf default
+   interface vlan 1
+   
+##
+## IGMP Snooping configuration
+##
+   ip igmp snooping version 2
+   ip igmp snooping
+   vlan 1 ip igmp snooping
+   vlan 1 ip igmp snooping querier 
+   
+##
+## Local user account configuration
+##
+   username admin password 7 $1$j8UfDEac$zl2EcCMd8/5YOLlCWvcvZ.
+   username monitor password 7 $1$6.1fuae4$zPFdqw0LsRsANwd5EcxDa/
+   
+##
+## AAA remote server configuration
+##
+# ldap bind-password ********
+# radius-server key ********
+# tacacs-server key ********
+   
+##
+## Network management configuration
+##
+# web proxy auth basic password ********
+   
+##
+## X.509 certificates configuration
+##
+#
+# Certificate name system-self-signed, ID 903fd59be2e039047ea865166c633ffe3dc0d65a
+# (public-cert config omitted since private-key config is hidden)
+
+##
+## Persistent prefix mode setting
+##
+cli default prefix-modes enable
