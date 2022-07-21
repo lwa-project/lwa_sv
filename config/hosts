@@ -57,7 +57,7 @@ ff02::2 ip6-allrouters
 192.168.40.42	dr2 # Data recorder 2
 192.168.40.43	dr3 # Data recorder 3
 192.168.40.46	lasi # LWA All-Sky Imager
-192.168.40.47   orville
+192.168.40.47	orville
 
 # Mutlitcast data network (p5p1)
 239.168.40.10   mcg40s0-data mcg40-data
@@ -77,4 +77,4 @@ ff02::2 ip6-allrouters
 169.254.128.101 mgmt-switch
 169.254.128.101 hp48        # Alias for mgmt-switch
 169.254.128.102 data-switch
-169.254.128.102 mellanox    # Alias for data-switch
+169.254.128.102 arista    # Alias for data-switch
