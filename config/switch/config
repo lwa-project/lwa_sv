@@ -1,0 +1,288 @@
+! Command: show running-config
+! device: data-switch (DCS-7060CX-32S, EOS-4.19.10M)
+!
+! boot system flash:/EOS.swi
+!
+errdisable recovery cause link-flap
+!
+ip igmp snooping vlan 1 querier
+ip igmp snooping vlan 1 querier address 192.168.40.1
+ip igmp snooping vlan 1 querier version 3
+!
+transceiver qsfp default-mode 4x10G
+!
+hostname data-switch
+!
+spanning-tree mode mstp
+!
+no aaa root
+!
+username admin role network-admin secret sha512 $6$Wxzi1x7X1TnT.uDa$gU.dsfy7aYk.jxyyCDkNvVUNDdBcR3oLRv5o/8W5any/9t9YC6gf5UV97GHjqA.fN.OA0cRFK8Z0uwY1Ywl1H/
+!
+interface Ethernet1/1
+   flowcontrol receive on
+!
+interface Ethernet1/2
+   flowcontrol receive on
+!
+interface Ethernet1/3
+   flowcontrol receive on
+!
+interface Ethernet1/4
+   flowcontrol receive on
+!
+interface Ethernet2/1
+   flowcontrol receive on
+!
+interface Ethernet2/2
+   flowcontrol receive on
+!
+interface Ethernet2/3
+   flowcontrol receive on
+!
+interface Ethernet2/4
+   flowcontrol receive on
+!
+interface Ethernet3/1
+   flowcontrol receive on
+!
+interface Ethernet3/2
+   flowcontrol receive on
+!
+interface Ethernet3/3
+   flowcontrol receive on
+!
+interface Ethernet3/4
+   flowcontrol receive on
+!
+interface Ethernet4/1
+   flowcontrol receive on
+!
+interface Ethernet4/2
+   flowcontrol receive on
+!
+interface Ethernet4/3
+   flowcontrol receive on
+!
+interface Ethernet4/4
+   flowcontrol receive on
+!
+interface Ethernet5/1
+   flowcontrol receive on
+!
+interface Ethernet5/2
+   flowcontrol receive on
+!
+interface Ethernet5/3
+   flowcontrol receive on
+!
+interface Ethernet5/4
+   flowcontrol receive on
+!
+interface Ethernet6/1
+   flowcontrol receive on
+!
+interface Ethernet6/2
+   flowcontrol receive on
+!
+interface Ethernet6/3
+   flowcontrol receive on
+!
+interface Ethernet6/4
+   flowcontrol receive on
+!
+interface Ethernet7/1
+   flowcontrol receive on
+!
+interface Ethernet7/2
+   flowcontrol receive on
+!
+interface Ethernet7/3
+   flowcontrol receive on
+!
+interface Ethernet7/4
+   flowcontrol receive on
+!
+interface Ethernet8/1
+   flowcontrol receive on
+!
+interface Ethernet8/2
+   flowcontrol receive on
+!
+interface Ethernet8/3
+   flowcontrol receive on
+!
+interface Ethernet8/4
+   flowcontrol receive on
+!
+interface Ethernet9/1
+   flowcontrol receive on
+!
+interface Ethernet9/2
+   flowcontrol receive on
+!
+interface Ethernet9/3
+   flowcontrol receive on
+!
+interface Ethernet9/4
+   flowcontrol receive on
+!
+interface Ethernet10/1
+   flowcontrol receive on
+!
+interface Ethernet10/2
+   flowcontrol receive on
+!
+interface Ethernet10/3
+   flowcontrol receive on
+!
+interface Ethernet10/4
+   flowcontrol receive on
+!
+interface Ethernet11/1
+   flowcontrol receive on
+!
+interface Ethernet11/2
+   flowcontrol receive on
+!
+interface Ethernet11/3
+   flowcontrol receive on
+!
+interface Ethernet11/4
+   flowcontrol receive on
+!
+interface Ethernet12/1
+   flowcontrol receive on
+!
+interface Ethernet12/2
+   flowcontrol receive on
+!
+interface Ethernet12/3
+   flowcontrol receive on
+!
+interface Ethernet12/4
+   flowcontrol receive on
+!
+interface Ethernet13/1
+   flowcontrol receive on
+!
+interface Ethernet13/2
+   flowcontrol receive on
+!
+interface Ethernet13/3
+   flowcontrol receive on
+!
+interface Ethernet13/4
+   flowcontrol receive on
+!
+interface Ethernet14/1
+   flowcontrol receive on
+!
+interface Ethernet14/2
+   flowcontrol receive on
+!
+interface Ethernet14/3
+   flowcontrol receive on
+!
+interface Ethernet14/4
+   flowcontrol receive on
+!
+interface Ethernet15/1
+   flowcontrol receive on
+!
+interface Ethernet15/2
+   flowcontrol receive on
+!
+interface Ethernet15/3
+   flowcontrol receive on
+!
+interface Ethernet15/4
+   flowcontrol receive on
+!
+interface Ethernet16/1
+   flowcontrol receive on
+!
+interface Ethernet16/2
+   flowcontrol receive on
+!
+interface Ethernet16/3
+   flowcontrol receive on
+!
+interface Ethernet16/4
+   flowcontrol receive on
+!
+interface Ethernet17/1
+!
+interface Ethernet18/1
+!
+interface Ethernet19/1
+!
+interface Ethernet20/1
+!
+interface Ethernet21/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet22/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet23/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet24/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet25/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet26/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet27/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet28/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet29/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet30/1
+   flowcontrol send on
+   speed forced 40gfull
+!
+interface Ethernet31/1
+   flowcontrol send on
+   speed forced 40gfull
+   switchport mode trunk
+!
+interface Ethernet32/1
+   flowcontrol send on
+   speed forced 40gfull
+   switchport mode trunk
+!
+interface Ethernet33
+   switchport mode trunk
+!
+interface Ethernet34
+   switchport mode trunk
+!
+interface Management1
+   ip address dhcp
+!
+interface Vlan1
+   ip pim sparse-mode
+!
+ip routing
+!
+ip multicast-routing
+!
+end
