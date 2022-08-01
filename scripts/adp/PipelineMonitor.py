@@ -403,11 +403,22 @@ class BifrostRemotePipeline(BifrostPipeline):
         if os.path.exists(corr_file):
             mtime = os.path.getmtime(corr_file)
             if time.time() - mtime < 300:
-                self.corr_active = True
+                self._corr_active = True
             else:
-                self.corr_active = False
+                self._corr_active = False
         else:
-            self.corr_active = False
+            self._corr_active = False
+            
+    @property
+    def corr_state(self):
+        """
+        Return a boolean of whether or not the correlator appears to be running.
+        """
+        
+        # Use a call to rx_rate() to make sure we have the latest state of the
+        # correlator.
+        self.rx_rate()
+        return self._corr_active
 
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
