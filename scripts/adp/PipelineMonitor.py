@@ -348,7 +348,7 @@ class BifrostPipeline(object):
         
         return self._get_loss('udp_capture', snapshot=snapshot)
         
-    def corr_state(self):
+    def is_corr_active(self):
         """
         Return a boolean of whether or not the correlator appears to be running.
         """
