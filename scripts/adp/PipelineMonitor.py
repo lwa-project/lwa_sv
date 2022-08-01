@@ -399,7 +399,7 @@ class BifrostRemotePipeline(BifrostPipeline):
         
         # CorrelatorOp running check - this makes sure its 'perf' file has been
         # recently (< 5 minutes) updated.
-        corr_file = os.path.join(self._dirname, self.pid, 'CorrelatorOp', 'perf')
+        corr_file = os.path.join(self._dir_name, str(self._pid), 'CorrelatorOp', 'perf')
         if os.path.exists(corr_file):
             mtime = os.path.getmtime(corr_file)
             if time.time() - mtime < 300:
