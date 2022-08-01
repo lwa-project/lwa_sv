@@ -248,7 +248,19 @@ class BifrostPipeline(object):
         except AttributeError:
             self._last_state = new_state
         self._state = new_state
-
+        
+        # CorrelatorOp running check - this makes sure its 'perf' file has been
+        # recently (< 5 minutes) updated.
+        corr_file = os.path.join(BIFROST_STATS_BASE_DIR, str(self.pid), 'CorrelatorOp', 'perf')
+        if os.path.exists(corr_file):
+            mtime = os.path.getmtime(corr_file)
+            if time.time() - mtime < 300:
+                self._corr_active = True
+            else:
+                self._corr_active = False
+        else:
+            self._corr_active = False
+            
     def _get_rate(self, block, metric):
         try:
             # Make sure the data are current and enough time has passed that we 
@@ -335,6 +347,16 @@ class BifrostPipeline(object):
         """
         
         return self._get_loss('udp_capture', snapshot=snapshot)
+        
+    def corr_state(self):
+        """
+        Return a boolean of whether or not the correlator appears to be running.
+        """
+        
+        # Use a call to rx_rate() to make sure we have the latest state of the
+        # correlator.
+        self.rx_rate()
+        return self._corr_active
 
 class BifrostRemotePipeline(BifrostPipeline):
     def __init__(self, host, pid):
@@ -399,7 +421,7 @@ class BifrostRemotePipeline(BifrostPipeline):
         
         # CorrelatorOp running check - this makes sure its 'perf' file has been
         # recently (< 5 minutes) updated.
-        corr_file = os.path.join(self._dir_name, str(self._pid), 'CorrelatorOp', 'perf')
+        corr_file = os.path.join(self._dir_name, str(self.pid), 'CorrelatorOp', 'perf')
         if os.path.exists(corr_file):
             mtime = os.path.getmtime(corr_file)
             if time.time() - mtime < 300:
@@ -408,17 +430,6 @@ class BifrostRemotePipeline(BifrostPipeline):
                 self._corr_active = False
         else:
             self._corr_active = False
-            
-    @property
-    def corr_state(self):
-        """
-        Return a boolean of whether or not the correlator appears to be running.
-        """
-        
-        # Use a call to rx_rate() to make sure we have the latest state of the
-        # correlator.
-        self.rx_rate()
-        return self._corr_active
 
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
