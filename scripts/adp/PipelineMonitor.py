@@ -396,7 +396,19 @@ class BifrostRemotePipeline(BifrostPipeline):
         except AttributeError:
             self._last_state = new_state
         self._state = new_state
-                                  
+        
+        # CorrelatorOp running check - this makes sure its 'perf' file has been
+        # recently (< 5 minutes) updated.
+        corr_file = os.path.join(self._dirname, self.pid, 'CorrelatorOp', 'perf')
+        if os.path.exists(corr_file):
+            mtime = os.path.getmtime(corr_file)
+            if time.time() - mtime < 300:
+                self.corr_active = True
+            else:
+                self.corr_active = False
+        else:
+            self.corr_active = False
+
 if __name__ == "__main__":
     pipes = BifrostPipelines('adp1')
     for pipe in pipes.pipelines():
