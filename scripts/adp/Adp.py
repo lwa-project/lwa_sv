@@ -1767,9 +1767,10 @@ class MsgProcessor(ConsumerThread):
                         side = 1 if name.find('--tuning 1') != -1 else 0
                         loss = pipeline.rx_loss()
                         txbw = pipeline.tx_rate()
+                        cact = pipeline.corr_active
                         
                         if name.find('drx') != -1:
-                            found['drx'].append( (host,name,side,loss,txbw) )
+                            found['drx'].append( (host,name,side,loss,txbw,cact) )
                         elif name.find('tbn') != -1:
                             found['tbn'].append( (host,name,side,loss,txbw) )
                         elif name.find('tengine') != -1:
@@ -1815,7 +1816,7 @@ class MsgProcessor(ConsumerThread):
                     continue
                 total_drx_bw = {0:0, 1:0}
                 total_drx_inactive = {0:0, 1:0}
-                for host,name,side,loss,txbw in found['drx']:
+                for host,name,side,loss,txbw,cact in found['drx']:
                     total_drx_bw[side] += txbw
                     total_drx_inactive[side] += (1 if txbw == 0 else 0)
                     if loss > 0.01:    # >1% packet loss
@@ -1826,6 +1827,13 @@ class MsgProcessor(ConsumerThread):
                             self.state['status'] = 'WARNING'
                             self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.warning(msg)
+                    if self.drx.cur_freq[side] > 0 and side == 0 and not cact:
+                        problems_found = True
+                        msg = "%s, DRX-%i -- Correlator not running" % (host, side)
+                        self.state['lastlog'] = msg
+                        self.state['status']  = 'ERROR'
+                        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                        self.log.error(msg)
                 for side in range(n_tunings):
                     if self.drx.cur_freq[side] > 0 and total_drx_inactive[side] > 0:
                         problems_found = True
