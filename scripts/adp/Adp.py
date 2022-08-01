@@ -1767,7 +1767,7 @@ class MsgProcessor(ConsumerThread):
                         side = 1 if name.find('--tuning 1') != -1 else 0
                         loss = pipeline.rx_loss()
                         txbw = pipeline.tx_rate()
-                        cact = pipeline.corr_active()
+                        cact = pipeline.is_corr_active()
                         
                         if name.find('drx') != -1:
                             found['drx'].append( (host,name,side,loss,txbw,cact) )
