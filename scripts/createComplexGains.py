@@ -126,7 +126,7 @@ if __name__ == '__main__':
         help='Azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
     parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
         help='Elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
-	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
+    parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
         help='Shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
     parser.add_argument('-f', '--fringe', type=int, default=0,
         help='Reference stand for a frining run. (Beam on X pol, fringing dipole on Y pol, 0 = no fringing)')
