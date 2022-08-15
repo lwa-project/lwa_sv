@@ -118,18 +118,17 @@ def main(args):
         np.savez('/home/adp/complexGains_adp'+str(i+1)+'.npz', cgains=cgains[:,i,:,:,:])
 
 if __name__ == '__main__':
-	parser = argparse.ArgumentParser(
-		description='Return the full set of complex gains given 3 pointing centers and 3  beam sizes.',
-		formatter_class=argparse.ArgumentDefaultsHelpFormatter
-		)
+    parser = argparse.ArgumentParser(
+        description='Return the full set of complex gains given 3 pointing centers and 3  beam sizes.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-	parser.add_argument('-a','--azimuths', nargs='+', type=aph.positive_or_zero_float, default=90.0,
-				help='Azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
-	parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
-				help='Elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
-	parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
-				help='Shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
-        parser.add_argument('-f', '--fringe', type=int, default=0,
-                                help='Reference stand for a frining run. (Beam on X pol, fringing dipole on Y pol, 0 = no fringing)')
-	args = parser.parse_args()
-	main(args)
+    parser.add_argument('-a','--azimuths', nargs='+', type=aph.positive_or_zero_float, default=90.0,
+        help='Azimuth east of north in degrees for the pointing center (Takes up to 3 numbers)')
+    parser.add_argument('-e','--elevations', nargs='+', type=aph.positive_float, default=90.0,
+        help='Elevation above the horizon in degrees for the pointing center (Takes up to 3 numbers)')
+    parser.add_argument('-t','--thetas', nargs='+', type=aph.positive_or_zero_float, default=5.0,
+        help='Shaped beam width in degrees (Takes up to 3 numbers). An entry of 0 will mean that beam will be a normal beam.')
+    parser.add_argument('-f', '--fringe', type=int, default=0,
+        help='Reference stand for a frining run. (Beam on X pol, fringing dipole on Y pol, 0 = no fringing)')
+    args = parser.parse_args()
+    main(args)
