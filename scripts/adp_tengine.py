@@ -546,6 +546,7 @@ class TEngineOp(object):
                             del gdata3
                             del fdata
                             del qdata
+                            del tdata
                         except NameError:
                             pass
                             
