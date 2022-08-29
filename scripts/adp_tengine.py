@@ -192,7 +192,7 @@ class TEngineOp(object):
               """,
               {'a':imatrix})
         
-        imatrix = imatrix.reshape(-1, 4, nchan*nstand*npol)
+        imatrix = imatrix.reshape(-1, 4, self.nchan_max*nstand*npol)
         self.imatrix = imatrix
         del matrix
         del pfft
