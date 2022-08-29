@@ -505,7 +505,6 @@ class TEngineOp(object):
                                     
                                 ### Clean-up
                                 try:
-                                    del pdata
                                     del bdata
                                     del gdata
                                     del bfft
@@ -513,10 +512,11 @@ class TEngineOp(object):
                                     del pfft
                                     del gdata2
                                     del pfft2
-                                    del ffft
                                     del rdata
-                                    del bfft2
+                                    del ffft
+                                    del pdata
                                     del gdata3
+                                    del bfft2
                                     del fdata
                                     del bfir
                                     del qdata
@@ -537,11 +537,12 @@ class TEngineOp(object):
                     if not reset_sequence:
                         ## Clean-up
                         try:
-                            del pdata
+                            del bdata
                             del gdata
                             del imatrix
                             del gdata2
                             del rdata
+                            del pdata
                             del gdata3
                             del fdata
                             del qdata
