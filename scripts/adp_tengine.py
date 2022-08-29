@@ -174,6 +174,28 @@ class TEngineOp(object):
             BFSetGPU(self.gpu)
         ## Metadata
         nstand, npol = nbeam, 2
+        ## PFB inversion matrix
+        matrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64)
+        imatrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
+        pfb = pfb_window(self.nchan_max)
+        pfb = pfb.reshape(4, -1)
+        pfb.shape += (1,)
+        pfb.shape = (1,)+pfb.shape
+        matrix[:,:4,:,:] = pfb
+        matrix = matrix.copy(space='cuda')
+        pfft = Fft()
+        pfft.init(matrix, imatrix, axes=1)
+        pfft.execute(matrix, imatrix, inverse=False)
+        wft = 0.3
+        BFMap(f"""
+              a = (a.mag2() / (a.mag2() + {wft}*{wft})) * (1+{wft}*{wft}) / a.conj();
+              """,
+              {'a':imatrix})
+        
+        imatrix = imatrix.reshape(-1, 4, nchan*nstand*npol)
+        self.imatrix = imatrix
+        del matrix
+        del pfft
         ## Coefficients
         coeffs.shape += (1,)
         coeffs = np.repeat(coeffs, nstand*npol, axis=1)
@@ -373,33 +395,7 @@ class TEngineOp(object):
                                     bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
                                     bfft.execute(bdata, gdata, inverse=True)
                                     
-                                ### Inversion matrix setup
-                                try:
-                                    imatrix
-                                except NameError:
-                                    matrix = BFArray(shape=(self.ntime_gulp//4,4,nchan,nstand*npol), dtype=np.complex64)
-                                    imatrix = BFArray(shape=(self.ntime_gulp//4,4,nchan,nstand*npol), dtype=np.complex64, space='cuda')
-                                    
-                                    pfb = pfb_window(nchan)
-                                    pfb = pfb.reshape(4, -1)
-                                    pfb.shape += (1,)
-                                    pfb.shape = (1,)+pfb.shape
-                                    matrix[:,:4,:,:] = pfb
-                                    matrix = matrix.copy(space='cuda')
-                                    
-                                    pfft = Fft()
-                                    pfft.init(matrix, imatrix, axes=1)
-                                    pfft.execute(matrix, imatrix, inverse=False)
-                                    
-                                    wft = 0.3
-                                    BFMap(f"""
-                                          a = (a.mag2() / (a.mag2() + {wft}*{wft})) * (1+{wft}*{wft}) / a.conj();
-                                          """,
-                                          {'a':imatrix})
-                                    
-                                    imatrix = imatrix.reshape(-1, 4, nchan*nstand*npol)
-                                    
-                                # The actual inversion
+                                ## The actual inversion
                                 gdata = gdata.reshape(imatrix.shape)
                                 try:
                                     pfft2.execute(gdata, gdata2, inverse=False)
@@ -508,8 +504,6 @@ class TEngineOp(object):
                                     del bdata
                                     del gdata
                                     del bfft
-                                    del imatrix
-                                    del pfft
                                     del gdata2
                                     del pfft2
                                     del rdata
@@ -539,7 +533,6 @@ class TEngineOp(object):
                         try:
                             del bdata
                             del gdata
-                            del imatrix
                             del gdata2
                             del rdata
                             del pdata
