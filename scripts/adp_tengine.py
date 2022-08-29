@@ -513,7 +513,6 @@ class TEngineOp(object):
                                     del pfft
                                     del gdata2
                                     del pfft2
-                                    del gdata2
                                     del ffft
                                     del rdata
                                     del bfft2
@@ -540,6 +539,10 @@ class TEngineOp(object):
                         try:
                             del pdata
                             del gdata
+                            del imatrix
+                            del gdata2
+                            del rdata
+                            del gdata3
                             del fdata
                             del qdata
                         except NameError:
