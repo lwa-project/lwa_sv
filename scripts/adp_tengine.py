@@ -329,7 +329,7 @@ class TEngineOp(object):
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1       # 4+4 complex
                 oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
-                self.iring.resize(igulp_size, 10*igulp_size)
+                self.iring.resize(igulp_size, 15*igulp_size)
                 self.oring.resize(ogulp_size)#, ogulp_size)
                 
                 ticksPerTime = int(FS) // int(CHAN_BW)
