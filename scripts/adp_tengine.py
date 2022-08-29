@@ -177,7 +177,7 @@ class TEngineOp(object):
         ## PFB data
         self.bdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64, space='cuda')
         self.gdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64, space='cuda')
-        self.gdata2 = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64, space='cuda')
+        self.gdata2 = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
         ## PFB inversion matrix
         matrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64)
         self.imatrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
