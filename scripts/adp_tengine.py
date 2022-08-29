@@ -177,15 +177,18 @@ class TEngineOp(object):
         ## PFB inversion matrix
         matrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64)
         self.imatrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
+        
         pfb = pfb_window(self.nchan_max)
         pfb = pfb.reshape(4, -1)
         pfb.shape += (1,)
         pfb.shape = (1,)+pfb.shape
         matrix[:,:4,:,:] = pfb
         matrix = matrix.copy(space='cuda')
+        
         pfft = Fft()
         pfft.init(matrix, self.imatrix, axes=1)
         pfft.execute(matrix, self.imatrix, inverse=False)
+        
         wft = 0.3
         BFMap(f"""
               a = (a.mag2() / (a.mag2() + {wft}*{wft})) * (1+{wft}*{wft}) / a.conj();
