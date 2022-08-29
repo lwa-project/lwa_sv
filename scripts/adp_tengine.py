@@ -174,6 +174,10 @@ class TEngineOp(object):
             BFSetGPU(self.gpu)
         ## Metadata
         nstand, npol = nbeam, 2
+        ## PFB data
+        self.bdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol, dtype=np.complex64, space='cuda')
+        self.gdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol, dtype=np.complex64, space='cuda')
+        self.gdata2 = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol, dtype=np.complex64, space='cuda')
         ## PFB inversion matrix
         matrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64)
         self.imatrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
@@ -380,60 +384,52 @@ class TEngineOp(object):
                                 odata = ospan.data_view(np.int8).reshape((1,)+oshape)
                                 
                                 ### From here until going to the output ring we are on the GPU
-                                try:
-                                    copy_array(bdata, idata)
-                                except NameError:
-                                    bdata = idata.copy(space='cuda')
-                                    
+                                copy_array(self.bdata, idata)
+                                
                                 ## PFB inversion
                                 ### Initial IFFT
+                                self.gdata = self.gdata.reshape(self.bdata.shape)
                                 try:
-                                    gdata = gdata.reshape(bdata.shape)
-                                    bfft.execute(bdata, gdata, inverse=True)
-                                except NameError:
-                                    gdata = BFArray(shape=bdata.shape, dtype=np.complex64, space='cuda')
                                     
+                                    bfft.execute(self.bdata, self.gdata, inverse=True)
+                                except NameError:
                                     bfft = Fft()
-                                    bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
-                                    bfft.execute(bdata, gdata, inverse=True)
+                                    bfft.init(self.bdata, self.gdata, axes=1, apply_fftshift=True)
+                                    bfft.execute(self.bdata, self.gdata, inverse=True)
                                     
                                 ## The actual inversion
-                                gdata = gdata.reshape(self.imatrix.shape)
+                                self.gdata = self.gdata.reshape(self.imatrix.shape)
                                 try:
-                                    pfft2.execute(gdata, gdata2, inverse=False)
+                                    pfft2.execute(self.gdata, self.gdata2, inverse=False)
                                 except NameError:
-                                    gdata2 = BFArray(shape=gdata.shape, dtype=np.complex64, space='cuda')
-                                    
                                     pfft2 = Fft()
-                                    pfft2.init(gdata, gdata2, axes=1)
-                                    pfft2.execute(gdata, gdata2, inverse=False)
+                                    pfft2.init(self.gdata, self.gdata2, axes=1)
+                                    pfft2.execute(self.gdata, self.gdata2, inverse=False)
                                     
                                 BFMap("a *= b",
-                                      {'a':gdata2, 'b':self.imatrix})
+                                      {'a':self.gdata2, 'b':self.imatrix})
                                      
-                                pfft2.execute(gdata2, gdata, inverse=True)
+                                pfft2.execute(self.gdata2, self.gdata, inverse=True)
                                 
                                 ## FFT to re-channelize
-                                gdata = gdata.reshape(-1, nchan, nstand, npol)
+                                self.gdata = self.gdata.reshape(-1, nchan, nstand, npol)
                                 try:
-                                    ffft.execute(gdata, rdata, inverse=False)
+                                    ffft.execute(self.gdata, self.bdata, inverse=False)
                                 except NameError:
-                                    rdata = BFArray(shape=(self.ntime_gulp,nchan,nstand,npol), dtype=np.complex64, space='cuda')
-                                    
                                     ffft = Fft()
-                                    ffft.init(gdata, rdata, axes=1, apply_fftshift=True)
-                                    ffft.execute(gdata, rdata, inverse=False)
+                                    ffft.init(self.gdata, self.bdata, axes=1, apply_fftshift=True)
+                                    ffft.execute(self.gdata, self.bdata, inverse=False)
                                     
                                 ## Prune and shift the data ahead of the IFFT
-                                if rdata.shape[1] != self.nchan_out:
+                                if self.bdata.shape[1] != self.nchan_out:
                                     try:
-                                        pdata[...] = rdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
+                                        pdata[...] = self.bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
                                     except NameError:
                                         pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
                                         pdata = BFArray(shape=pshape, dtype=np.complex64, space='cuda')
-                                        pdata[...] = rdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
+                                        pdata[...] = self.bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
                                 else:
-                                    pdata = bdata
+                                    pdata = self.bdata
                                     
                                 ## IFFT
                                 try:
