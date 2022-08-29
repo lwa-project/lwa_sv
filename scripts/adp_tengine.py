@@ -396,7 +396,7 @@ class TEngineOp(object):
                                     bfft.execute(bdata, gdata, inverse=True)
                                     
                                 ## The actual inversion
-                                gdata = gdata.reshape(imatrix.shape)
+                                gdata = gdata.reshape(self.imatrix.shape)
                                 try:
                                     pfft2.execute(gdata, gdata2, inverse=False)
                                 except NameError:
@@ -407,7 +407,7 @@ class TEngineOp(object):
                                     pfft2.execute(gdata, gdata2, inverse=False)
                                     
                                 BFMap("a *= b",
-                                      {'a':gdata2, 'b':imatrix})
+                                      {'a':gdata2, 'b':self.imatrix})
                                      
                                 pfft2.execute(gdata2, gdata, inverse=True)
                                 
