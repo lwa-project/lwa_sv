@@ -406,7 +406,7 @@ class TEngineOp(object):
                                     pfft2.init(self.gdata, self.gdata2, axes=1)
                                     pfft2.execute(self.gdata, self.gdata2, inverse=False)
                                     
-                                BFMap("a *= b",
+                                BFMap("a *= b / (%i*2)" % nchan,
                                       {'a':self.gdata2, 'b':self.imatrix})
                                      
                                 pfft2.execute(self.gdata2, self.gdata, inverse=True)
