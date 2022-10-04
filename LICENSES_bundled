@@ -1,3 +1,10 @@
+The LWA-SV repository and source distributions bundle parts of other software
+that are compatibly licensed.  They are listed here:
+
+Name: valon_synth
+File: scripts/valon_synth/__init__.py, scripts/valon_synth/valon_synth.py
+License: GPL v2
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 
