@@ -221,6 +221,7 @@ interface Ethernet20/1
 !
 interface Ethernet21/1
    flowcontrol send on
+   flowcontrol receive on
    speed forced 40gfull
 !
 interface Ethernet22/1

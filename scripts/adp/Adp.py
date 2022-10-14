@@ -788,6 +788,15 @@ class Roach2MonitorClient(object):
         self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, 
                         adc_registers=adc_registers, max_attempts=max_attempts, bypass_pfb=bypass_pfb)
                         
+    def is_programmed(self):
+        status = False
+        try:
+            self.roach.check_link(0)
+            status = True
+        except:
+            pass
+        return status
+        
     def configure_dual_mode(self):
         try:
             self.roach.stop_processing()
@@ -1888,6 +1897,15 @@ class MsgProcessor(ConsumerThread):
                 if not self.ready:
                     ## Deal with the system shutting down in the middle of a poll
                     continue
+                roaches_programmed = self.roaches.is_programmed()
+                if not all(roaches_programmed):
+                    problem_found = True
+                    msg = "Found %s ROACH2 board(s) not programmed" % (len(roaches_programmed) - sum(roaches_programmed),)
+                    self.state['lastlog'] = msg
+                    self.state['status']  = 'ERROR'
+                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                    self.log.error(msg)
+                    
                 if False:
                     """
                     roach_drx_link_status = self.roaches.roach.check_link(0)
