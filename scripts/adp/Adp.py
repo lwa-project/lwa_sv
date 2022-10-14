@@ -1899,7 +1899,7 @@ class MsgProcessor(ConsumerThread):
                     continue
                 roaches_programmed = self.roaches.is_programmed()
                 if not all(roaches_programmed):
-                    problem_found = True
+                    problems_found = True
                     msg = "Found %s ROACH2 board(s) not programmed" % (len(roaches_programmed) - sum(roaches_programmed),)
                     self.state['lastlog'] = msg
                     self.state['status']  = 'ERROR'
