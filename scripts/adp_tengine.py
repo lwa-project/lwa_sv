@@ -131,7 +131,7 @@ class CaptureOp(object):
 
 class TEngineOp(object):
     def __init__(self, log, iring, oring, tuning=0, ntime_gulp=2500, nchan_max=864, nbeam=1, # ntime_buf=None,
-                 guarantee=True, core=-1, gpu=-1):
+                 pfb_inverter=True, guarantee=True, core=-1, gpu=-1):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -141,6 +141,7 @@ class TEngineOp(object):
         #if ntime_buf is None:
         #    ntime_buf = self.ntime_gulp*3
         #self.ntime_buf = ntime_buf
+        self.pfb_inverter = pfb_inverter
         self.guarantee = guarantee
         self.core = core
         self.gpu  = gpu
@@ -386,40 +387,41 @@ class TEngineOp(object):
                                 ### From here until going to the output ring we are on the GPU
                                 copy_array(self.bdata, idata)
                                 
-                                ## PFB inversion
-                                ### Initial IFFT
-                                self.gdata = self.gdata.reshape(self.bdata.shape)
-                                try:
+                                if self.pfb_inverter:
+                                    ## PFB inversion
+                                    ### Initial IFFT
+                                    self.gdata = self.gdata.reshape(self.bdata.shape)
+                                    try:
+                                        
+                                        bfft.execute(self.bdata, self.gdata, inverse=True)
+                                    except NameError:
+                                        bfft = Fft()
+                                        bfft.init(self.bdata, self.gdata, axes=1, apply_fftshift=True)
+                                        bfft.execute(self.bdata, self.gdata, inverse=True)
+                                        
+                                    ## The actual inversion
+                                    self.gdata = self.gdata.reshape(self.imatrix.shape)
+                                    try:
+                                        pfft2.execute(self.gdata, self.gdata2, inverse=False)
+                                    except NameError:
+                                        pfft2 = Fft()
+                                        pfft2.init(self.gdata, self.gdata2, axes=1)
+                                        pfft2.execute(self.gdata, self.gdata2, inverse=False)
+                                        
+                                    BFMap("a *= b / (%i*2)" % nchan,
+                                          {'a':self.gdata2, 'b':self.imatrix})
+                                         
+                                    pfft2.execute(self.gdata2, self.gdata, inverse=True)
                                     
-                                    bfft.execute(self.bdata, self.gdata, inverse=True)
-                                except NameError:
-                                    bfft = Fft()
-                                    bfft.init(self.bdata, self.gdata, axes=1, apply_fftshift=True)
-                                    bfft.execute(self.bdata, self.gdata, inverse=True)
-                                    
-                                ## The actual inversion
-                                self.gdata = self.gdata.reshape(self.imatrix.shape)
-                                try:
-                                    pfft2.execute(self.gdata, self.gdata2, inverse=False)
-                                except NameError:
-                                    pfft2 = Fft()
-                                    pfft2.init(self.gdata, self.gdata2, axes=1)
-                                    pfft2.execute(self.gdata, self.gdata2, inverse=False)
-                                    
-                                BFMap("a *= b / (%i*2)" % nchan,
-                                      {'a':self.gdata2, 'b':self.imatrix})
-                                     
-                                pfft2.execute(self.gdata2, self.gdata, inverse=True)
-                                
-                                ## FFT to re-channelize
-                                self.gdata = self.gdata.reshape(-1, nchan, nstand, npol)
-                                try:
-                                    ffft.execute(self.gdata, self.bdata, inverse=False)
-                                except NameError:
-                                    ffft = Fft()
-                                    ffft.init(self.gdata, self.bdata, axes=1, apply_fftshift=True)
-                                    ffft.execute(self.gdata, self.bdata, inverse=False)
-                                    
+                                    ## FFT to re-channelize
+                                    self.gdata = self.gdata.reshape(-1, nchan, nstand, npol)
+                                    try:
+                                        ffft.execute(self.gdata, self.bdata, inverse=False)
+                                    except NameError:
+                                        ffft = Fft()
+                                        ffft.init(self.gdata, self.bdata, axes=1, apply_fftshift=True)
+                                        ffft.execute(self.gdata, self.bdata, inverse=False)
+                                        
                                 ## Prune and shift the data ahead of the IFFT
                                 if self.bdata.shape[1] != self.nchan_out:
                                     try:
@@ -684,6 +686,7 @@ def main(argv):
     parser.add_argument('-f', '--fork',       action='store_true',       help='Fork and run in the background')
     parser.add_argument('-t', '--tuning',     default=0, type=int,       help='DRX tuning (0 or 1)')
     parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
+    parser.add_argument('-n', '--no-pfb-inverter', dest='pfb_inverter', action='store_false', help='disable the PFB inverter')
     parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
     parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
     parser.add_argument('-v', '--verbose',    action='count', default=0, help='Increase verbosity')
