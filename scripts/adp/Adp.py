@@ -726,8 +726,8 @@ class Roach2MonitorClient(object):
         self.equalizer_coeffs = None
         try:
             self.equalizer_coeffs = np.loadtxt(self.config['roach']['equalizer_coeffs'])
-        except:
-            pass
+        except Exception as e:
+            self.log.warning("Failed to load equalizer coefficients: %s", str(e))
             
     def unprogram(self, reboot=False):
         if not reboot:
