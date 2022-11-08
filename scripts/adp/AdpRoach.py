@@ -217,12 +217,15 @@ class AdpRoach(object):
             
         return delays
         
-    def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27):
+    def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27, equalizer_coeffs=None):
         # Note: gbe_idx is the 0-based index of the gigabit ethernet core
         
         # Validate the inputs
         assert( 0 <= gbe_idx and gbe_idx < 3 )
         assert( 10 <= start_chan and start_chan <= 4000 )
+        if equalizer_coeffs is None:
+            equalizer_coeffs = np.ones(4096, 'l')
+        assert( len(equalizer_coeffs) == 4096 )
         
         # Compute the stop channel and updated packetizer registries as needed
         stop_chan = start_chan + self._fpgaState['pkt_gbe%i_n_chan_per_sub' % gbe_idx] * \
@@ -247,10 +250,11 @@ class AdpRoach(object):
         try:
             currScale = self._fpgaState['scale_factor']
             currShift = self._fpgaState['shift_factor']
+            currCoeff = self._fpgaState['eq_coeffs']
         except KeyError:
-            currScale, currShift = -1, -1
-        if currScale != scale_factor or currShift != shift_factor:
-            scaledata = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor
+            currScale, currShift, currCoeff = -1, -1, np.ones(4096, 'l')
+        if currScale != scale_factor or currShift != shift_factor or any(currCoeff != equalizer_coeffs):
+            scaledata = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor * equalizer_coeffs
             cstr = struct.pack('>4096l', *scaledata)
             self.fpga.write('fft_f1_cg_bpass_bram', cstr)
             self.fpga.write('fft_f2_cg_bpass_bram', cstr)
@@ -258,6 +262,7 @@ class AdpRoach(object):
             self.fpga.write('fft_f4_cg_bpass_bram', cstr)
             self._fpgaState['scale_factor'] = scale_factor
             self._fpgaState['shift_factor'] = shift_factor
+            self._fpgaState['eq_coeffs'] = equalizer_coeffs
             updated |= True
             
         return updated

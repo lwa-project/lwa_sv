@@ -723,6 +723,12 @@ class Roach2MonitorClient(object):
         self.GBE_DRX_1 = 1
         self.GBE_TBN = 2
         
+        self.equalizer_coeffs = None
+        try:
+            self.equalizer_coeffs = np.loadtxt(self.config['roach']['equalizer_coeffs'])
+        except:
+            pass
+            
     def unprogram(self, reboot=False):
         if not reboot:
             self.roach.unprogram()
@@ -850,7 +856,8 @@ class Roach2MonitorClient(object):
             shift_factor = self.config['roach']['shift_factor']
             
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
-        self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor)
+        self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
+                                                 equalizer_coeffs=self.equalizer_coeffs)
         return chan0
         
     @ISC.logException
@@ -865,7 +872,8 @@ class Roach2MonitorClient(object):
         if shift_factor is None:
             shift_factor = self.config['roach']['shift_factor']
             
-        self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor)
+        self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
+                                                          equalizer_coeffs=self.equalizer_coeffs)
         return chan0
         
     def reset(self):
