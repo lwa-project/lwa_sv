@@ -686,7 +686,6 @@ def main(argv):
     parser.add_argument('-f', '--fork',       action='store_true',       help='Fork and run in the background')
     parser.add_argument('-t', '--tuning',     default=0, type=int,       help='DRX tuning (0 or 1)')
     parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
-    parser.add_argument('-n', '--no-pfb-inverter', dest='pfb_inverter', action='store_false', help='disable the PFB inverter')
     parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
     parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
     parser.add_argument('-v', '--verbose',    action='count', default=0, help='Increase verbosity')
@@ -784,7 +783,10 @@ def main(argv):
     nbeam = drxConfig['beam_count']
     cores = tngConfig['cpus']
     gpus  = tngConfig['gpus']
-    
+    pfb_inverter = True
+    if 'pfb_inverter' in tngConfig:
+        pfb_inverter = tngConfig['pfb_inverter']
+        
     log.info("Src address:  %s:%i", iaddr, iport)
     try:
         for b,a,p in zip(range(len(oaddr)), oaddr, oport):
@@ -798,6 +800,7 @@ def main(argv):
     log.info("Tuning:       %i (of %i)", tuning+1, ntuning)
     log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
     log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
+    log.info("PFB inverter: %s", str(pfb_inverter))
     
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
@@ -818,7 +821,7 @@ def main(argv):
     ops.append(TEngineOp(log, capture_ring, tengine_ring,
                          tuning=tuning, ntime_gulp=GSIZE, 
                          nchan_max=nchan_max, nbeam=nbeam, 
-                         pfb_inverter=args.pfb_inverter,
+                         pfb_inverter=pfb_inverter,
                          core=cores.pop(0), gpu=gpus.pop(0)))
     rsocks = []
     for beam in range(nbeam):
