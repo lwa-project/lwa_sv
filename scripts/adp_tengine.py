@@ -365,7 +365,7 @@ class TEngineOp(object):
                     ohdr_str = json.dumps(ohdr)
                     
                     # Adjust the gain to make this ~compatible with LWA1
-                    act_gain = self.gain + 2
+                    act_gain = self.gain + 1 + self.pfb_inverter
                     
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
@@ -818,6 +818,7 @@ def main(argv):
     ops.append(TEngineOp(log, capture_ring, tengine_ring,
                          tuning=tuning, ntime_gulp=GSIZE, 
                          nchan_max=nchan_max, nbeam=nbeam, 
+                         pfb_inverter=args.pfb_inverter,
                          core=cores.pop(0), gpu=gpus.pop(0)))
     rsocks = []
     for beam in range(nbeam):
