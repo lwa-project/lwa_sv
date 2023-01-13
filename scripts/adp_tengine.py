@@ -23,7 +23,7 @@ from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
-#import numpy as np
+import numpy as np
 import signal
 import logging
 import time
@@ -42,6 +42,7 @@ from collections import deque
 #from numpy.fft import ifft
 #from scipy import ifft
 from scipy.fftpack import ifft
+from scipy.signal import get_window as scipy_window, firwin as scipy_firwin
 
 ACTIVE_DRX_CONFIG = threading.Event()
 
@@ -68,6 +69,13 @@ __license__    = "Apache v2"
 __maintainer__ = "Jayce Dowell"
 __email__      = "jdowell at unm"
 __status__     = "Development"
+
+def pfb_window(P):
+    win_coeffs = scipy_window("hamming", 4*P)
+    sinc       = scipy_firwin(4*P, cutoff=1.0/P, window="rectangular")
+    win_coeffs *= sinc
+    win_coeffs /= win_coeffs.max()
+    return win_coeffs
 
 #{"nbit": 4, "nchan": 136, "nsrc": 16, "chan0": 1456, "time_tag": 288274740432000000}
 class CaptureOp(object):
@@ -123,7 +131,7 @@ class CaptureOp(object):
 
 class TEngineOp(object):
     def __init__(self, log, iring, oring, tuning=0, ntime_gulp=2500, nchan_max=864, nbeam=1, # ntime_buf=None,
-                 guarantee=True, core=-1, gpu=-1):
+                 pfb_inverter=True, guarantee=True, core=-1, gpu=-1):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -133,6 +141,7 @@ class TEngineOp(object):
         #if ntime_buf is None:
         #    ntime_buf = self.ntime_gulp*3
         #self.ntime_buf = ntime_buf
+        self.pfb_inverter = pfb_inverter
         self.guarantee = guarantee
         self.core = core
         self.gpu  = gpu
@@ -166,6 +175,34 @@ class TEngineOp(object):
             BFSetGPU(self.gpu)
         ## Metadata
         nstand, npol = nbeam, 2
+        ## PFB data
+        self.bdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64, space='cuda')
+        self.gdata = BFArray(shape=(self.ntime_gulp,self.nchan_max,nstand,npol), dtype=np.complex64, space='cuda')
+        self.gdata2 = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max*nstand*npol), dtype=np.complex64, space='cuda')
+        ## PFB inversion matrix
+        matrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64)
+        self.imatrix = BFArray(shape=(self.ntime_gulp//4,4,self.nchan_max,nstand*npol), dtype=np.complex64, space='cuda')
+        
+        pfb = pfb_window(self.nchan_max)
+        pfb = pfb.reshape(4, -1)
+        pfb.shape += (1,)
+        pfb.shape = (1,)+pfb.shape
+        matrix[:,:4,:,:] = pfb
+        matrix = matrix.copy(space='cuda')
+        
+        pfft = Fft()
+        pfft.init(matrix, self.imatrix, axes=1)
+        pfft.execute(matrix, self.imatrix, inverse=False)
+        
+        wft = 0.3
+        BFMap(f"""
+              a = (a.mag2() / (a.mag2() + {wft}*{wft})) * (1+{wft}*{wft}) / a.conj();
+              """,
+              {'a':self.imatrix})
+        
+        self.imatrix = self.imatrix.reshape(-1, 4, self.nchan_max*nstand*npol)
+        del matrix
+        del pfft
         ## Coefficients
         coeffs.shape += (1,)
         coeffs = np.repeat(coeffs, nstand*npol, axis=1)
@@ -300,7 +337,7 @@ class TEngineOp(object):
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1       # 4+4 complex
                 oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
-                self.iring.resize(igulp_size, 10*igulp_size)
+                self.iring.resize(igulp_size, 15*igulp_size)
                 self.oring.resize(ogulp_size)#, ogulp_size)
                 
                 ticksPerTime = int(FS) // int(CHAN_BW)
@@ -328,7 +365,7 @@ class TEngineOp(object):
                     ohdr_str = json.dumps(ohdr)
                     
                     # Adjust the gain to make this ~compatible with LWA1
-                    act_gain = self.gain + 2
+                    act_gain = self.gain + 1 + self.pfb_inverter
                     
                     with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
                         for ispan in iseq_spans:
@@ -347,58 +384,90 @@ class TEngineOp(object):
                                 idata = ispan.data_view(np.complex64).reshape(ishape)
                                 odata = ospan.data_view(np.int8).reshape((1,)+oshape)
                                 
-                                ## Prune and shift the data ahead of the IFFT
-                                if idata.shape[1] != self.nchan_out:
+                                ### From here until going to the output ring we are on the GPU
+                                copy_array(self.bdata, idata)
+                                
+                                if self.pfb_inverter:
+                                    ## PFB inversion
+                                    ### Initial IFFT
+                                    self.gdata = self.gdata.reshape(self.bdata.shape)
                                     try:
-                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
+                                        
+                                        bfft.execute(self.bdata, self.gdata, inverse=True)
+                                    except NameError:
+                                        bfft = Fft()
+                                        bfft.init(self.bdata, self.gdata, axes=1, apply_fftshift=True)
+                                        bfft.execute(self.bdata, self.gdata, inverse=True)
+                                        
+                                    ## The actual inversion
+                                    self.gdata = self.gdata.reshape(self.imatrix.shape)
+                                    try:
+                                        pfft2.execute(self.gdata, self.gdata2, inverse=False)
+                                    except NameError:
+                                        pfft2 = Fft()
+                                        pfft2.init(self.gdata, self.gdata2, axes=1)
+                                        pfft2.execute(self.gdata, self.gdata2, inverse=False)
+                                        
+                                    BFMap("a *= b / (%i*2)" % nchan,
+                                          {'a':self.gdata2, 'b':self.imatrix})
+                                         
+                                    pfft2.execute(self.gdata2, self.gdata, inverse=True)
+                                    
+                                    ## FFT to re-channelize
+                                    self.gdata = self.gdata.reshape(-1, nchan, nstand, npol)
+                                    try:
+                                        ffft.execute(self.gdata, self.bdata, inverse=False)
+                                    except NameError:
+                                        ffft = Fft()
+                                        ffft.init(self.gdata, self.bdata, axes=1, apply_fftshift=True)
+                                        ffft.execute(self.gdata, self.bdata, inverse=False)
+                                        
+                                ## Prune and shift the data ahead of the IFFT
+                                if self.bdata.shape[1] != self.nchan_out:
+                                    try:
+                                        pdata[...] = self.bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
                                     except NameError:
                                         pshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
-                                        pdata = BFArray(shape=pshape, dtype=np.complex64, space='system')
-                                        pdata[...] = idata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2]
+                                        pdata = BFArray(shape=pshape, dtype=np.complex64, space='cuda')
+                                        pdata[...] = self.bdata[:,nchan//2-self.nchan_out//2:nchan//2+self.nchan_out//2,:,:]
                                 else:
-                                    pdata = idata
-                                    
-                                ### From here until going to the output ring we are on the GPU
-                                try:
-                                    copy_array(bdata, pdata)
-                                except NameError:
-                                    bdata = pdata.copy(space='cuda')
+                                    pdata = self.bdata
                                     
                                 ## IFFT
                                 try:
-                                    gdata = gdata.reshape(*bdata.shape)
-                                    bfft.execute(bdata, gdata, inverse=True)
+                                    gdata3 = gdata3.reshape(*pdata.shape)
+                                    bfft2.execute(pdata, gdata3, inverse=True)
                                 except NameError:
-                                    gdata = BFArray(shape=bdata.shape, dtype=np.complex64, space='cuda')
+                                    gdata3 = BFArray(shape=pdata.shape, dtype=np.complex64, space='cuda')
                                     
-                                    bfft = Fft()
-                                    bfft.init(bdata, gdata, axes=1, apply_fftshift=True)
-                                    bfft.execute(bdata, gdata, inverse=True)
+                                    bfft2 = Fft()
+                                    bfft2.init(pdata, gdata3, axes=1, apply_fftshift=True)
+                                    bfft2.execute(pdata, gdata3, inverse=True)
                                     
                                 ## Phase rotation
-                                gdata = gdata.reshape((-1,nstand*npol))
+                                gdata3 = gdata3.reshape((-1,nstand*npol))
                                 BFMap("a(i,j) *= exp(Complex<float>(0.0, -2*BF_PI_F*fmod(g(0)*s(0), 1.0)))*b(i)", 
-                                      {'a':gdata, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, 
+                                      {'a':gdata3, 'b':self.phaseRot, 'g':self.phaseState, 's':self.sampleCount}, 
                                       axis_names=('i','j'), 
-                                      shape=gdata.shape, 
+                                      shape=gdata3.shape, 
                                       extra_code="#define BF_PI_F 3.141592654f")
-                                gdata = gdata.reshape((-1,nstand,npol))
+                                gdata3 = gdata3.reshape((-1,nstand,npol))
                                 
                                 ## FIR filter
                                 try:
-                                    bfir.execute(gdata, fdata)
+                                    bfir.execute(gdata3, fdata)
                                 except NameError:
-                                    fdata = BFArray(shape=gdata.shape, dtype=gdata.dtype, space='cuda')
+                                    fdata = BFArray(shape=gdata3.shape, dtype=gdata3.dtype, space='cuda')
                                     
                                     bfir = Fir()
                                     bfir.init(self.coeffs, 1)
-                                    bfir.execute(gdata, fdata)
+                                    bfir.execute(gdata3, fdata)
                                     
                                 ## Quantization
                                 try:
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                 except NameError:
-                                    qdata = BFArray(shape=gdata.shape, native=False, dtype='ci4', space='cuda')
+                                    qdata = BFArray(shape=gdata3.shape, native=False, dtype='ci4', space='cuda')
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                     
                                 ## Save
@@ -433,9 +502,8 @@ class TEngineOp(object):
                                 ### Clean-up
                                 try:
                                     del pdata
-                                    del bdata
-                                    del gdata
-                                    del bfft
+                                    del gdata3
+                                    del bfft2
                                     del fdata
                                     del bfir
                                     del qdata
@@ -457,9 +525,10 @@ class TEngineOp(object):
                         ## Clean-up
                         try:
                             del pdata
-                            del gdata
+                            del gdata3
                             del fdata
                             del qdata
+                            del tdata
                         except NameError:
                             pass
                             
@@ -714,7 +783,10 @@ def main(argv):
     nbeam = drxConfig['beam_count']
     cores = tngConfig['cpus']
     gpus  = tngConfig['gpus']
-    
+    pfb_inverter = True
+    if 'pfb_inverter' in tngConfig:
+        pfb_inverter = tngConfig['pfb_inverter']
+        
     log.info("Src address:  %s:%i", iaddr, iport)
     try:
         for b,a,p in zip(range(len(oaddr)), oaddr, oport):
@@ -728,6 +800,7 @@ def main(argv):
     log.info("Tuning:       %i (of %i)", tuning+1, ntuning)
     log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
     log.info("GPUs:         %s", ' '.join([str(v) for v in gpus]))
+    log.info("PFB inverter: %s", str(pfb_inverter))
     
     iaddr = Address(iaddr, iport)
     isock = UDPSocket()
@@ -748,6 +821,7 @@ def main(argv):
     ops.append(TEngineOp(log, capture_ring, tengine_ring,
                          tuning=tuning, ntime_gulp=GSIZE, 
                          nchan_max=nchan_max, nbeam=nbeam, 
+                         pfb_inverter=pfb_inverter,
                          core=cores.pop(0), gpu=gpus.pop(0)))
     rsocks = []
     for beam in range(nbeam):
