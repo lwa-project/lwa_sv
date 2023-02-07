@@ -40,6 +40,7 @@ import zmq
 import threading
 import socket # For socket.error
 import json
+import hashlib
 
 __version__    = "0.3"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
@@ -2111,6 +2112,13 @@ class MsgProcessor(ConsumerThread):
         sub_config = {}
         for key in ('firmware', 'adc_gain', 'scale_factor', 'shift_factor', 'equalizer_coeffs', 'bypass_pfb'):
             sub_config[key] = self.config['roach'][key]
+        try:
+            m = hashlib.md5()
+            with open(sub_config['equalizer_coeffs'], 'rb') as fh:
+                m.update(fh.read())
+            sub_config['equalizer_coeffs'] = str(m.hexdigest())
+        except (OSError, IOError):
+            pass
         return json.dumps(sub_config)
         
     def _get_tengine_config(self):
