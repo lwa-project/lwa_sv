@@ -108,10 +108,10 @@
         "firmware":             "sevietta_devel_2018e_2018_May_10_0619.bof", 
         "max_program_attempts": 15,
         "adc_gain":             4,
-        "scale_factor":         1.886,
-        "shift_factor":         28,
-        "equalizer_coeffs":     "",
-        "bypass_pfb":           false,
+        "scale_factor":         1.948,
+        "shift_factor":         27,
+        "equalizer_coeffs":     "/usr/local/share/adp/equalizer.txt",
+        "bypass_pfb":           true,
         "temperatures":         ["ambient", "ppc", "fpga", "inlet", "outlet"],
         "temperature_warning":  80.0,
         "temperature_shutdown": 85.0,
@@ -123,14 +123,14 @@
                     "recorder_idx":      [0, 1, 2],
                     "cpus":              [0, 2, 3],
                     "gpus":              [0],
-                    "pfb_inverter":      true
+                    "pfb_inverter":      false
                 },
                 {
                     "pipeline_idx":      1,
                     "recorder_idx":      [0, 1, 2],
                     "cpus":              [8, 9, 10],
                     "gpus":              [1],
-                    "pfb_inverter":      true
+                    "pfb_inverter":      false
                 }
     ],
     "recorder": [
