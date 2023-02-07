@@ -120,6 +120,7 @@ if [ "${DO_CONFIG}" == "1" ]; then
 	
 	for node in `seq 0 6`; do
 		rsync -e ssh -avH ${SRC_PATH}/adp_config.json adp${node}:${DST_PATH}/
+		rsync -e ssh -avH ${SRC_PATH}/equalizer.txt adp${node}:${DST_PATH}/ 
 	done
 fi
 

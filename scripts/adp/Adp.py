@@ -39,8 +39,10 @@ import datetime
 import zmq
 import threading
 import socket # For socket.error
+import json
+import hashlib
 
-__version__    = "0.2"
+__version__    = "0.3"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
 __copyright__  = "Copyright 2015, The LWA-SV Project"
 __credits__    = ["Ben Barsdell", "Daniel Price", "Jayce Dowell"]
@@ -2106,6 +2108,25 @@ class MsgProcessor(ConsumerThread):
         self.fir_idx %= NINPUT
         return idx
         
+    def _get_roach_config(self):
+        sub_config = {}
+        for key in ('firmware', 'adc_gain', 'scale_factor', 'shift_factor', 'equalizer_coeffs', 'bypass_pfb'):
+            sub_config[key] = self.config['roach'][key]
+        try:
+            m = hashlib.md5()
+            with open(sub_config['equalizer_coeffs'], 'rb') as fh:
+                m.update(fh.read())
+            sub_config['equalizer_coeffs'] = str(m.hexdigest())
+        except (OSError, IOError):
+            pass
+        return json.dumps(sub_config)
+        
+    def _get_tengine_config(self):
+        sub_config = {}
+        for i,engine in enumerate(self.config['tengine']):
+            sub_config['pfb_inverter'+str(i)] = engine['pfb_inverter']
+        return json.dumps(sub_config)
+        
     def _get_report_result(self, key, args, slot):
         reduce_ops = {'MAX':      np.max,
                       'MIN':      np.min,
@@ -2120,6 +2141,8 @@ class MsgProcessor(ConsumerThread):
         if key == 'SUBSYSTEM':         return SUBSYSTEM
         if key == 'SERIALNO':          return self.serial_number
         if key == 'VERSION':           return self.version
+        if key == 'ROACH_CONFIG':      return self._get_roach_config()
+        if key == 'TENGINE_CONFIG':    return self._get_tengine_config()
         # TODO: TBF_STATUS
         #       TBF_TUNING_MASK
         if key == 'NUM_STANDS':        return NSTAND
@@ -2215,6 +2238,8 @@ class MsgProcessor(ConsumerThread):
             'SUBSYSTEM':          lambda x: x[:3],
             'SERIALNO':           lambda x: x[:5],
             'VERSION':            lambda x: truncate_message(x, 256),
+            'ROACH_CONFIG':       lambda x: truncate_message(x, 1024),
+            'TENGINE_CONFIG':     lambda x: truncate_message(x, 1024),
             #'TBF_STATUS':
             #'TBF_TUNING_MASK':
             'NUM_TBN_BITS':       lambda x: struct.pack('>B', x),
