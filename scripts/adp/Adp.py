@@ -1464,9 +1464,6 @@ class MsgProcessor(ConsumerThread):
         aligned = None
         self.log.info("Starting ADC offset calibration")
         
-        # Turn off the FEEs
-        subprocess.check_output("/home/adp/lwa_sv/scripts/turn_fees_off.py", shell=True)
-        
         # Move the tone down to 30 MHz
         subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 30", shell=True)
         
@@ -1602,9 +1599,6 @@ class MsgProcessor(ConsumerThread):
                 
         # Move the tone up to 95 MHz
         subprocess.check_output("/home/adp/lwa_sv/scripts/valon_program_tone.py 95", shell=True)
-        
-        # Turn on the FEEs
-        subprocess.check_output("/home/adp/lwa_sv/scripts/turn_fees_on.py", shell=True)
         
         # Done
         return status
