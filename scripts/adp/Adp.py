@@ -2112,19 +2112,24 @@ class MsgProcessor(ConsumerThread):
         sub_config = {}
         for key in ('firmware', 'adc_gain', 'scale_factor', 'shift_factor', 'equalizer_coeffs', 'bypass_pfb'):
             sub_config[key] = self.config['roach'][key]
+        sub_config['equalizer_coeffs_md5'] = ''
+        
         try:
             m = hashlib.md5()
             with open(sub_config['equalizer_coeffs'], 'rb') as fh:
                 m.update(fh.read())
-            sub_config['equalizer_coeffs'] = str(m.hexdigest())
+            sub_config['equalizer_coeffs_md5'] = str(m.hexdigest())
         except (OSError, IOError):
             pass
+            
         return json.dumps(sub_config)
         
     def _get_tengine_config(self):
         sub_config = {}
+        sub_config['nbeam'] = self.config['drx'][0]['beam_count']
         for i,engine in enumerate(self.config['tengine']):
             sub_config['pfb_inverter'+str(i)] = engine['pfb_inverter']
+            
         return json.dumps(sub_config)
         
     def _get_report_result(self, key, args, slot):
