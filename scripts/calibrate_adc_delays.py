@@ -116,6 +116,10 @@ def main(args):
                 
         fh.close()
         
+        # Blank out CB radio
+        cb_band = numpy.where((freq >= 25.9e6) & (freq <= 28.5e6))[0]
+        data[:,cb_band,:] *= 0.0
+        
         # Cross-correlate the data (although we only use a small fraction of this)
         valid = numpy.ones((data.shape[0],data.shape[2]), dtype=numpy.uint8)
         data[numpy.where(numpy.abs(data)==0)] = 1+1j
