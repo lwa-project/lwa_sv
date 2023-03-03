@@ -1,3 +1,15 @@
+# Build TCC files
+*.d
+TensorCoreCorrelator/libtcc/libtcc.so.0.5
+TensorCoreCorrelator/test/CorrelatorTest/CorrelatorTest
+TensorCoreCorrelator/test/SimpleExample/SimpleExample
+
+# TCC Bifrost wrapper files
+TensorCoreCorrelator/bifrost/btcc.py
+TensorCoreCorrelator/bifrost/btcc_generated.py
+TensorCoreCorrelator/bifrost/libbtcc.so
+TensorCoreCorrelator/bifrost/libtcc/libtcc.so*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -16,6 +16,7 @@ import bifrost.ndarray as BFArray
 from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.reduce import reduce as Reduce
+from bifrost.quantize import quantize as Quantize
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.memory import memcpy as BFMemCopy, memset as BFMemSet
@@ -23,6 +24,8 @@ from bifrost.linalg import LinAlg
 from bifrost import map as BFMap, asarray as BFAsArray
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, stream_synchronize as BFSync, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
+
+from btcc import Btcc
 
 #import numpy as np
 import signal
@@ -715,13 +718,13 @@ class CorrelatorOp(object):
         ochan = nchan//self.decim
         nstand, npol = nroach*16, 2
         ## Object
-        self.bfcc = LinAlg()
-        ## Intermidiate arrays
+        self.bfcc = Btcc()
+        self.bfcc.init(8, int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol)
+        ## Intermediate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
         self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
-        self.udata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci8', space='cuda')
-        self.ddata = BFArray(shape=(self.ntime_gulp,ochan,nstand*npol), dtype='cf32', space='cuda')
-        self.cdata = BFArray(shape=(ochan,nstand*npol,nstand*npol), dtype=np.complex64, space='cuda')
+        self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda')
+        self.cdata = BFArray(shape=(ochan,nstand*(nstand+1)//2*npol*npol), dtype='ci32', space='cuda')
         
     def updateConfig(self, config, hdr, time_tag, forceUpdate=False):
         if self.gpu != -1:
@@ -820,9 +823,9 @@ class CorrelatorOp(object):
                 npol   = ihdr['npol']
                 ochan  = nchan // self.decim
                 igulp_size = self.ntime_gulp*nchan*nstand*npol        # 4+4 complex
-                ogulp_size = ochan*nstand*npol*nstand*npol*8            # complex64
+                ogulp_size = ochan*nstand*(nstand+1)//2*npol*npol*8   # 32+32 complex
                 ishape = (self.ntime_gulp,nchan,nstand*npol)
-                oshape = (ochan,nstand*npol,nstand*npol)
+                oshape = (ochan,nstand*(nstand+1)//2*npol*npol)
                 
                 # Figure out where we need to be in the buffer to be at a second boundary
                 ticksPerTime = int(FS) // int(CHAN_BW)
@@ -892,19 +895,35 @@ class CorrelatorOp(object):
                             ## Copy
                             copy_array(self.tdata, idata)
                             
-                            ## Unpack
-                            self.udata = self.udata.reshape(*self.tdata.shape)
-                            Unpack(self.tdata, self.udata)
-
-                            ## Decimate
-                            self.udata = self.udata.reshape(-1,ochan,self.decim,nstand*npol)
-                            self.ddata = self.ddata.reshape(-1,ochan,1,nstand*npol)
-                            Reduce(self.udata, self.ddata, op='sum')
-                            self.ddata = self.ddata.reshape(-1,ochan,nstand*npol)
+                            ## Unpack and decimate
+                            BFMap("""
+                                  // Unpack into real and imaginary, and then sum
+                                  int jF;
+                                  signed char sample, re, im;
+                                  re = im = 0;
+                                  
+                                  #pragma unroll
+                                  for(int l=0; l<DECIM; l++) {
+                                      jF = j*DECIM + l;
+                                      sample = a(i,jF,k).real_imag;
+                                      re += ((signed char)  (sample & 0xF0))       / 16;
+                                      im += ((signed char) ((sample & 0x0F) << 4)) / 16;
+                                  }
+                                  
+                                  // Save
+                                  b(i,j,k) = Complex<signed char>(re, im);
+                                  """,
+                                  {'a': self.tdata, 'b': self.udata},
+                                  axis_names=('i','j','k'),
+                                  shape=(self.ntime_gulp,ochan,nstand*npol),
+                                  extra_code="#define DECIM %i" % (self.decim,)
+                                 )
                             
                             ## Correlate
-                            cscale = 1.0 if nAccumulate else 0.0
-                            self.cdata = self.bfcc.matmul(gain_act, None, self.ddata.transpose((1,0,2)), cscale, self.cdata)
+                            corr_dump = 0
+                            if base_time_tag % navg_mod_value == 0:
+                                corr_dump = 1
+                            self.bfcc.execute(self.udata, self.cdata, corr_dump)
                             nAccumulate += self.ntime_gulp
                             
                             curr_time = time.time()
@@ -914,9 +933,8 @@ class CorrelatorOp(object):
                             ## Dump?
                             if base_time_tag % navg_mod_value == 0:
                                 with oseq.reserve(ogulp_size) as ospan:
-                                    odata = ospan.data_view(np.complex64).reshape(oshape)
+                                    odata = ospan.data_view('ci32').reshape(oshape)
                                     odata[...] = self.cdata
-                                    BFSync()
                                 nAccumulate = 0
                             curr_time = time.time()
                             reserve_time = curr_time - prev_time
@@ -1050,9 +1068,6 @@ class PacketizeOp(object):
         ## Metadata
         nchan = self.nchan_max
         nstand, npol = nroach*16, 2
-        ## Intermidiate arrays
-        ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
-        self.ldata = BFArray(shape=(nchan,nstand,npol,nstand,npol), dtype=np.complex64, space='cuda_host')
         
     def main(self):
         global ACTIVE_COR_CONFIG
@@ -1085,8 +1100,8 @@ class PacketizeOp(object):
                 gain   = ihdr['gain']
                 time_tag0 = ihdr['start_tag'] #iseq.time_tag
                 time_tag  = time_tag0
-                igulp_size = nchan*nstand*npol*nstand*npol*8
-                ishape = (nchan,nstand,npol,nstand,npol)
+                igulp_size = nchan*nstand*(nstand+1)//2*npol*npol*8    # 32+32 complex
+                ishape = (nchan,nstand*(nstand+1)//2,npol,npol)
                 
                 desc.set_chan0(chan0)
                 desc.set_gain(gain)
@@ -1096,6 +1111,8 @@ class PacketizeOp(object):
                 ticksPerFrame = int(round(navg*0.01*FS))
                 tInt = int(round(navg*0.01))
                 tBail = navg*0.01 - 0.2
+                
+                scale_factor = navg * int(CHAN_BW / 100)
                 
                 rate_limit = (7.7*(nchan/72.0)*10/(navg*0.01-0.5)) * 1024**2
                 
@@ -1113,16 +1130,23 @@ class PacketizeOp(object):
                         acquire_time = curr_time - prev_time
                         prev_time = curr_time
                         
-                        idata = ispan.data_view(np.complex64).reshape(ishape)
+                        idata = ispan.data_view('ci32').reshape(ishape)
                         t0 = time.time()
-                        copy_array(self.ldata, idata)
-                        odata = self.ldata.transpose(3,1,0,4,2)
+                        odata = idata.view(np.int32)
+                        odata = odata.reshape(ishape+(2,))
+                        odata = odata[...,0] + 1j*odata[...,1]
+                        odata = odata.transpose(1,0,2,3)
+                        odata = odata.astype(np.complex64) / scale_factor
                         
                         bytesSent, bytesStart = 0, time.time()
                         
                         time_tag_cur = time_tag + 0*ticksPerFrame
+                        k = 0
                         for i in range(nstand):
-                            sdata = odata[i,i:,:,:].copy(space='system')
+                            sdata = BFArray(shape=(1,nstand-i,nchan,npol,npol), dtype='cf32')
+                            for j in range(i, nstand):
+                                sdata[0,j-i,:,:,:] = odata[k,:,:,:]
+                                k += 1
                             sdata = sdata.reshape(1,-1,nchan*npol*npol)
                             
                             try:
@@ -1308,7 +1332,7 @@ def main(argv):
     capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
-    vis_ring     = Ring(name="vis-%i" % tuning, space='cuda')
+    vis_ring     = Ring(name="vis-%i" % tuning, space='cuda_host')
     
     tbf_buffer_secs = int(round(config['tbf']['buffer_time_sec']))
     

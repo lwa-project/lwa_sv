@@ -90,6 +90,27 @@ if [ `whoami` != "root" ]; then
 fi
 
 #
+# TCC setup function
+#
+
+build_tcc() {
+	## Path setup for CUDA
+	PATH=$PATH:/usr/local/cuda/bin
+	
+	## The Bifrost source to build against
+	BIFROST_PATH=`grep -e "BIFROST_INCLUDE" config/servers/adp-tbn.service | sed -e 's/.*=//g;s/\/src\/bifrost//g;'`
+	
+	cdir=`pwd`
+	cd bifrost_tcc_wrapper/tensor-core-correlator
+	make clean
+	make
+	
+	cd ${cdir}
+	cd bifrost_tcc_wrapper/bifrost
+	python3 make_bifrost_plugin.py -b ${BIFROST_PATH} btcc.cu
+}
+
+#
 # Configuration
 #
 
@@ -110,13 +131,17 @@ fi
 
 if [ "${DO_SOFTWARE}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/scripts
+	TCC_PATH=/home/adp/lwa_sv/bifrost_tcc_wrapper/bifrost
 	DST_PATH=/usr/local/bin
+	
+	build_tcc
 	
 	for node in `seq 0 6`; do
 		if [ "${node}" == "0" ]; then
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_control.py ${SRC_PATH}/adp_tengine.py ${SRC_PATH}/adp_enable_triggering.py adp${node}:${DST_PATH}/
 		else
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_tbn.py ${SRC_PATH}/adp_drx.py adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${TCC_PATH}/bt*.py ${TCC_PATH}/*.so* adp${node}:${DST_PATH}/
 		fi
 	done
 fi
@@ -167,4 +192,3 @@ if [ "${DO_QUERY}" == "1" ]; then
                 fi
         done
 fi
-

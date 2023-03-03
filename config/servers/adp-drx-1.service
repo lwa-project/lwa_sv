@@ -24,7 +24,7 @@ ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
 
 # Setup the environment
 Environment=BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost
-Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:$LD_LIBRARY_PATH
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:/usr/local/bin:$LD_LIBRARY_PATH
 Environment=PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH
 
 Environment=LD_PRELOAD=libvma.so
@@ -37,7 +37,7 @@ Environment=VMA_MTU=9000
 
 Environment=PYTHONUNBUFFERED=1
 
-ExecStart=/bin/bash -ec '\
+ExecStart=/bin/bash -ec 'cd /usr/local/bin && \
 numactl --cpunodebind=1 --membind=1 -- \
 python3 /usr/local/bin/adp_drx.py \
 	 --tuning     1 \
