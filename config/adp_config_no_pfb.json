@@ -1,0 +1,163 @@
+{
+    "shutdown_timeout":  5.0,
+    "monitor_interval":  120.0,
+    "failsafe_interval": 180.0,
+    "mcs": {
+        "headnode": {
+            "local_host":       "0.0.0.0",
+            "local_port":       1742,
+            "remote_host":      "10.1.2.2",
+            "remote_host_TEST": "localhost",
+            "remote_port":      1743
+        },
+        "server": {
+            "local_host": "0.0.0.0",
+            "local_port": 1752
+        }
+    },
+    "host": {
+        "servers": ["adp1","adp2","adp3","adp4","adp5","adp6"],
+        "roaches": ["roach1", "roach2", "roach3", "roach4",
+                    "roach5", "roach6", "roach7", "roach8",
+                    "roach9", "roach10","roach11","roach12",
+                    "roach13","roach14","roach15","roach16"],
+        "servers-data": ["mcg40s1-data", "mcg40s2-data", "mcg40s3-data",
+                         "mcg40s4-data", "mcg40s5-data", "mcg40s6-data"],
+        "tengines": ["adp-data", "adp-data"],
+        "servers-tbn": ["mcg40s1-data", "mcg40s1-data", "mcg40s1-data",
+                        "mcg40s2-data", "mcg40s2-data", "mcg40s2-data",
+                        "mcg40s3-data", "mcg40s3-data", "mcg40s3-data",
+                        "mcg40s4-data", "mcg40s4-data", "mcg40s4-data",
+                        "mcg40s5-data", "mcg40s5-data", "mcg40s5-data",
+                        "mcg40s6-data"]
+    },
+    "ipmi": {
+        "username": "admin",
+        "password": "admin"
+    },
+    "drx": [
+            {
+                "capture_bandwidth": 19.8e6,
+                "beam_count":        2,
+                "pipeline_idx":      0,
+                "tengine_idx":       0,
+                "tbf_recorder_idx":  0,
+                "cor_recorder_idx":  4,
+                "cpus":              [0, 2, 3, 4, 5],
+                "gpus":              [0]
+            }, 
+            {
+                "capture_bandwidth": 19.8e6,
+                "beam_count":        2,
+                "pipeline_idx":      1,
+                "tengine_idx":       1,
+                "tbf_recorder_idx":  0,
+                "cor_recorder_idx":  4,
+                "cpus":              [8, 9, 10, 11, 12],
+                "gpus":              [1]
+            }
+    ],
+    "tbf": {
+        "buffer_time_sec":  5.0
+    },
+    "tbn": {
+        "capture_bandwidth": 200e3,
+        "pipeline_idx":      2,
+        "recorder_idx":      3,
+        "cpus":              [1, 13, 13],
+        "gpus":              [1]
+    },
+    "fst": {
+        "control_ports":  [23720, 23721],
+        "default_coeffs": "default_coeffs.cf"
+    },
+    "log": {
+        "days_per_file":  30,
+        "max_file_count":  6,
+        "msg_format":     "%(asctime)s [%(levelname)-8s] %(message)s",
+        "stats_format":   "[%(asctime)s] %(message)s",
+        "date_format":    "%Y-%m-%d %H:%M:%S",
+        "files": {
+            "server_temps": "/home/adp/log/server_temps.log",
+            "roach_temps":  "/home/adp/log/roach_temps.log"
+        }
+    },
+    "server": {
+        "username":        "root",
+        "password":        "130Jy/K",
+        "cpu_ids":         [0, 1],
+        "gpu_ids":         [0, 1],
+        "disk_ids":        ["/"],
+        "data_ports":      [4015, 4016, 4017, 4018],
+        "data_ifaces":     ["p5p1", "p5p1", "p5p1", "p5p1"],
+        "startup_timeout": 240,
+        "temperatures": ["CPU1 Temperature", "CPU2 Temperature",
+                         "TR1 Temperature",  "TR2 Temperature",
+                         "PSU1 Temperature", "PSU2 Temperature"],
+        "temperature_warning":  80.0,
+        "temperature_shutdown": 85.0,
+        "temperature_scram":    90.0
+    },
+    "roach": {
+        "port":                 7147,
+        "username":             "root",
+        "password":             "130Jy/K",
+        "data_ip_base":         "192.168.40.50",
+        "data_port_base":       4000,
+        "firmware_old":         "sevietta_devel_2017h_2017_May_02_1407.bof",
+        "firmware":             "sevietta_devel_2018e_2018_May_10_0619.bof", 
+        "max_program_attempts": 15,
+        "adc_gain":             4,
+        "scale_factor":         1.948,
+        "shift_factor":         27,
+        "equalizer_coeffs":     "/usr/local/share/adp/equalizer.txt",
+        "bypass_pfb":           true,
+        "temperatures":         ["ambient", "ppc", "fpga", "inlet", "outlet"],
+        "temperature_warning":  80.0,
+        "temperature_shutdown": 85.0,
+        "temperature_scram":    90.0
+    },
+    "tengine": [
+                {
+                    "pipeline_idx":      0,
+                    "recorder_idx":      [0, 1, 2],
+                    "cpus":              [0, 2, 3],
+                    "gpus":              [0],
+                    "pfb_inverter":      false
+                },
+                {
+                    "pipeline_idx":      1,
+                    "recorder_idx":      [0, 1, 2],
+                    "cpus":              [8, 9, 10],
+                    "gpus":              [1],
+                    "pfb_inverter":      false
+                }
+    ],
+    "recorder": [
+                {
+                    "host":              "mcg40-dr1", 
+                    "port":              10000,
+                    "max_bytes_per_sec": 104851000
+                },
+                {
+                    "host":              "mcg40-dr2", 
+                    "port":              10000,
+                    "max_bytes_per_sec": 104851000
+                },
+                {
+                    "host":              "mcg40-dr3", 
+                    "port":              10000,
+                    "max_bytes_per_sec": 104851000
+                },
+                {
+                    "host":              "mcg40-dr4", 
+                    "port":              10000,
+                    "max_bytes_per_sec": 104851000
+                },
+                {
+                    "host":              "orville",
+                    "port":              11000,
+                    "max_bytes_per_sec": 104851000
+                }
+    ]
+}
