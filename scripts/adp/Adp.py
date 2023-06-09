@@ -2338,12 +2338,24 @@ class MsgProcessor(ConsumerThread):
             mode = msg.data # TBN/TBF/BEAMn/COR
             if mode == 'DRX':
                 # TODO: This is not actually part of the spec (useful for debugging?)
-                exit_status = self.drx.stop()
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    exit_status = self.drx.stop()
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode == 'TBN':
-                exit_status = self.tbn.stop()
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    exit_status = self.tbn.stop()
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode == 'TBF':
-                self.state['lastlog'] = "UNIMPLEMENTED STP request"
-                exit_status = -1 # TODO: Implement this
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    self.state['lastlog'] = "UNIMPLEMENTED STP request"
+                    exit_status = -1 # TODO: Implement this
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode.startswith('BEAM'):
                 self.state['lastlog'] = "UNIMPLEMENTED STP request"
                 exit_status = -1 # TODO: Implement this
@@ -2365,15 +2377,35 @@ class MsgProcessor(ConsumerThread):
                 self.state['lastlog'] = "Invalid STP request"
                 exit_status = -1
         elif msg.cmd == 'DRX':
-            exit_status = self.drx.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.drx.process_command(msg)
+            else:
+                self.state['lastlog'] = "DRX: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'TBF':
-            exit_status = self.tbf.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.tbf.process_command(msg)
+            else:
+                self.state['lastlog'] = "TBF: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'BAM':
-            exit_status = self.bam.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.bam.process_command(msg)
+            else:
+                self.state['lastlog'] = "BAM: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'COR':
-            exit_status = self.cor.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.cor.process_command(msg)
+            else:
+                self.state['lastlog'] = "COR: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'TBN':
-            exit_status = self.tbn.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.tbn.process_command(msg)
+            else:
+                self.state['lastlog'] = "TBN: Subsystem is not ready"
+                exit_status = 99
         else:
             exit_status = 0
             accept = False
