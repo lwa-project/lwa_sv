@@ -335,7 +335,7 @@ class TEngineOp(object):
                 
                 igulp_size = self.ntime_gulp*nchan*nstand*npol*8                # complex64
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
-                ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1       # 4+4 complex
+                ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*2       # 8+8 complex
                 oshape = (self.ntime_gulp*self.nchan_out,nstand,npol)
                 self.iring.resize(igulp_size, 15*igulp_size)
                 self.oring.resize(ogulp_size)#, ogulp_size)
@@ -382,7 +382,7 @@ class TEngineOp(object):
                                 
                                 ## Setup and load
                                 idata = ispan.data_view(np.complex64).reshape(ishape)
-                                odata = ospan.data_view(np.int8).reshape((1,)+oshape)
+                                odata = ospan.data_view(np.int8).reshape((1,)+oshape+(2,))
                                 
                                 ### From here until going to the output ring we are on the GPU
                                 copy_array(self.bdata, idata)
@@ -467,7 +467,7 @@ class TEngineOp(object):
                                 try:
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                 except NameError:
-                                    qdata = BFArray(shape=gdata3.shape, native=False, dtype='ci4', space='cuda')
+                                    qdata = BFArray(shape=gdata3.shape, native=False, dtype='ci8', space='cuda')
                                     Quantize(fdata, qdata, scale=8./(2**act_gain * np.sqrt(self.nchan_out)))
                                     
                                 ## Save
@@ -575,7 +575,7 @@ class MultiPacketizeOp(object):
         
         self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
         
-        udts = [UDPTransmit('drx', sock=sock, core=self.core) for sock in self.socks]
+        udts = [UDPTransmit('drx8', sock=sock, core=self.core) for sock in self.socks]
         desc = HeaderInfo()
         
         for isequence in self.iring.read():
@@ -604,7 +604,7 @@ class MultiPacketizeOp(object):
             soffset = toffset % (NPACKET_SET*int(ntime_pkt))
             if soffset != 0:
                 soffset = NPACKET_SET*ntime_pkt - soffset
-            boffset = soffset*nbeam*npol
+            boffset = soffset*nbeam*npol*2
             print('!!', '@', self.beam0, toffset, '->', (toffset*int(round(bw))), ' or ', soffset, ' and ', boffset)
             
             time_tag += soffset*ticksPerSample                  # Correct for offset
@@ -622,7 +622,7 @@ class MultiPacketizeOp(object):
                 prev_time = curr_time
                 
                 shape = (-1,nbeam,npol)
-                data = ispan.data_view('ci4').reshape(shape)
+                data = ispan.data_view('ci8').reshape(shape)
                 pkts = [data[:,b,:].reshape(-1,ntime_pkt,npol).transpose(0,2,1).copy() for b in range(nbeam)]
                 
                 for t in range(0, pkts[0].shape[0], NPACKET_SET):
