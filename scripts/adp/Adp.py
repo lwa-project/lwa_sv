@@ -1026,8 +1026,8 @@ class MsgProcessor(ConsumerThread):
             self.log.info('Processing internal trigger at %.6fs', 1.0*timestamp/FS)
             # Wait 1 second to make sure the data is in the buffer
             time.sleep(1.0)
-            # Dump 1000 ms of data locally from both tunings, starting 500 ms prior to the trigger
-            self.messageServer.trigger(timestamp-98000000, 196000000, 3, local=True)
+            # Dump 1000 ms of data locally from both tunings, starting 250 ms prior to the trigger
+            self.messageServer.trigger(timestamp-49000000, 196000000, 3, local=True)
             
     def start_internal_trigger_thread(self):
         self.internal_trigger_server = ISC.InternalTriggerProcessor(deadtime=200, 
