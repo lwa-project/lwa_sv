@@ -708,6 +708,16 @@ class AdpServerMonitorClient(object):
         #except RuntimeError:
         except subprocess.CalledProcessError:
             return False
+            
+    def can_bifrost(self):
+        try:
+            #with lock:
+            ret = self._shell_command('su -c \'whoami && BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:/usr/local/bin:$LD_LIBRARY_PATH python -c "import bifrost"\' adp')
+            return True
+            #except socket.error:
+        #except RuntimeError:
+        except subprocess.CalledProcessError:
+            return False
 
 
 # TODO: Rename this (and possibly refactor)
@@ -1182,6 +1192,26 @@ class MsgProcessor(ConsumerThread):
         can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
         self.log.info("Can ssh: "+can_ssh_status)
         if all(self.servers.can_ssh()) or 'FORCE' in arg:
+            ## Check the GPU state
+            can_bifrost_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
+            self.log.info("Can bifrost: "+can_bifrost_status)
+            
+            ## Reboot any servers that can't load Bifrost
+            any_rebooted = False
+            for i in range(len(can_bifrost_status)):
+                if can_bifrost_status[i] == 'x':
+                    self.servers[i].do_power('soft')
+                    any_rebooted = True
+                    
+            ## Wait on the rebooted ones (if any)
+            if any_rebooted:
+                startup_timeout = self.config['server']['startup_timeout']
+                try:
+                    self._wait_until_servers_can_ssh(    startup_timeout)
+                except RuntimeError:
+                    if 'FORCE' not in arg:
+                        return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+                        
             self.log.info("Restarting pipelines")
             for tuning in range(len(self.config['drx'])):
                 if not self.check_success(lambda: self.headnode.restart_tengine(tuning=tuning),
