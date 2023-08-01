@@ -1293,11 +1293,11 @@ class MsgProcessor(ConsumerThread):
         markR = self.roaches[0].roach.fpga.read_uint('adc_sync_count')
         self.log.info("Server: %i + %.6f", int(markS), markS-int(markS))
         self.log.info("Roach: %i + %.6f", markR, 1.0*(markP/markN)/CHAN_BW)
-        utc_start     = datetime.datetime.utcfromtimestamp(int(markS) - markR) + datetime.timedelta(seconds=1)
+        utc_start     = datetime.datetime.utcfromtimestamp(int(round(markS)) - markR) + datetime.timedelta(seconds=1)
         utc_start_str = utc_start.strftime(DATE_FORMAT)
         self.state['lastlog'] = "Processing started at UTC "+utc_start_str
         self.log.info("Processing started at UTC "+utc_start_str)
-        if utc_start_str != self.utc_start_str:
+        if abs(markS - int(round(markS))) > 0.005 or utc_start_str != self.utc_start_str:
             self.log.error("Processing start time mis-match")
             return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
             
