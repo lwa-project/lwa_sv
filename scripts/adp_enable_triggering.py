@@ -103,8 +103,8 @@ def main(args):
 			lightning_coeffs = numpy.ones(NCHAN, 'l')
 			
 		# Shift and scale both sets of coefficients
-		equalizer_coeffs = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor * equalizer_coeffs
-		lightning_coeffs = np.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor * lightning_coeffs
+		equalizer_coeffs = numpy.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor * equalizer_coeffs
+		lightning_coeffs = numpy.ones(4096, 'l') * ((1<<shift_factor) - 1) * scale_factor * lightning_coeffs
 		
 		# Connect to the ROACH2s
 		roaches = []
