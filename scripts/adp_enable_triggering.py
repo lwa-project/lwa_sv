@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import sys
+import json
 import time
 import numpy
 import getopt
@@ -81,7 +82,7 @@ def main(args):
     else:
         # Load in the base ADP configuration
         with open('/usr/local/share/adp/adp_config.json', 'r') as fh:
-            adp_conf = json.load(fh)
+            adp_config = json.load(fh)
             roach_config = adp_config['roach']
             roach_config['host'] = adp_config['host']['roaches']
             
@@ -162,10 +163,6 @@ def main(args):
                 if not success:
                     print("WARNING: Failed to update equalizer coefficients on '%s'" % roach_config['host'][r])
                     
-        # Close out the roach connections
-        for roach in roaches:
-            roach.close()
-            
     print("ADP Triggering: %s" % ('enabled' if active else 'disabled',))
 
 
