@@ -109,7 +109,7 @@ def main(args):
 		# Connect to the ROACH2s
 		roaches = []
 		for roach in roach_config['host']:
-			roaches.append(corr.katcp_wrapper.FpgaClient(roach, roach_config['port'], timeout=1.0)
+			roaches.append(corr.katcp_wrapper.FpgaClient(roach, roach_config['port'], timeout=1.0))
 			
 		if config['enable'] and not active:
 			## Set the new equalizer coefficients
