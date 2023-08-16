@@ -206,6 +206,7 @@ class CopyOp(object):
                                         sdata = sdata[:,:,to_keep]
                                         if tchan != nchan:
                                             sdata = sdata[:,:tchan,:]
+                                        sdata = sdata.copy()
                                         sdata = BFArray(shape=sdata.shape, dtype='ci4', native=False, buffer=sdata.ctypes.data)
                                         
                                         Unpack(sdata, udata)
