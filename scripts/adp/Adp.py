@@ -708,6 +708,16 @@ class AdpServerMonitorClient(object):
         #except RuntimeError:
         except subprocess.CalledProcessError:
             return False
+            
+    def can_bifrost(self):
+        try:
+            #with lock:
+            ret = self._shell_command('su -c \'whoami && BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:/usr/local/bin:$LD_LIBRARY_PATH python -c "import bifrost"\' adp')
+            return True
+            #except socket.error:
+        #except RuntimeError:
+        except subprocess.CalledProcessError:
+            return False
 
 
 # TODO: Rename this (and possibly refactor)
@@ -1026,8 +1036,8 @@ class MsgProcessor(ConsumerThread):
             self.log.info('Processing internal trigger at %.6fs', 1.0*timestamp/FS)
             # Wait 1 second to make sure the data is in the buffer
             time.sleep(1.0)
-            # Dump 1000 ms of data locally from both tunings, starting 500 ms prior to the trigger
-            self.messageServer.trigger(timestamp-98000000, 196000000, 3, local=True)
+            # Dump 1000 ms of data locally from both tunings, starting 250 ms prior to the trigger
+            self.messageServer.trigger(timestamp-49000000, 196000000, 3, local=True)
             
     def start_internal_trigger_thread(self):
         self.internal_trigger_server = ISC.InternalTriggerProcessor(deadtime=200, 
@@ -1182,6 +1192,26 @@ class MsgProcessor(ConsumerThread):
         can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
         self.log.info("Can ssh: "+can_ssh_status)
         if all(self.servers.can_ssh()) or 'FORCE' in arg:
+            ## Check the GPU state
+            can_bifrost_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
+            self.log.info("Can bifrost: "+can_bifrost_status)
+            
+            ## Reboot any servers that can't load Bifrost
+            any_rebooted = False
+            for i in range(len(can_bifrost_status)):
+                if can_bifrost_status[i] == 'x':
+                    self.servers[i].do_power('soft')
+                    any_rebooted = True
+                    
+            ## Wait on the rebooted ones (if any)
+            if any_rebooted:
+                startup_timeout = self.config['server']['startup_timeout']
+                try:
+                    self._wait_until_servers_can_ssh(    startup_timeout)
+                except RuntimeError:
+                    if 'FORCE' not in arg:
+                        return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+                        
             self.log.info("Restarting pipelines")
             for tuning in range(len(self.config['drx'])):
                 if not self.check_success(lambda: self.headnode.restart_tengine(tuning=tuning),
@@ -1263,11 +1293,11 @@ class MsgProcessor(ConsumerThread):
         markR = self.roaches[0].roach.fpga.read_uint('adc_sync_count')
         self.log.info("Server: %i + %.6f", int(markS), markS-int(markS))
         self.log.info("Roach: %i + %.6f", markR, 1.0*(markP/markN)/CHAN_BW)
-        utc_start     = datetime.datetime.utcfromtimestamp(int(markS) - markR) + datetime.timedelta(seconds=1)
+        utc_start     = datetime.datetime.utcfromtimestamp(int(round(markS)) - markR) + datetime.timedelta(seconds=1)
         utc_start_str = utc_start.strftime(DATE_FORMAT)
         self.state['lastlog'] = "Processing started at UTC "+utc_start_str
         self.log.info("Processing started at UTC "+utc_start_str)
-        if utc_start_str != self.utc_start_str:
+        if abs(markS - int(round(markS))) > 0.005 or utc_start_str != self.utc_start_str:
             self.log.error("Processing start time mis-match")
             return self.raise_error_state('INI', 'BOARD_CONFIGURATION_FAILED')
             
@@ -2338,12 +2368,24 @@ class MsgProcessor(ConsumerThread):
             mode = msg.data # TBN/TBF/BEAMn/COR
             if mode == 'DRX':
                 # TODO: This is not actually part of the spec (useful for debugging?)
-                exit_status = self.drx.stop()
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    exit_status = self.drx.stop()
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode == 'TBN':
-                exit_status = self.tbn.stop()
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    exit_status = self.tbn.stop()
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode == 'TBF':
-                self.state['lastlog'] = "UNIMPLEMENTED STP request"
-                exit_status = -1 # TODO: Implement this
+                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                    self.state['lastlog'] = "UNIMPLEMENTED STP request"
+                    exit_status = -1 # TODO: Implement this
+                else:
+                    self.state['lastlog'] = "STP: Subsystem is not ready"
+                    exit_status = 99
             elif mode.startswith('BEAM'):
                 self.state['lastlog'] = "UNIMPLEMENTED STP request"
                 exit_status = -1 # TODO: Implement this
@@ -2365,15 +2407,35 @@ class MsgProcessor(ConsumerThread):
                 self.state['lastlog'] = "Invalid STP request"
                 exit_status = -1
         elif msg.cmd == 'DRX':
-            exit_status = self.drx.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.drx.process_command(msg)
+            else:
+                self.state['lastlog'] = "DRX: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'TBF':
-            exit_status = self.tbf.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.tbf.process_command(msg)
+            else:
+                self.state['lastlog'] = "TBF: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'BAM':
-            exit_status = self.bam.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.bam.process_command(msg)
+            else:
+                self.state['lastlog'] = "BAM: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'COR':
-            exit_status = self.cor.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.cor.process_command(msg)
+            else:
+                self.state['lastlog'] = "COR: Subsystem is not ready"
+                exit_status = 99
         elif msg.cmd == 'TBN':
-            exit_status = self.tbn.process_command(msg)
+            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+                exit_status = self.tbn.process_command(msg)
+            else:
+                self.state['lastlog'] = "TBN: Subsystem is not ready"
+                exit_status = 99
         else:
             exit_status = 0
             accept = False

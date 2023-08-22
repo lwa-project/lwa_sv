@@ -108,7 +108,7 @@
         "firmware":             "sevietta_devel_2018e_2018_May_10_0619.bof", 
         "max_program_attempts": 15,
         "adc_gain":             4,
-        "scale_factor":         1.886,
+        "scale_factor":         1.295,
         "shift_factor":         28,
         "equalizer_coeffs":     "/usr/local/share/adp/equalizer.txt",
         "bypass_pfb":           false,
