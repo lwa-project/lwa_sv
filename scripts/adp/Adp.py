@@ -41,6 +41,7 @@ import threading
 import socket # For socket.error
 import json
 import hashlib
+import os
 
 __version__    = "0.3"
 __author__     = "Ben Barsdell, Daniel Price, Jayce Dowell"
