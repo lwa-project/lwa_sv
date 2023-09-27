@@ -17,6 +17,7 @@ from bifrost.ndarray import copy_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.reduce import reduce as Reduce
 from bifrost.quantize import quantize as Quantize
+from bifrost.transpose import transpose as Transpose
 from bifrost.libbifrost import bf
 from bifrost.proclog import ProcLog
 from bifrost.linalg import LinAlg
@@ -553,9 +554,8 @@ class BeamformerOp(object):
         self.cgains = BFArray(shape=(self.nbeam_max*2,nchan,nstand*npol), dtype=np.complex64, space='cuda')
         ## Intermidiate arrays
         ## NOTE:  This should be OK to do since the roaches only output one bandwidth per INI
-        self.tdata = BFArray(shape=(self.ntime_gulp,nchan,nstand*npol), dtype='ci4', native=False, space='cuda')
         self.bdata = BFArray(shape=(nchan,self.nbeam_max*2,self.ntime_gulp), dtype=np.complex64, space='cuda')
-        self.ldata = BFArray(shape=self.bdata.shape, dtype=self.bdata.dtype, space='cuda_host')
+        self.ldata = BFArray(shape=(self.ntime_gulp,nchan,self.nbeam_max*2), dtype=self.bdata.dtype, space='cuda')
         
         ##Read in the precalculated complex gains for all of the steps of the achromatic beams.
         hostname = socket.gethostname()
@@ -736,15 +736,12 @@ class BeamformerOp(object):
                             idata = ispan.data_view('ci4').reshape(ishape)
                             odata = ospan.data_view(np.complex64).reshape(oshape)
                             
-                            ## Copy
-                            copy_array(self.tdata, idata)
-                            
                             ## Beamform
-                            self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), self.tdata.transpose(1,2,0), 0.0, self.bdata)
+                            self.bdata = self.bfbf.matmul(1.0, self.cgains.transpose(1,0,2), idata.transpose(1,2,0), 0.0, self.bdata)
                             
                             ## Transpose, save and cleanup
-                            copy_array(self.ldata, self.bdata)
-                            odata[...] = self.ldata.transpose(2,0,1)
+                            Transpose(self.ldata, self.bdata, axes=(2,0,1))
+                            copy_array(odata, self.ldata)
                             
                         ## Update the base time tag
                         base_time_tag += self.ntime_gulp*ticksPerTime
@@ -974,9 +971,6 @@ class CorrelatorOp(object):
                             ## Setup and load
                             idata = ispan.data_view('ci4').reshape(ishape)
                             
-                            ## Copy
-                            copy_array(self.tdata, idata)
-                            
                             ## Unpack and decimate
                             BFMap("""
                                   // Unpack into real and imaginary, and then sum
@@ -995,7 +989,7 @@ class CorrelatorOp(object):
                                   // Save
                                   b(i,j,k) = Complex<signed char>(re, im);
                                   """,
-                                  {'a': self.tdata, 'b': self.udata},
+                                  {'a': idata, 'b': self.udata},
                                   axis_names=('i','j','k'),
                                   shape=(self.ntime_gulp,ochan,nstand*npol),
                                   extra_code="#define DECIM %i" % (self.decim,)
