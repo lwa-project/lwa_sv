@@ -1012,6 +1012,8 @@ class CorrelatorOp(object):
                                     odata = ospan.data_view('ci32').reshape(oshape)
                                     odata[...] = self.cdata
                                 nAccumulate = 0
+                            else:
+                                BFSync()
                             curr_time = time.time()
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
