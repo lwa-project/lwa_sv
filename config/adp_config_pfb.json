@@ -110,7 +110,7 @@
         "adc_gain":             4,
         "scale_factor":         1.295,
         "shift_factor":         28,
-        "equalizer_coeffs":     "/usr/local/share/adp/equalizer.txt",
+        "equalizer_coeffs":     "/usr/local/share/adp/equalizer_clipped.txt",
         "bypass_pfb":           false,
         "temperatures":         ["ambient", "ppc", "fpga", "inlet", "outlet"],
         "temperature_warning":  80.0,
