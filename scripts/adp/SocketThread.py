@@ -33,15 +33,17 @@ class UDPRecvThread(threading.Thread):
         self.socket.shutdown(socket.SHUT_RD)
         self.socket.close()
     def run(self):
-        while True:#not self.stop_requested.is_set():
-            #pkt = self.socket.recv(self._bufsize)
-            pkt, src_addr = self.socket.recvfrom(self._bufsize)
+        while True:
+            try:
+                pkt, src_addr = self.socket.recvfrom(self._bufsize)
+            except Exception as e:
+                print("WARNING: Error during recvfrom(): %s" % str(e))
+                pkt, src_addr = None, None
             if self.stop_requested.is_set():
                 break
-            #if pkt == UDPRecvThread.STOP:
-            #	break
-            src_ip = src_addr[0]
-            self.process(pkt, src_ip)
+            if pkt is not None:
+                src_ip = src_addr[0]
+                self.process(pkt, src_ip)
         self.shutdown()
     def process(self, pkt, src_ip):
         """Overide this in subclass"""
