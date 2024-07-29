@@ -713,7 +713,7 @@ class AdpServerMonitorClient(object):
     def can_bifrost(self):
         try:
             #with lock:
-            ret = self._shell_command('su -c \'whoami && BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:/usr/local/bin:$LD_LIBRARY_PATH python -c "import bifrost"\' adp')
+            ret = self._shell_command('su -c \'whoami && BIFROST_INCLUDE_PATH=/home/adp/bifrost8_verbs_py3/src/bifrost PYTHONPATH=/home/adp/lwa_sv/scripts:/home/adp/bifrost8_verbs_py3/python:$PYTHONPATH LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/adp/bifrost8_verbs_py3/lib:/usr/local/bin:$LD_LIBRARY_PATH python -c "import bifrost; bifrost.device.set_devices_no_spin_cpu()"\' adp')
             return True
             #except socket.error:
         #except RuntimeError:
