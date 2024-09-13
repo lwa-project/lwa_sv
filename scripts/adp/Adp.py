@@ -1460,16 +1460,26 @@ class MsgProcessor(ConsumerThread):
             for line in output:
                 #self.log.info('Log line - sync: %s', line.rstrip())
                 if line.startswith('roach'):
-                    _, offset = line.split(None, 1)
-                    offsets.append( int(offset, 10) )
+                    r, offset = line.split(None, 1)
+                    offsets.append( [r, int(offset, 10)] )
                     
             # Check
             nZero = 0
-            for offset in offsets:
+            syncd, notSyncd = [], []
+            for r,offset in offsets:
                 if offset == 0:
                     nZero += 1
+                    syncd.append(r)
+                else:
+                    notSyncd.append(r)
             nZero = max([nZero, 16-nZero])
             self.log.info('There are %i roach boards in sync.', nZero)
+            if len(syncd) > len(notSyncd):
+                for r in notSyncd:
+                    self.log.info('  %s is out of sync', r)
+            else:
+                for r in syncd:
+                    self.log.info('  %s is out of sync', r)
             if nZero == 16:
                 status &= True
             else:
