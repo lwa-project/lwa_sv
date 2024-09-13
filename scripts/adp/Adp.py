@@ -1473,13 +1473,11 @@ class MsgProcessor(ConsumerThread):
                 else:
                     notSyncd.append(r)
             nZero = max([nZero, 16-nZero])
+            if len(notSyncd) > len(syncd):
+                notSyncd = syncd
             self.log.info('There are %i roach boards in sync.', nZero)
-            if len(syncd) > len(notSyncd):
-                for r in notSyncd:
-                    self.log.info('  %s is out of sync', r)
-            else:
-                for r in syncd:
-                    self.log.info('  %s is out of sync', r)
+            for r in notSyncd:
+                self.log.info('  %s is out of sync', r)
             if nZero == 16:
                 status &= True
             else:
