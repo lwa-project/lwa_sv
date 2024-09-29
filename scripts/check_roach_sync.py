@@ -4,6 +4,7 @@
 import os
 import sys
 import numpy as np
+import argparse
 
 from lsl.reader import tbf, errors
 from lsl.astro import MJD_OFFSET
