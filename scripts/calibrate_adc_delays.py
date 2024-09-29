@@ -190,7 +190,7 @@ if __name__ == "__main__":
             description='perform a simple cross-correlation to find the ADC delays',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
             )
-    parser.add_argument('filename', type=str, nargs='+'
+    parser.add_argument('filename', type=str, nargs='+',
                         help='TBF filename to process')
     parser.add_argument('-b', '--bad-roaches', type=str,
                         help='comma-separated list of roach hostnames that are out of sync')
