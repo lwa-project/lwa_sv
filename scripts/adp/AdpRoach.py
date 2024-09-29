@@ -25,6 +25,7 @@ class AdpRoach(object):
         # Note: number is the 1-based index of the roach
         self.num  = number
         self.port = port
+        self.is_marked_bad = False
         self.connect()
         
         # State variable
@@ -34,6 +35,9 @@ class AdpRoach(object):
     def hostname(self):
         # TODO: Should really get this from an argument to __init__
         return "roach%i" % self.num
+        
+    def mark_bad(self):
+        self.is_marked_bad = True
         
     def connect(self):
         self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)

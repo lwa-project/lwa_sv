@@ -742,7 +742,17 @@ class Roach2MonitorClient(object):
         except Exception as e:
             self.log.warning("Failed to load equalizer coefficients: %s", str(e))
             
+        if self.roach.hostname in self.config['hosts']['bad_roaches']:
+            self.roach.mark_bad()
+            self.device.mark_bad()
+            
+    def is_marked_bad(self):
+        return self.roach.is_marked_bad
+        
     def unprogram(self, reboot=False):
+        if self.is_marked_bad():
+            return
+            
         if not reboot:
             self.roach.unprogram()
             return
@@ -766,15 +776,24 @@ class Roach2MonitorClient(object):
                 raise RuntimeError("Roach reboot command failed")
                 
     def get_samples(self, slot, stand, pol, nsamps=None):
+        if self.is_marked_bad():
+            return np.zeros(nsamps)
+            
         return self.get_samples_all(slot, nsamps)[stand,pol]
         
     @lru_cache_method(maxsize=4)
     def get_samples_all(self, slot, nsamps=None):
         """Returns an NDArray of shape (stand,pol,sample)"""
+        if self.is_marked_bad():
+            return np.zeros((16,2,nsamps))
+            
         return self.device.samples_all(nsamps).transpose([1,2,0])
         
     @lru_cache_method(maxsize=4)
     def get_temperatures(self, slot):
+        if self.is_marked_bad:
+            return {'error': float('nan')}
+            
         try:
             return self.device.temperatures()
         except:
@@ -784,6 +803,9 @@ class Roach2MonitorClient(object):
         # Program with ADP firmware
         # Note: ADCs must be re-calibrated after doing this
         
+        if self.is_marked_bad():
+            return
+            
         ## Firmware
         boffile        = self.config['roach']['firmware']
         ## Channel setup for each GbE interfaces
@@ -808,6 +830,9 @@ class Roach2MonitorClient(object):
                         adc_registers=adc_registers, max_attempts=max_attempts, bypass_pfb=bypass_pfb)
                         
     def is_programmed(self):
+        if self.is_marked_bad():
+            return True
+            
         status = False
         try:
             self.roach.check_link(0)
@@ -817,6 +842,9 @@ class Roach2MonitorClient(object):
         return status
         
     def configure_dual_mode(self):
+        if self.is_marked_bad():
+            return
+            
         try:
             self.roach.stop_processing()
             # DRX, tuning 0 on gbe0, DRX, tuning 1 on gbe1, TBN on gbe2
@@ -851,6 +879,9 @@ class Roach2MonitorClient(object):
             
     @ISC.logException
     def configure_adc_delay(self, index, delay, relative=False):
+        if self.is_marked_bad():
+            return
+            
         if relative:
             currDelay = self.roach.read_adc_delay(index)
             delay += currDelay
@@ -867,6 +898,9 @@ class Roach2MonitorClient(object):
         scale_factor = self.config['roach']['scale_factor']
         if shift_factor is None:
             shift_factor = self.config['roach']['shift_factor']
+            
+        if self.is_marked_bad():
+            return chan0
             
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
         self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
@@ -885,6 +919,9 @@ class Roach2MonitorClient(object):
         if shift_factor is None:
             shift_factor = self.config['roach']['shift_factor']
             
+        if self.is_marked_bad():
+            return chan0
+            
         self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
                                                           equalizer_coeffs=self.equalizer_coeffs)
         return chan0
@@ -899,6 +936,9 @@ class Roach2MonitorClient(object):
         self.roach.stop_processing()
         
     def processing_started(self):
+        if self.is_marked_bad():
+            return True
+            
         return self.roach.processing_started()
         
     def enable_drx_data(self, tuning):
@@ -916,6 +956,9 @@ class Roach2MonitorClient(object):
         self.roach.disable_data(self.GBE_TBN)
         
     def drx_data_enabled(self, tuning):
+        if self.is_marked_bad():
+            return True
+            
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
         return self.roach.data_enabled(gbe)
         
@@ -1447,7 +1490,10 @@ class MsgProcessor(ConsumerThread):
                 
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Verify the offsets
-            output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/check_roach_sync.py %s" % ' '.join(filenames), shell=True)
+            cargs = ''
+            if len(self.config['hosts']['bad_roaches']) > 0:
+                cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+            output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/check_roach_sync.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
             
             # Load in the delays\
             try:
@@ -1530,7 +1576,10 @@ class MsgProcessor(ConsumerThread):
                 
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Solve for the delays
-            output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
+            cargs = ''
+            if len(self.config['hosts']['bad_roaches']) > 0:
+                cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+            output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
             
             # Load in the delays
             try:
@@ -1585,7 +1634,10 @@ class MsgProcessor(ConsumerThread):
             filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
             if len(filenames) >= 6 or 'FORCE' in arg:
                 # Verify the delays
-                output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s" % ' '.join(filenames), shell=True)
+                cargs = ''
+                if len(self.config['hosts']['bad_roaches']) > 0:
+                    cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+                output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
                 
                 # Load in the delays
                 try:

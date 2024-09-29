@@ -109,11 +109,15 @@ class ROACH2Device(object):
     def __init__(self, host, port=7147):
         self.host = host
         self.port = port
+        self.is_marked_bad = False
         self.fpga = corr.katcp_wrapper.FpgaClient(host, port)
         time.sleep(0.1)
+    def mark_bad(self):
+        self.is_marked_bad = True
     def samples(self, stand, pol, nsamps=None):
         if nsamps > 1024:
             raise ValueError("Requested nsamps exceeds limit of 1024")
+        if self.is_marked_bad()
         data = self._read_samples(nsamps)
         return data[:,stand,pol]
     def samples_all(self, nsamps=None):

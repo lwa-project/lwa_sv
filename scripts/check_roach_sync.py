@@ -3,7 +3,7 @@
 
 import os
 import sys
-import numpy
+import numpy as np
 
 from lsl.reader import tbf, errors
 from lsl.astro import MJD_OFFSET
@@ -14,9 +14,7 @@ SKY_FREQ_HZ = 38.0e6
 
 
 def main(args):
-    filenames = args
-    
-    for filename in filenames:
+    for filename in args.filename:
         fh = open(filename, 'rb')
         nFrames = os.path.getsize(filename) // tbf.FRAME_SIZE
         if nFrames < 3:
@@ -48,9 +46,9 @@ def main(args):
         mapper.sort()
         
         # Calculate the frequencies
-        freq = numpy.zeros(nChannels)
+        freq = np.zeros(nChannels)
         for i,c in enumerate(mapper):
-            freq[i*12:i*12+12] = c + numpy.arange(12)
+            freq[i*12:i*12+12] = c + np.arange(12)
         freq *= fC
         
         # Validate and skip over files that don't contain the sky frequency
@@ -69,7 +67,7 @@ def main(args):
         print("Chunks: %i" % nChunks)
         print("===")
         
-        data = numpy.zeros((256*2,nChunks,nChannels), dtype=numpy.complex64)
+        data = np.zeros((256*2,nChunks,nChannels), dtype=np.complex64)
         clipping = 0
         for i in range(nChunks):
             # Inner loop that actually reads the frames into the data array
@@ -104,7 +102,7 @@ def main(args):
                 subData.shape = (12,512)
                 subData = subData.T
                 
-                clipping += len( numpy.where( subData**2 >= 98 )[0] )
+                clipping += len( np.where( subData**2 >= 98 )[0] )
                 
                 data[:,count,aStand*12:aStand*12+12] = subData
                 
@@ -115,27 +113,40 @@ def main(args):
         print("===")
         
         # Make a time domain data set out of these
-        tdd = numpy.fft.ifft(data, axis=2)
-        tdd = numpy.reshape(tdd, (tdd.shape[0], -1))
+        tdd = np.fft.ifft(data, axis=2)
+        tdd = np.reshape(tdd, (tdd.shape[0], -1))
         
         # Correlate
-        refX = numpy.fft.fft(tdd[0,:]).conj()
-        refY = numpy.fft.fft(tdd[1,:]).conj()
-        cc  = numpy.abs( numpy.fft.ifft( numpy.fft.fft(tdd[0::2,:], axis=1) * refX ) )**2
-        cc += numpy.abs( numpy.fft.ifft( numpy.fft.fft(tdd[1::2,:], axis=1) * refY ) )**2
-        cc = numpy.fft.fftshift(cc, axes=1)
-        ccF = (numpy.arange(cc.shape[1]) - cc.shape[1]/2) / (nChannels*fC) * 1e6
+        refX = np.fft.fft(tdd[0,:]).conj()
+        refY = np.fft.fft(tdd[1,:]).conj()
+        cc  = np.abs( np.fft.ifft( np.fft.fft(tdd[0::2,:], axis=1) * refX ) )**2
+        cc += np.abs( np.fft.ifft( np.fft.fft(tdd[1::2,:], axis=1) * refY ) )**2
+        cc = np.fft.fftshift(cc, axes=1)
+        ccF = (np.arange(cc.shape[1]) - cc.shape[1]/2) / (nChannels*fC) * 1e6
         
-        valid = numpy.where( numpy.abs(ccF) < 150 )[0]
+        valid = np.where( np.abs(ccF) < 150 )[0]
         ccF = ccF[valid]
         for i in range(16):
             subCC = cc[i*16:(i+1)*16,valid].sum(axis=0)
             #print(i, subCC)
             
-            peak = numpy.argmax(subCC)
-            print('roach%i  %i' % (i+1, int(round(ccF[peak]/40.0))*40))
+            peak = np.argmax(subCC)
+            hostname = 'roach%i' % (i+1,)
+            if hostname in args.bad_roaches:
+                print('%s  0' % hostname)
+            print('%s  %i' % (hostname, int(round(ccF[peak]/40.0))*40))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
-    
+    parser = argparse.ArgumentParser(
+            description='perform a simple cross-correlation to see if the roach boards are in sync',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            )
+    parser.add_argument('filename', type=str, nargs='+'
+                        help='TBF filename to process')
+    parser.add_argument('-b', '--bad-roaches', type=str,
+                        help='comma-separated list of roach hostnames that are out of sync')
+    args = parser.parse_args()
+    if args.bad_roaches is not None:
+        args.bad_roaches = args.bad_roaches.split(',')
+    main(args)

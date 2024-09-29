@@ -3,7 +3,7 @@
 
 import os
 import sys
-import numpy
+import numpy as np
 
 from astropy.constants import c as speedOfLight
 speedOfLight = speedOfLight.to('m/s').value
@@ -23,9 +23,7 @@ ARX_PATH_VF     = 0.5
 
 
 def main(args):
-    filenames = args
-    
-    for filename in filenames:
+    for filename in args.filename:
         fh = open(filename, 'rb')
         nFrames = os.path.getsize(filename) // tbf.FRAME_SIZE
         if nFrames < 3:
@@ -57,9 +55,9 @@ def main(args):
         mapper.sort()
         
         # Calculate the frequencies
-        freq = numpy.zeros(nChannels)
+        freq = np.zeros(nChannels)
         for i,c in enumerate(mapper):
-            freq[i*12:i*12+12] = c + numpy.arange(12)
+            freq[i*12:i*12+12] = c + np.arange(12)
         freq *= fC
         
         # Validate and skip over files that don't contain the tone
@@ -77,7 +75,7 @@ def main(args):
         print("Chunks: %i" % nChunks)
         print("===")
         
-        data = numpy.zeros((256*2,nChannels,nChunks), dtype=numpy.complex64)
+        data = np.zeros((256*2,nChannels,nChunks), dtype=np.complex64)
         clipping = 0
         for i in range(nChunks):
             # Inner loop that actually reads the frames into the data array
@@ -110,25 +108,25 @@ def main(args):
                 subData.shape = (12,512)
                 subData = subData.T
                 
-                clipping += len( numpy.where( subData**2 >= 98 )[0] )
+                clipping += len( np.where( subData**2 >= 98 )[0] )
                 
                 data[:,aStand*12:aStand*12+12,count] = subData
                 
         fh.close()
         
         # Blank out CB radio
-        cb_band = numpy.where((freq >= 25.9e6) & (freq <= 28.5e6))[0]
+        cb_band = np.where((freq >= 25.9e6) & (freq <= 28.5e6))[0]
         data[:,cb_band,:] *= 0.0
         
         # Cross-correlate the data (although we only use a small fraction of this)
-        valid = numpy.ones((data.shape[0],data.shape[2]), dtype=numpy.uint8)
-        data[numpy.where(numpy.abs(data)==0)] = 1+1j
+        valid = np.ones((data.shape[0],data.shape[2]), dtype=np.uint8)
+        data[np.where(np.abs(data)==0)] = 1+1j
         bls = [(i,j) for i in range(512) for j in range(i,512)]
         cross = XEngine2(data, data, valid, valid)
         
         # Find the peak power, aka the tone, and report on clipping
-        spec = numpy.abs(cross[cross.shape[0]//2,:])**2
-        peak = numpy.where(spec == spec.max())[0][0]
+        spec = np.abs(cross[cross.shape[0]//2,:])**2
+        peak = np.where(spec == spec.max())[0][0]
         print("Peak Power: %.3f MHz (channel %i)" % (freq[peak]/1e6, peak))
         print("Clipping: %i samples (%.1f%%)" % (clipping, 100.0*clipping/data.size))
         print("===")
@@ -156,8 +154,8 @@ def main(args):
             rcd = cd0 - cd1
             
             ## Compute the delay and convert to samples @ 204.8 MHz
-            a = numpy.angle(cross[i,peak])
-            d = a / 2.0 / numpy.pi / TONE_FREQ_HZ + rcd
+            a = np.angle(cross[i,peak])
+            d = a / 2.0 / np.pi / TONE_FREQ_HZ + rcd
             d /= (1/204.8e6)
             
             ## Save
@@ -171,18 +169,32 @@ def main(args):
         j = 0
         for i in sorted(ds.keys()):
             try:
-                d = numpy.array(ds[i], dtype=numpy.float32)
-                print("# %s +/- %s, %s" % (d.mean(), d.std(), numpy.median(d)))
-                d = numpy.round(d.mean())
+                d = np.array(ds[i], dtype=np.float32)
+                print("# %s +/- %s, %s" % (d.mean(), d.std(), np.median(d)))
+                d = np.round(d.mean())
             except KeyError:
                 d = 0.0
             for i in range(nMeasuresPerDelay):
-                print('roach%i input%i  %i' % (j//32+1, j%32+1, d))
+                hostname = 'roach%i' % (j//32+1,)
+                if hostname in args.bad_roaches:
+                    print('%s input%i 0' % (hostname, j%32+1))
+                else:
+                    print('%s input%i  %i' % (hostname, j%32+1, d))
                 j += 1
                 
         break
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
-    
+    parser = argparse.ArgumentParser(
+            description='perform a simple cross-correlation to find the ADC delays',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            )
+    parser.add_argument('filename', type=str, nargs='+'
+                        help='TBF filename to process')
+    parser.add_argument('-b', '--bad-roaches', type=str,
+                        help='comma-separated list of roach hostnames that are out of sync')
+    args = parser.parse_args()
+    if args.bad_roaches is not None:
+        args.bad_roaches = args.bad_roaches.split(',')
+    main(args)

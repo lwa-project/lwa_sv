@@ -115,7 +115,9 @@ def main(argv):
 	args = parser.parse_args()
 	
 	config = Adp.parse_config_file(args.configfile)
-	
+	if 'bad_roaches' not in config['hosts']:
+		config['hosts']['bad_roaches'] = []
+	    
 	log = logging.getLogger(__name__)
 	logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
 	                              datefmt='%Y-%m-%d %H:%M:%S')
