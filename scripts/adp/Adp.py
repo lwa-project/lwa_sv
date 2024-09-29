@@ -927,12 +927,21 @@ class Roach2MonitorClient(object):
         return chan0
         
     def reset(self):
+        if self.is_marked_bad():
+            return
+            
         self.roach.reset(syncFunction=self.syncFunction)
         
     def start_processing(self):
+        if self.is_marked_bad():
+            return
+            
         self.roach.start_processing(syncFunction=self.syncFunction)
         
     def stop_processing(self):
+        if self.is_marked_bad():
+            return
+            
         self.roach.stop_processing()
         
     def processing_started(self):
@@ -942,17 +951,29 @@ class Roach2MonitorClient(object):
         return self.roach.processing_started()
         
     def enable_drx_data(self, tuning):
+        if self.is_marked_bad():
+            return
+            
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
         self.roach.enable_data(gbe)
         
     def enable_tbn_data(self):
+        if self.is_marked_bad():
+            return
+            
         self.roach.enable_data(self.GBE_TBN)
         
     def disable_drx_data(self, tuning):
+        if self.is_marked_bad():
+            return
+            
         gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
         self.roach.disable_data(gbe)
         
     def disable_tbn_data(self):
+        if self.is_marked_bad():
+            return
+            
         self.roach.disable_data(self.GBE_TBN)
         
     def drx_data_enabled(self, tuning):
@@ -963,6 +984,9 @@ class Roach2MonitorClient(object):
         return self.roach.data_enabled(gbe)
         
     def tbn_data_enabled(self):
+        if self.is_marked_bad():
+            return True
+            
         return self.roach.data_enabled(self.GBE_TBN)
         
     # TODO: Configure channel selection (based on FST)
