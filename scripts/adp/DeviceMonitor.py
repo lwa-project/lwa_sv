@@ -117,7 +117,6 @@ class ROACH2Device(object):
     def samples(self, stand, pol, nsamps=None):
         if nsamps > 1024:
             raise ValueError("Requested nsamps exceeds limit of 1024")
-        if self.is_marked_bad()
         data = self._read_samples(nsamps)
         return data[:,stand,pol]
     def samples_all(self, nsamps=None):
