@@ -1305,6 +1305,8 @@ class MsgProcessor(ConsumerThread):
         # Bring up the FPGAs
         if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
             self.log.info("Programming FPGAs with '%s'", self.config['roach']['firmware'])
+            if len(self.config['host']['bad_roaches']) > 0:
+                self.log.warning("%i roaches marked bad: %s", len(self.config['host']['bad_roaches']), ' '.join(self.config['host']['bad_roaches']))
             if not self.check_success(lambda: self.roaches.program(),
                                       'Programming FPGAs',
                                       self.roaches.host):
