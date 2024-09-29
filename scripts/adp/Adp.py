@@ -742,7 +742,7 @@ class Roach2MonitorClient(object):
         except Exception as e:
             self.log.warning("Failed to load equalizer coefficients: %s", str(e))
             
-        if self.roach.hostname in self.config['hosts']['bad_roaches']:
+        if self.roach.hostname in self.config['host']['bad_roaches']:
             self.roach.mark_bad()
             self.device.mark_bad()
             
@@ -1491,8 +1491,8 @@ class MsgProcessor(ConsumerThread):
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Verify the offsets
             cargs = ''
-            if len(self.config['hosts']['bad_roaches']) > 0:
-                cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+            if len(self.config['host']['bad_roaches']) > 0:
+                cargs = '--bad-roaches='+(','.join(self.config['host']['bad_roaches']))
             output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/check_roach_sync.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
             
             # Load in the delays\
@@ -1577,8 +1577,8 @@ class MsgProcessor(ConsumerThread):
         if len(filenames) >= 6 or 'FORCE' in arg:
             # Solve for the delays
             cargs = ''
-            if len(self.config['hosts']['bad_roaches']) > 0:
-                cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+            if len(self.config['host']['bad_roaches']) > 0:
+                cargs = '--bad-roaches='+(','.join(self.config['host']['bad_roaches']))
             output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
             
             # Load in the delays
@@ -1635,8 +1635,8 @@ class MsgProcessor(ConsumerThread):
             if len(filenames) >= 6 or 'FORCE' in arg:
                 # Verify the delays
                 cargs = ''
-                if len(self.config['hosts']['bad_roaches']) > 0:
-                    cargs = '--bad-roaches='+(','.join(self.config['hosts']['bad_roaches']))
+                if len(self.config['host']['bad_roaches']) > 0:
+                    cargs = '--bad-roaches='+(','.join(self.config['host']['bad_roaches']))
                 output = subprocess.check_output("python3 /home/adp/lwa_sv/scripts/calibrate_adc_delays.py %s %s" % (cargs, ' '.join(filenames)), shell=True)
                 
                 # Load in the delays
