@@ -21,7 +21,7 @@
                     "roach5", "roach6", "roach7", "roach8",
                     "roach9", "roach10","roach11","roach12",
                     "roach13","roach14","roach15","roach16"],
-        "bad_roaches": ["roach3", "roach12"],
+        "bad_roaches": ["roach3", "roach11", "roach12"],
         "servers-data": ["mcg40s1-data", "mcg40s2-data", "mcg40s3-data",
                          "mcg40s4-data", "mcg40s5-data", "mcg40s6-data"],
         "tengines": ["adp-data", "adp-data"],
