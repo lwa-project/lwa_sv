@@ -1291,11 +1291,16 @@ class MsgProcessor(ConsumerThread):
                                           self.headnode.host):
                     if 'FORCE' not in arg:
                         return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+                time.sleep(5)
+                
                 if not self.check_success(lambda: self.servers.restart_drx(tuning=tuning),
                                           'Restarting pipelines - DRX',
                                           self.servers.host):
                     if 'FORCE' not in arg:
                         return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+                    
+                time.sleep(5)
+                
             if not self.check_success(lambda: self.servers.restart_tbn(),
                                       'Restarting pipelines - TBN',
                                       self.servers.host):
