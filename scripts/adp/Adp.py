@@ -85,67 +85,67 @@ class SlotCommandProcessor(object):
         return self.execute(cmds)
 
 
-class TbnCommand(object):
-    def __init__(self, msg):
-        self.freq, self.filt, self.gain \
-            = struct.unpack('>fhh', msg.data)
-        # TODO: Check allowed range of freq
-        assert( 1 <= self.filt <= 11 )
-        assert( 0 <= self.gain <= 30 )
+# class TbnCommand(object):
+#     def __init__(self, msg):
+#         self.freq, self.filt, self.gain \
+#             = struct.unpack('>fhh', msg.data)
+#         # TODO: Check allowed range of freq
+#         assert( 1 <= self.filt <= 11 )
+#         assert( 0 <= self.gain <= 30 )
 
 
-class Tbn(SlotCommandProcessor):
-    def __init__(self, config, log, messenger, servers, roaches):
-        SlotCommandProcessor.__init__(self, 'TBN', TbnCommand)
-        self.config  = config
-        self.log     = log
-        self.messenger = messenger
-        self.servers = servers
-        self.roaches = roaches
-        self.cur_freq = self.cur_filt = self.cur_gain = 0
-        
-    def _reset_state(self):
-        self.cur_freq = self.cur_filt = self.cur_gain = 0
-        
-    def tune(self, freq=38.00e6, filt=1, gain=1, internal=False):
-        ## Convert to the DP frequency scale
-        freq = FS * int(freq / FS * 2**32) / 2**32
-        
-        self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
-        rets = self.roaches.tune_tbn(freq)
-        
-        if not internal:
-            self.cur_freq = freq
-            self.cur_filt = filt
-            self.cur_gain = gain
-            
-        return rets
-        
-    def start(self, freq=59.98e6, filt=1, gain=1):
-        ## Convert to the DP frequency scale
-        freq = FS * int(freq / FS * 2**32) / 2**32
-        
-        self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
-        ## TODO: Check whether pausing the data flow is necessary
-        #self.roaches.disable_tbn_data()
-        rets = self.tune(freq, filt, gain)
-        #time.sleep(1.1)
-        #rets = self.roaches.enable_tbn_data()
-        
-        self.messenger.tbnConfig(freq, filt, gain)
-        
-        return rets
-        
-    def execute(self, cmds):
-        for cmd in cmds:
-            self.start(cmd.freq, cmd.filt, cmd.gain)
-            
-    def stop(self):
-        self.log.info("Stopping TBN data")
-        self.roaches.disable_tbn_data()
-        self.cur_freq = self.cur_filt = self.cur_gain = 0
-        self.log.info("TBN stopped")
-        return 0
+# class Tbn(SlotCommandProcessor):
+#     def __init__(self, config, log, messenger, servers, roaches):
+#         SlotCommandProcessor.__init__(self, 'TBN', TbnCommand)
+#         self.config  = config
+#         self.log     = log
+#         self.messenger = messenger
+#         self.servers = servers
+#         self.roaches = roaches
+#         self.cur_freq = self.cur_filt = self.cur_gain = 0
+# 
+#     def _reset_state(self):
+#         self.cur_freq = self.cur_filt = self.cur_gain = 0
+# 
+#     def tune(self, freq=38.00e6, filt=1, gain=1, internal=False):
+#         ## Convert to the DP frequency scale
+#         freq = FS * int(freq / FS * 2**32) / 2**32
+# 
+#         self.log.info("Tuning TBN:   freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+#         rets = self.roaches.tune_tbn(freq)
+# 
+#         if not internal:
+#             self.cur_freq = freq
+#             self.cur_filt = filt
+#             self.cur_gain = gain
+# 
+#         return rets
+# 
+#     def start(self, freq=59.98e6, filt=1, gain=1):
+#         ## Convert to the DP frequency scale
+#         freq = FS * int(freq / FS * 2**32) / 2**32
+# 
+#         self.log.info("Starting TBN: freq=%f,filt=%i,gain=%i" % (freq,filt,gain))
+#         ## TODO: Check whether pausing the data flow is necessary
+#         #self.roaches.disable_tbn_data()
+#         rets = self.tune(freq, filt, gain)
+#         #time.sleep(1.1)
+#         #rets = self.roaches.enable_tbn_data()
+# 
+#         self.messenger.tbnConfig(freq, filt, gain)
+# 
+#         return rets
+# 
+#     def execute(self, cmds):
+#         for cmd in cmds:
+#             self.start(cmd.freq, cmd.filt, cmd.gain)
+# 
+#     def stop(self):
+#         self.log.info("Stopping TBN data")
+#         self.roaches.disable_tbn_data()
+#         self.cur_freq = self.cur_filt = self.cur_gain = 0
+#         self.log.info("TBN stopped")
+#         return 0
 
 
 class DrxCommand(object):
@@ -564,42 +564,42 @@ class AdpServerMonitorClient(object):
         #except CalledProcessError as e:
         #	raise RuntimeError(str(e))
         
-    def stop_tbn(self):
-        try:
-            self._shell_command("systemctl stop adp-tbn")
-            return True
-        except subprocess.CalledProcessError:
-            return False
-            
-    def start_tbn(self):
-        try:
-            self._shell_command("systemctl start adp-tbn")
-            return True
-        except subprocess.CalledProcessError:
-            return False
-            
-    def restart_tbn(self):
-        self.stop_tbn()
-        return self.start_tbn()
-        
-    def status_tbn(self):
-        try:
-            return self._shell_command("status adp-tbn")
-        except subprocess.CalledProcessError:
-            return "unknown"
-            
-    def pid_tbn(self):
-        try:
-            pids = self._shell_command("ps aux | grep adp_tbn | grep -v grep | awk '{print $2}'")
-            pids = pids.split('\n')[:-1]
-            pids = [int(pid, 10) for pid in pids]
-            if len(pids) == 0:
-                pids = [-1,]
-            return pids 
-        except subprocess.CalledProcessError:
-            return [-1,]
-        except ValueError:
-            return [-1,]
+    # def stop_tbn(self):
+    #     try:
+    #         self._shell_command("systemctl stop adp-tbn")
+    #         return True
+    #     except subprocess.CalledProcessError:
+    #         return False
+    # 
+    # def start_tbn(self):
+    #     try:
+    #         self._shell_command("systemctl start adp-tbn")
+    #         return True
+    #     except subprocess.CalledProcessError:
+    #         return False
+    # 
+    # def restart_tbn(self):
+    #     self.stop_tbn()
+    #     return self.start_tbn()
+    # 
+    # def status_tbn(self):
+    #     try:
+    #         return self._shell_command("status adp-tbn")
+    #     except subprocess.CalledProcessError:
+    #         return "unknown"
+    # 
+    # def pid_tbn(self):
+    #     try:
+    #         pids = self._shell_command("ps aux | grep adp_tbn | grep -v grep | awk '{print $2}'")
+    #         pids = pids.split('\n')[:-1]
+    #         pids = [int(pid, 10) for pid in pids]
+    #         if len(pids) == 0:
+    #             pids = [-1,]
+    #         return pids 
+    #     except subprocess.CalledProcessError:
+    #         return [-1,]
+    #     except ValueError:
+    #         return [-1,]
             
     def stop_tengine(self, tuning=0):
         try:
@@ -736,7 +736,7 @@ class Roach2MonitorClient(object):
         self.GBE_DRX_1 = 1
         self.GBE_DRX_2 = 2
         self.GBE_DRX_3 = 3
-        self.GBE_TBN = 2
+        # self.GBE_TBN = 2
         
         self.equalizer_coeffs = None
         try:
@@ -852,33 +852,25 @@ class Roach2MonitorClient(object):
         try:
             self.roach.stop_processing()
             # DRX, tuning 0 on gbe0, DRX, tuning 1 on gbe1, TBN on gbe2
-            drx_dst_hosts   = self.config['host']['servers-data']
-            tbn_dst_hosts   = [self.config['host']['servers-tbn'][self.num-1]]
-            src_ip_base     = self.config['roach']['data_ip_base']
-            src_port_base   = self.config['roach']['data_port_base']
-            dst_ports       = self.config['server']['data_ports']
-            drx_dst_ips     = [host2ip(host) for host in drx_dst_hosts]
-            tbn_dst_ips     = [host2ip(host) for host in tbn_dst_hosts]
-            macs = load_ethers()
-            try:
-                drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
-                tbn_dst_macs    = [macs[ip] for ip in tbn_dst_ips]
-            except KeyError:
-                ## Catch for multicast addresses that do not have MACs
-                drx_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
-                tbn_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
-            drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
-            tbn_arp_table   = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
-            drx_0_dst_ports = [dst_ports[0] for i in range(len(drx_dst_ips))]
-            drx_1_dst_ports = [dst_ports[1] for i in range(len(drx_dst_ips))]
-            drx_2_dst_ports = [dst_ports[2] for i in range(len(drx_dst_ips))]
-            drx_3_dst_ports = [dst_ports[3] for i in range(len(drx_dst_ips))]
-            tbn_dst_ports   = [dst_ports[2]] * len(tbn_dst_ips)
-            ret0 = self.roach.configure_10gbe(self.GBE_DRX_0, drx_dst_ips, drx_0_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-            ret1 = self.roach.configure_10gbe(self.GBE_DRX_1, drx_dst_ips, drx_1_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-            ret2 = self.roach.configure_10gbe(self.GBE_DRX_2, drx_dst_ips, drx_2_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-            ret3 = self.roach.configure_10gbe(self.GBE_DRX_3, drx_dst_ips, drx_3_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-            if not ret0 or not ret1 or not ret2 or not ret3:
+            ret = True
+            for gbe in (self.GBE_DRX_0, self.GBE_DRX_1, self.GBE_DRX_2, self.GBE_DRX_3):
+                drx_dst_hosts   = self.config['host']['servers-data']
+                if gbe % 2 == 1:
+                    drx_dst_hosts = [h.replace('data1', 'data2') for h in drx_dst_hosts]
+                src_ip_base     = self.config['roach']['data_ip_base']
+                src_port_base   = self.config['roach']['data_port_base']
+                dst_ports       = self.config['server']['data_ports']
+                drx_dst_ips     = [host2ip(host) for host in drx_dst_hosts]
+                macs = load_ethers()
+                try:
+                    drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
+                except KeyError:
+                    ## Catch for multicast addresses that do not have MACs
+                    drx_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
+                drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
+                drx_dst_ports = [dst_ports[gbe] for i in range(len(drx_dst_ips))]
+                ret &= self.roach.configure_10gbe(gbe, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+            if not ret:
                 raise RuntimeError("Configuring Roach 10GbE ports failed")
         except:
             self.log.exception("Configuring roach failed")
@@ -921,24 +913,24 @@ class Roach2MonitorClient(object):
                                                  equalizer_coeffs=self.equalizer_coeffs)
         return chan0
         
-    @ISC.logException
-    def tune_tbn(self, cfreq, shift_factor=None):
-        bw = self.config['tbn']['capture_bandwidth']
-        bw = round(bw, 3) # Round to mHz to avoid precision errors
-        nsubband = 1
-        subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
-        chan0         = int(round(cfreq / CHAN_BW)) - subband_nchan//2
-        
-        scale_factor = self.config['roach']['scale_factor']
-        if shift_factor is None:
-            shift_factor = self.config['roach']['shift_factor']
-            
-        if self.is_marked_bad():
-            return chan0
-            
-        self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
-                                                          equalizer_coeffs=self.equalizer_coeffs)
-        return chan0
+    # @ISC.logException
+    # def tune_tbn(self, cfreq, shift_factor=None):
+    #     bw = self.config['tbn']['capture_bandwidth']
+    #     bw = round(bw, 3) # Round to mHz to avoid precision errors
+    #     nsubband = 1
+    #     subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
+    #     chan0         = int(round(cfreq / CHAN_BW)) - subband_nchan//2
+    # 
+    #     scale_factor = self.config['roach']['scale_factor']
+    #     if shift_factor is None:
+    #         shift_factor = self.config['roach']['shift_factor']
+    # 
+    #     if self.is_marked_bad():
+    #         return chan0
+    # 
+    #     self.roach.configure_fengine(self.GBE_TBN, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
+    #                                                       equalizer_coeffs=self.equalizer_coeffs)
+    #     return chan0
         
     def reset(self):
         if self.is_marked_bad():
@@ -978,11 +970,11 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_3
         self.roach.enable_data(gbe)
         
-    def enable_tbn_data(self):
-        if self.is_marked_bad():
-            return
-            
-        self.roach.enable_data(self.GBE_TBN)
+    # def enable_tbn_data(self):
+    #     if self.is_marked_bad():
+    #         return
+    # 
+    #     self.roach.enable_data(self.GBE_TBN)
         
     def disable_drx_data(self, tuning):
         if self.is_marked_bad():
@@ -998,11 +990,11 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_3
         self.roach.disable_data(gbe)
         
-    def disable_tbn_data(self):
-        if self.is_marked_bad():
-            return
-            
-        self.roach.disable_data(self.GBE_TBN)
+    # def disable_tbn_data(self):
+    #     if self.is_marked_bad():
+    #         return
+    # 
+    #     self.roach.disable_data(self.GBE_TBN)
         
     def drx_data_enabled(self, tuning):
         if self.is_marked_bad():
@@ -1018,11 +1010,11 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_3
         return self.roach.data_enabled(gbe)
         
-    def tbn_data_enabled(self):
-        if self.is_marked_bad():
-            return True
-            
-        return self.roach.data_enabled(self.GBE_TBN)
+    # def tbn_data_enabled(self):
+    #     if self.is_marked_bad():
+    #         return True
+    # 
+    #     return self.roach.data_enabled(self.GBE_TBN)
         
     # TODO: Configure channel selection (based on FST)
     # TODO: start/stop data flow (remember to call roach.reset() before start)
@@ -1081,7 +1073,7 @@ class MsgProcessor(ConsumerThread):
         self.tbf = Tbf(config, log, self.messageServer, self.servers, self.roaches)
         self.bam = Bam(config, log, self.messageServer, self.servers, self.roaches)
         self.cor = Cor(config, log, self.messageServer, self.servers, self.roaches)
-        self.tbn = Tbn(config, log, self.messageServer, self.servers, self.roaches)
+        # self.tbn = Tbn(config, log, self.messageServer, self.servers, self.roaches)
 
         self.serial_number = '1'
         self.version = str(__version__)
@@ -1229,32 +1221,34 @@ class MsgProcessor(ConsumerThread):
                     
         ## Stop the pipelines
         self.log.info('Stopping pipelines')
-        for tuning in range(2):
+        for tuning in range(4):
             self.servers.stop_drx(tuning=tuning)
+        for tuning in range(2):
             self.headnode.stop_tengine(tuning=tuning)
-        self.servers.stop_tbn()
+        # self.servers.stop_tbn()
         
         ## Make sure the pipelines have stopped
         try:
             self._wait_until_pipelines_stopped(max_wait=40)
         except RuntimeError:
             self.log.warning('Some pipelines have failed to stop, trying harder')
+            for tuning in range(4):
+                for server in self.servers:
+                    pids = server.pid_drx(tuning=tuning)
+                    for pid in filter(lambda x: x > 0, pids):
+                        self.log.warning('  Killing %s DRX-%i, PID %i', server.host, tuning, pid)
+                        server.kill_pid(pid)
             for tuning in range(2):
                 for server in self.headnode:
                     pids = server.pid_tengine(tuning=tuning)
                     for pid in filter(lambda x: x > 0, pids):
                         self.log.warning('  Killing %s TEngine-%i, PID %i', server.host, tuning, pid)
                         server.kill_pid(pid)
-                for server in self.servers:
-                    pids = server.pid_drx(tuning=tuning)
-                    for pid in filter(lambda x: x > 0, pids):
-                        self.log.warning('  Killing %s DRX-%i, PID %i', server.host, tuning, pid)
-                        server.kill_pid(pid)
-            for server in self.servers:
-                pids = server.pid_tbn()
-                for pid in filter(lambda x: x > 0, pids):
-                    self.log.warning('  Killing %s TBN, PID %i', server.host, pid)
-                    server.kill_pid(pid)
+            # for server in self.servers:
+            #     pids = server.pid_tbn()
+            #     for pid in filter(lambda x: x > 0, pids):
+            #         self.log.warning('  Killing %s TBN, PID %i', server.host, pid)
+            #         server.kill_pid(pid)
                     
         self.log.info("Forcing CPUs into performance mode")
         self.headnode._shell_command('/root/fixCPU.sh')
@@ -1293,7 +1287,7 @@ class MsgProcessor(ConsumerThread):
         self.tbf._reset_state()
         self.bam._reset_state()
         self.cor._reset_state()
-        self.tbn._reset_state()
+        # self.tbn._reset_state()
         
         # Bring up the pipelines
         can_ssh_status = ''.join(['.' if ok else 'x' for ok in self.servers.can_ssh()])
@@ -1875,13 +1869,14 @@ class MsgProcessor(ConsumerThread):
         t0, t1 = time.time(), time.time()
         while nRunning > 0:
             pids = []
-            for tuning in range(2):
+            for tuning in range(4):
                 for server in self.servers:
                     pids.extend( server.pid_drx(tuning=tuning) )
+            for tuning in range(2):
                 for server in self.headnode:
                     pids.extend( server.pid_tengine(tuning=tuning) )
-            for server in self.servers:
-                pids.extend( server.pid_tbn() )
+            # for server in self.servers:
+            #     pids.extend( server.pid_tbn() )
             nRunning = len( filter(lambda x: x > 0, pids) )
             
             t1 = time.time()
@@ -1944,15 +1939,22 @@ class MsgProcessor(ConsumerThread):
                     ### Loop over the pipelines
                     for pipeline in pipelines[host]:
                         name = pipeline.command
-                        side = 1 if name.find('--tuning 1') != -1 else 0
+                        if name.find('--tuning 0') != -1:
+                            side = 0
+                        elif name.find('--tuning 1') != -1:
+                            side = 1
+                        elif name.find('--tuning 2') != -1:
+                            side = 2
+                        else:
+                            side = 3
                         loss = pipeline.rx_loss()
                         txbw = pipeline.tx_rate()
                         cact = pipeline.is_corr_active()
                         
                         if name.find('drx') != -1:
                             found['drx'].append( (host,name,side,loss,txbw,cact) )
-                        #elif name.find('tbn') != -1:
-                        #    found['tbn'].append( (host,name,side,loss,txbw) )
+                        # elif name.find('tbn') != -1:
+                        #     found['tbn'].append( (host,name,side,loss,txbw) )
                         elif name.find('tengine') != -1:
                             found['tengine'].append( (host,name,side,loss,txbw) )
                         else:
@@ -2309,9 +2311,9 @@ class MsgProcessor(ConsumerThread):
         if key == 'NUM_SERVERS':       return NSERVER
         if key == 'NUM_BOARDS':        return NBOARD
         if key == 'NUM_TBN_BITS':      return TBN_BITS
-        if key == 'TBN_CONFIG_FREQ':   return self.tbn.cur_freq
-        if key == 'TBN_CONFIG_FILTER': return self.tbn.cur_filt
-        if key == 'TBN_CONFIG_GAIN':   return self.tbn.cur_gain
+        # if key == 'TBN_CONFIG_FREQ':   return self.tbn.cur_freq
+        # if key == 'TBN_CONFIG_FILTER': return self.tbn.cur_filt
+        # if key == 'TBN_CONFIG_GAIN':   return self.tbn.cur_gain
         # TODO: NUM_BEAMS
         if key == 'BEAM_FIR_COEFFS':   return FIR_NCOEF
         # TODO: T_NOM
@@ -2504,12 +2506,12 @@ class MsgProcessor(ConsumerThread):
                 else:
                     self.state['lastlog'] = "STP: Subsystem is not ready"
                     exit_status = 99
-            elif mode == 'TBN':
-                if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
-                    exit_status = self.tbn.stop()
-                else:
-                    self.state['lastlog'] = "STP: Subsystem is not ready"
-                    exit_status = 99
+            # elif mode == 'TBN':
+            #     if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+            #         exit_status = self.tbn.stop()
+            #     else:
+            #         self.state['lastlog'] = "STP: Subsystem is not ready"
+            #         exit_status = 99
             elif mode == 'TBF':
                 if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
                     self.state['lastlog'] = "UNIMPLEMENTED STP request"
@@ -2561,12 +2563,12 @@ class MsgProcessor(ConsumerThread):
             else:
                 self.state['lastlog'] = "COR: Subsystem is not ready"
                 exit_status = 99
-        elif msg.cmd == 'TBN':
-            if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
-                exit_status = self.tbn.process_command(msg)
-            else:
-                self.state['lastlog'] = "TBN: Subsystem is not ready"
-                exit_status = 99
+        # elif msg.cmd == 'TBN':
+        #     if self.state['status'] not in ('SHUTDWN', 'BOOTING'):
+        #         exit_status = self.tbn.process_command(msg)
+        #     else:
+        #         self.state['lastlog'] = "TBN: Subsystem is not ready"
+        #         exit_status = 99
         else:
             exit_status = 0
             accept = False
