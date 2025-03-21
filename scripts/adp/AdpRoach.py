@@ -48,8 +48,7 @@ class AdpRoach(object):
         assert( 8 <= subband_nchan0 and subband_nchan0 <= 200 )
         assert( 8 <= subband_nchan1 and subband_nchan1 <= 200 )
         assert( 8 <= subband_nchan2 and subband_nchan2 <= 200 )
-        if nsubband3 is not None:
-            assert( 8 <= subband_nchan3 and subband_nchan3 <= 200 )
+        assert( 8 <= subband_nchan3 and subband_nchan3 <= 200 )
         
         if len(adc_registers) > 0:
             regstring = ','.join(["0x%x=0x%x" % (key,val)
@@ -111,9 +110,8 @@ class AdpRoach(object):
         self.fpga.write_int('pkt_gbe1_n_subband', nsubband1)
         self.fpga.write_int('pkt_gbe2_n_chan_per_sub', subband_nchan2)
         self.fpga.write_int('pkt_gbe2_n_subband', nsubband2)
-        if nsubband3 is not None:
-            self.fpga.write_int('pkt_gbe3_n_chan_per_sub', subband_nchan3)
-            self.fpga.write_int('pkt_gbe3_n_subband', nsubband3)
+        self.fpga.write_int('pkt_gbe3_n_chan_per_sub', subband_nchan3)
+        self.fpga.write_int('pkt_gbe3_n_subband', nsubband3)
         
         # ... and save these to the internal state so that we can use them later
         self._fpgaState['pkt_gbe0_n_chan_per_sub'] = subband_nchan0
@@ -122,9 +120,8 @@ class AdpRoach(object):
         self._fpgaState['pkt_gbe1_n_subband'] = nsubband1
         self._fpgaState['pkt_gbe2_n_chan_per_sub'] = subband_nchan2
         self._fpgaState['pkt_gbe2_n_subband'] = nsubband2
-        if nsubband3 is not None:
-            self._fpgaState['pkt_gbe3_n_chan_per_sub'] = subband_nchan3
-            self._fpgaState['pkt_gbe3_n_subband'] = nsubband3
+        self._fpgaState['pkt_gbe3_n_chan_per_sub'] = subband_nchan3
+        self._fpgaState['pkt_gbe3_n_subband'] = nsubband3
         
         return out
         
@@ -291,9 +288,9 @@ class AdpRoach(object):
         except KeyError:
             txReady = False
         if not txReady:
-            self.fpga.write_int('pkt_tx_rst', 0b000)
-            self.fpga.write_int('pkt_tx_rst', 0b111)
-            self.fpga.write_int('pkt_tx_rst', 0b000)
+            self.fpga.write_int('pkt_tx_rst', 0b0000)
+            self.fpga.write_int('pkt_tx_rst', 0b1111)
+            self.fpga.write_int('pkt_tx_rst', 0b0000)
             
             self._fpgaState['tx_ready'] = True
             
@@ -308,7 +305,7 @@ class AdpRoach(object):
         self.reset(syncFunction=syncFunction)
         
         # Ready the packetizer
-        gbe_bitset  = 0b111
+        gbe_bitset  = 0b1111
         self._write_pkt_tx_enable(gbe_bitset)
         
     def enable_data(self, gbe):
@@ -322,11 +319,11 @@ class AdpRoach(object):
         self._write_pkt_tx_enable(gbe_bitset)
         
     def stop_processing(self):
-        gbe_bitset  = 0b000
+        gbe_bitset  = 0b0000
         self._write_pkt_tx_enable(gbe_bitset)
         
     def processing_started(self):
-        ret = (self.fpga.read_int('pkt_tx_enable') == 0b111)
+        ret = (self.fpga.read_int('pkt_tx_enable') == 0b1111)
         return ret
         
     def data_enabled(self, gbe):
@@ -337,7 +334,8 @@ class AdpRoach(object):
         gbe0_oflow = self.fpga.read_int('pkt_gbe0_oflow_cnt')
         gbe1_oflow = self.fpga.read_int('pkt_gbe1_oflow_cnt')
         gbe2_oflow = self.fpga.read_int('pkt_gbe2_oflow_cnt')
-        return (gbe0_oflow, gbe1_oflow, gbe2_oflow)
+        gbe3_oflow = self.fpga.read_int('pkt_gbe3_oflow_cnt')
+        return (gbe0_oflow, gbe1_oflow, gbe2_oflow, gbe3_oflow)
         
     def disable_pfb(self):
         """
