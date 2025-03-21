@@ -43,11 +43,13 @@ class AdpRoach(object):
         self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
         time.sleep(0.1)
         
-    def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, adc_registers={}, max_attempts=5, bypass_pfb=False):
+    def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, nsubband3, subband_nchan3, adc_registers={}, max_attempts=5, bypass_pfb=False):
         # Validate
-        assert( 8 <= subband_nchan0 and subband_nchan0 <= 132 )
-        assert( 8 <= subband_nchan1 and subband_nchan1 <= 132 )
-        assert( 8 <= subband_nchan2 and subband_nchan2 <= 132 )
+        assert( 8 <= subband_nchan0 and subband_nchan0 <= 200 )
+        assert( 8 <= subband_nchan1 and subband_nchan1 <= 200 )
+        assert( 8 <= subband_nchan2 and subband_nchan2 <= 200 )
+        if nsubband3 is not None:
+            assert( 8 <= subband_nchan3 and subband_nchan3 <= 200 )
         
         if len(adc_registers) > 0:
             regstring = ','.join(["0x%x=0x%x" % (key,val)
@@ -109,6 +111,9 @@ class AdpRoach(object):
         self.fpga.write_int('pkt_gbe1_n_subband', nsubband1)
         self.fpga.write_int('pkt_gbe2_n_chan_per_sub', subband_nchan2)
         self.fpga.write_int('pkt_gbe2_n_subband', nsubband2)
+        if nsubband3 is not None:
+            self.fpga.write_int('pkt_gbe3_n_chan_per_sub', subband_nchan3)
+            self.fpga.write_int('pkt_gbe3_n_subband', nsubband3)
         
         # ... and save these to the internal state so that we can use them later
         self._fpgaState['pkt_gbe0_n_chan_per_sub'] = subband_nchan0
@@ -117,6 +122,9 @@ class AdpRoach(object):
         self._fpgaState['pkt_gbe1_n_subband'] = nsubband1
         self._fpgaState['pkt_gbe2_n_chan_per_sub'] = subband_nchan2
         self._fpgaState['pkt_gbe2_n_subband'] = nsubband2
+        if nsubband3 is not None:
+            self._fpgaState['pkt_gbe3_n_chan_per_sub'] = subband_nchan3
+            self._fpgaState['pkt_gbe3_n_subband'] = nsubband3
         
         return out
         
