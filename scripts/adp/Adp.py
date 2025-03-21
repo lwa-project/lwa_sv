@@ -968,7 +968,14 @@ class Roach2MonitorClient(object):
         if self.is_marked_bad():
             return
             
-        gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+        if tuning == 0:
+            gbe = self.GBE_DRX_0
+        elif tuning == 1:
+            gbe = self.GBE_DRX_1
+        elif tuning == 1:
+            gbe = self.GBE_DRX_2
+        else:
+            gbe = self.GBE_DRX_3
         self.roach.enable_data(gbe)
         
     def enable_tbn_data(self):
@@ -981,7 +988,14 @@ class Roach2MonitorClient(object):
         if self.is_marked_bad():
             return
             
-        gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+        if tuning == 0:
+            gbe = self.GBE_DRX_0
+        elif tuning == 1:
+            gbe = self.GBE_DRX_1
+        elif tuning == 1:
+            gbe = self.GBE_DRX_2
+        else:
+            gbe = self.GBE_DRX_3
         self.roach.disable_data(gbe)
         
     def disable_tbn_data(self):
@@ -994,7 +1008,14 @@ class Roach2MonitorClient(object):
         if self.is_marked_bad():
             return True
             
-        gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+        if tuning == 0:
+            gbe = self.GBE_DRX_0
+        elif tuning == 1:
+            gbe = self.GBE_DRX_1
+        elif tuning == 1:
+            gbe = self.GBE_DRX_2
+        else:
+            gbe = self.GBE_DRX_3
         return self.roach.data_enabled(gbe)
         
     def tbn_data_enabled(self):
