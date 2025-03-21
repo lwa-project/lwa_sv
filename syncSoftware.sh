@@ -118,7 +118,7 @@ if [ "${DO_CONFIG}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/config
 	DST_PATH=/usr/local/share/adp
 	
-	for node in `seq 0 6`; do
+	for node in `seq 0 4`; do
 		rsync -e ssh -avHL ${SRC_PATH}/adp_config.json adp${node}:${DST_PATH}/
 		rsync -e ssh -avH ${SRC_PATH}/equalizer*.txt adp${node}:${DST_PATH}/
 	done
@@ -136,11 +136,11 @@ if [ "${DO_SOFTWARE}" == "1" ]; then
 	
 	build_tcc
 	
-	for node in `seq 0 6`; do
+	for node in `seq 0 4`; do
 		if [ "${node}" == "0" ]; then
 			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_control.py ${SRC_PATH}/adp_tengine.py ${SRC_PATH}/adp_enable_triggering.py adp${node}:${DST_PATH}/
 		else
-			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_tbn.py ${SRC_PATH}/adp_drx.py adp${node}:${DST_PATH}/
+			rsync -e ssh -avH ${SRC_PATH}/adp ${SRC_PATH}/adp_drx.py adp${node}:${DST_PATH}/
 			rsync -e ssh -avH ${TCC_PATH}/bt*.py ${TCC_PATH}/*.so* adp${node}:${DST_PATH}/
 		fi
 	done
@@ -155,7 +155,7 @@ if [ "${DO_UPSTART}" == "1" ]; then
 	SRC_PATH=/home/adp/lwa_sv/config
 	DST_PATH=/etc/systemd/system/
 	
-	for node in `seq 0 6`; do
+	for node in `seq 0 4`; do
 		if [ "${node}" == "0" ]; then
 			rsync -e ssh -avH ${SRC_PATH}/headnode/adp-*.service adp${node}:${DST_PATH}/
 		else
@@ -170,11 +170,11 @@ fi
 #
 
 if [ "${DO_RESTART}" == "1" ]; then
-	for node in `seq 0 6`; do
+	for node in `seq 0 4`; do
 		if [ "${node}" == "0" ]; then
 			ssh adp${node} "restart adp-control && restart adp-tengine-0 && restart adp-tengine-1"
 		else
-			ssh adp${node} "restart adp-tbn && restart adp-drx-0 && restart adp-drx-1"
+			ssh adp${node} "restart adp-drx-0 && restart adp-drx-1"
 		fi
 	done
 fi
@@ -184,11 +184,11 @@ fi
 #
 
 if [ "${DO_QUERY}" == "1" ]; then
-        for node in `seq 0 6`; do
+        for node in `seq 0 4`; do
                 if [ "${node}" == "0" ]; then
                         ssh adp${node} "status adp-control && status adp-tengine-0 && status adp-tengine-1"
                 else
-                        ssh adp${node} "status adp-tbn && status adp-drx-0 && status adp-drx-1"
+                        ssh adp${node} "status adp-drx-0 && status adp-drx-1"
                 fi
         done
 fi
