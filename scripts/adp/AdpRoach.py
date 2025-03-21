@@ -278,11 +278,11 @@ class AdpRoach(object):
         
     def _read_pkt_tx_enable(self):
         bitset = self.fpga.read_int('pkt_tx_enable')
-        gbe_bitset  = bitset & 0b111
+        gbe_bitset  = bitset & 0b1111
         return gbe_bitset
         
     def _write_pkt_tx_enable(self, gbe_bitset):
-        bitset = gbe_bitset & 0b111
+        bitset = gbe_bitset & 0b1111
         try:
             txReady = self._fpgaState['tx_ready']
         except KeyError:
