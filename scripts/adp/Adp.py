@@ -734,6 +734,8 @@ class Roach2MonitorClient(object):
         self.syncFunction = syncFunction
         self.GBE_DRX_0 = 0
         self.GBE_DRX_1 = 1
+        self.GBE_DRX_2 = 2
+        self.GBE_DRX_3 = 3
         self.GBE_TBN = 2
         
         self.equalizer_coeffs = None
@@ -815,6 +817,8 @@ class Roach2MonitorClient(object):
         subband_nchan1 = int(math.ceil(self.config['drx'][1]['capture_bandwidth'] / CHAN_BW / nsubband1))
         nsubband2      = 1
         subband_nchan2 = int(math.ceil(self.config['tbn']['capture_bandwidth'] / CHAN_BW / nsubband2))
+        nsubband3      = None
+        subband_nchan3 = None
         ## ADC digital gain
         adc_gain       = self.config['roach']['adc_gain']
         adc_gain_bits  = ( adc_gain       | (adc_gain <<  4) |
@@ -826,7 +830,7 @@ class Roach2MonitorClient(object):
         ## Whether or not to bypass the PFB on the FFT
         bypass_pfb     =  self.config['roach']['bypass_pfb']
         
-        self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, 
+        self.roach.program(boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, nsubband3, subband_nchan3, 
                         adc_registers=adc_registers, max_attempts=max_attempts, bypass_pfb=bypass_pfb)
                         
     def is_programmed(self):
@@ -867,11 +871,14 @@ class Roach2MonitorClient(object):
             tbn_arp_table   = gen_arp_table(tbn_dst_ips, tbn_dst_macs)
             drx_0_dst_ports = [dst_ports[0] for i in range(len(drx_dst_ips))]
             drx_1_dst_ports = [dst_ports[1] for i in range(len(drx_dst_ips))]
+            drx_2_dst_ports = [dst_ports[2] for i in range(len(drx_dst_ips))]
+            drx_3_dst_ports = [dst_ports[3] for i in range(len(drx_dst_ips))]
             tbn_dst_ports   = [dst_ports[2]] * len(tbn_dst_ips)
             ret0 = self.roach.configure_10gbe(self.GBE_DRX_0, drx_dst_ips, drx_0_dst_ports, drx_arp_table, src_ip_base, src_port_base)
             ret1 = self.roach.configure_10gbe(self.GBE_DRX_1, drx_dst_ips, drx_1_dst_ports, drx_arp_table, src_ip_base, src_port_base)
-            ret2 = self.roach.configure_10gbe(self.GBE_TBN, tbn_dst_ips, tbn_dst_ports, tbn_arp_table, src_ip_base, src_port_base)
-            if not ret0 or not ret1 or not ret2:
+            ret2 = self.roach.configure_10gbe(self.GBE_DRX_2, drx_dst_ips, drx_2_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+            ret3 = self.roach.configure_10gbe(self.GBE_DRX_3, drx_dst_ips, drx_3_dst_ports, drx_arp_table, src_ip_base, src_port_base)
+            if not ret0 or not ret1 or not ret2 or not ret3:
                 raise RuntimeError("Configuring Roach 10GbE ports failed")
         except:
             self.log.exception("Configuring roach failed")
@@ -901,8 +908,15 @@ class Roach2MonitorClient(object):
             
         if self.is_marked_bad():
             return chan0
-            
-        gbe = self.GBE_DRX_0 if tuning == 0 else self.GBE_DRX_1
+
+        if tuning == 0:
+            gbe = self.GBE_DRX_0
+        elif tuning == 1:
+            gbe = self.GBE_DRX_1
+        elif tuning == 1:
+            gbe = self.GBE_DRX_2
+        else:
+            gbe = self.GBE_DRX_3
         self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
                                                  equalizer_coeffs=self.equalizer_coeffs)
         return chan0
@@ -1301,11 +1315,11 @@ class MsgProcessor(ConsumerThread):
                     
                 time.sleep(5)
                 
-            if not self.check_success(lambda: self.servers.restart_tbn(),
-                                      'Restarting pipelines - TBN',
-                                      self.servers.host):
-                if 'FORCE' not in arg:
-                    return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
+            #if not self.check_success(lambda: self.servers.restart_tbn(),
+            #                          'Restarting pipelines - TBN',
+            #                          self.servers.host):
+            #    if 'FORCE' not in arg:
+            #        return self.raise_error_state('INI', 'SERVER_STARTUP_FAILED')
                     
         # Bring up the FPGAs
         if 'NOREPROGRAM' not in arg: # Note: This is for debugging, not in spec
@@ -1382,14 +1396,14 @@ class MsgProcessor(ConsumerThread):
             
         # Check and make sure that *all* of the pipelines started
         self.log.info("Checking pipeline processing")
-        ## TBN
-        pipeline_pids = [p for s in self.servers.pid_tbn() for p in s]
-        pipeline_pids = filter(lambda x: x>0, pipeline_pids)
-        print('TBN:', len(pipeline_pids), pipeline_pids)
-        if len(pipeline_pids) != len(self.servers):
-            self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
-            if 'FORCE' not in arg:
-                return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
+        ### TBN
+        #pipeline_pids = [p for s in self.servers.pid_tbn() for p in s]
+        #pipeline_pids = filter(lambda x: x>0, pipeline_pids)
+        #print('TBN:', len(pipeline_pids), pipeline_pids)
+        #if len(pipeline_pids) != len(self.servers):
+        #    self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
+        #    if 'FORCE' not in arg:
+        #        return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
         ## DRX
         pipeline_pids = []
         for tuning in range(len(self.config['drx'])):
@@ -1858,7 +1872,7 @@ class MsgProcessor(ConsumerThread):
         self.log.info("Starting slot execution thread")
         slot = MCS2.get_current_slot()
         while not self.shutdown_event.is_set():
-            for cmd_processor in [self.drx, self.tbf, self.bam, self.cor, self.tbn]:#, self.fst, self.bam]
+            for cmd_processor in [self.drx, self.tbf, self.bam, self.cor]:#, self.tbn]:#, self.fst, self.bam]
                 self.thread_pool.add_task(cmd_processor.execute_commands,
                                         slot)
             while MCS2.get_current_slot() == slot:
@@ -1916,8 +1930,8 @@ class MsgProcessor(ConsumerThread):
                         
                         if name.find('drx') != -1:
                             found['drx'].append( (host,name,side,loss,txbw,cact) )
-                        elif name.find('tbn') != -1:
-                            found['tbn'].append( (host,name,side,loss,txbw) )
+                        #elif name.find('tbn') != -1:
+                        #    found['tbn'].append( (host,name,side,loss,txbw) )
                         elif name.find('tengine') != -1:
                             found['tengine'].append( (host,name,side,loss,txbw) )
                         else:
@@ -1996,38 +2010,38 @@ class MsgProcessor(ConsumerThread):
                         self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                     self.log.warning(msg)
                     
-                ### TBN pipelines
-                if not self.ready:
-                    ## Deal with the system shutting down in the middle of a poll
-                    continue
-                total_tbn_bw = 0
-                total_tbn_inactive = 0
-                for host,name,side,loss,txbw in found['tbn']:
-                    total_tbn_bw += txbw
-                    total_tbn_inactive += (1 if txbw == 0 else 0)
-                    if loss > 0.01:    # >1% packet loss
-                        problems_found = True
-                        msg = "%s, TBN -- RX loss of %.1f%%" % (host, loss*100.0)
-                        if self.state['status'] != 'ERROR':
-                            self.state['lastlog'] = msg
-                            self.state['status'] = 'WARNING'
-                            self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
-                        self.log.warning(msg)
-                if self.tbn.cur_freq > 0 and total_tbn_inactive > 0:
-                    problems_found = True
-                    msg = "TBN -- TX rate of %.1f MB/s" % (total_tbn_bw/1024.0**2,)
-                    self.state['lastlog'] = msg
-                    self.state['status']  = 'ERROR'
-                    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
-                    self.log.error(msg)
-                if len(found['tbn']) != n_servers:
-                    problems_found = True
-                    msg = "Found %i TBN pipelines instead of %i" % (len(found['tbn']), n_servers)
-                    if self.state['status'] != 'ERROR':
-                        self.state['lastlog'] = msg
-                        self.state['status']  = 'WARNING'
-                        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
-                    self.log.warning(msg)
+                #### TBN pipelines
+                #if not self.ready:
+                #    ## Deal with the system shutting down in the middle of a poll
+                #    continue
+                #total_tbn_bw = 0
+                #total_tbn_inactive = 0
+                #for host,name,side,loss,txbw in found['tbn']:
+                #    total_tbn_bw += txbw
+                #    total_tbn_inactive += (1 if txbw == 0 else 0)
+                #    if loss > 0.01:    # >1% packet loss
+                #        problems_found = True
+                #        msg = "%s, TBN -- RX loss of %.1f%%" % (host, loss*100.0)
+                #        if self.state['status'] != 'ERROR':
+                #            self.state['lastlog'] = msg
+                #            self.state['status'] = 'WARNING'
+                #            self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                #        self.log.warning(msg)
+                #if self.tbn.cur_freq > 0 and total_tbn_inactive > 0:
+                #    problems_found = True
+                #    msg = "TBN -- TX rate of %.1f MB/s" % (total_tbn_bw/1024.0**2,)
+                #    self.state['lastlog'] = msg
+                #    self.state['status']  = 'ERROR'
+                #    self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                #    self.log.error(msg)
+                #if len(found['tbn']) != n_servers:
+                #    problems_found = True
+                #    msg = "Found %i TBN pipelines instead of %i" % (len(found['tbn']), n_servers)
+                #    if self.state['status'] != 'ERROR':
+                #        self.state['lastlog'] = msg
+                #        self.state['status']  = 'WARNING'
+                #        self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                #    self.log.warning(msg)
                     
                 ## Check the roach boards
                 if not self.ready:
