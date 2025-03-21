@@ -815,10 +815,10 @@ class Roach2MonitorClient(object):
         subband_nchan0 = int(math.ceil(self.config['drx'][0]['capture_bandwidth'] / CHAN_BW / nsubband0))
         nsubband1      = len(self.config['host']['servers-data'])
         subband_nchan1 = int(math.ceil(self.config['drx'][1]['capture_bandwidth'] / CHAN_BW / nsubband1))
-        nsubband2      = 1
-        subband_nchan2 = int(math.ceil(self.config['tbn']['capture_bandwidth'] / CHAN_BW / nsubband2))
-        nsubband3      = None
-        subband_nchan3 = None
+        nsubband2      = len(self.config['host']['servers-data'])
+        subband_nchan2 = int(math.ceil(self.config['drx'][2]['capture_bandwidth'] / CHAN_BW / nsubband2))
+        nsubband3      = len(self.config['host']['servers-data'])
+        subband_nchan3 = int(math.ceil(self.config['drx'][3]['capture_bandwidth'] / CHAN_BW / nsubband3))
         ## ADC digital gain
         adc_gain       = self.config['roach']['adc_gain']
         adc_gain_bits  = ( adc_gain       | (adc_gain <<  4) |
