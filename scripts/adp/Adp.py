@@ -854,13 +854,16 @@ class Roach2MonitorClient(object):
             # DRX, tuning 0 on gbe0, DRX, tuning 1 on gbe1, TBN on gbe2
             ret = True
             for gbe in (self.GBE_DRX_0, self.GBE_DRX_1, self.GBE_DRX_2, self.GBE_DRX_3):
+                self.log.info("Working on GBE %i", gbe)
                 drx_dst_hosts   = self.config['host']['servers-data']
                 if gbe % 2 == 1:
                     drx_dst_hosts = [h.replace('data1', 'data2') for h in drx_dst_hosts]
+                self.log.info("DRX dest hosts: %s", drx_dst_hosts)
                 src_ip_base     = self.config['roach']['data_ip_base']
                 src_port_base   = self.config['roach']['data_port_base']
                 dst_ports       = self.config['server']['data_ports']
                 drx_dst_ips     = [host2ip(host) for host in drx_dst_hosts]
+                self.log.info("DRX dest IPs: %s", drx_dst_ips)
                 macs = load_ethers()
                 try:
                     drx_dst_macs    = [macs[ip] for ip in drx_dst_ips]
@@ -868,7 +871,9 @@ class Roach2MonitorClient(object):
                     ## Catch for multicast addresses that do not have MACs
                     drx_dst_macs    = [macs[host2ip(ip)] for ip in self.config['host']['servers']]
                 drx_arp_table   = gen_arp_table(drx_dst_ips, drx_dst_macs)
+                self.log.info("DRX ARP table: %s", drx_arp_table)
                 drx_dst_ports = [dst_ports[gbe] for i in range(len(drx_dst_ips))]
+                self.log.info("DRX dest ports: %s", drx_dst_ports)
                 ret &= self.roach.configure_10gbe(gbe, drx_dst_ips, drx_dst_ports, drx_arp_table, src_ip_base, src_port_base)
             if not ret:
                 raise RuntimeError("Configuring Roach 10GbE ports failed")
