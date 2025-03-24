@@ -205,8 +205,6 @@ class Drx(SlotCommandProcessor):
         #time.sleep(1.1)
         #rets = self.roaches.enable_drx_data(tuning)
         
-        self.messenger.drxConfig(tuning, freq, filt, gain)
-        
         return rets
         
     def execute(self, cmds):
