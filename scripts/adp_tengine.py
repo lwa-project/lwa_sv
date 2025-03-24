@@ -1105,7 +1105,7 @@ def main(argv):
     nblock = max([nblock, 1])
     
     ops.append(CaptureOp(log, fmt="ibeam1", sock=isock, ring=capture_ring,
-                         nsrc=nblock*ntuning, src0=server0, max_payload_size=6500,
+                         nsrc=nblock*ntuning*4, src0=server0, max_payload_size=6500,
                          nbeam_max=nbeam, buffer_ntime=GSIZE, slot_ntime=19600,
                          core=cores.pop(0)))
     ops.append(GPUCopyOp(log, capture_ring, gpu_ring, ntime_gulp=GSIZE,

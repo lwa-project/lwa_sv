@@ -1529,7 +1529,7 @@ def main(argv):
     cor_bw_max    = vbw/nserver/ntuning
     
     # TODO:  Figure out what to do with this resize
-    GSIZE = 500
+    GSIZE = 512
     ogulp_size = GSIZE *nchan_max*256*2
     obuf_size  = tbf_buffer_secs*25000 *nchan_max*256*2
     tbf_ring.resize(ogulp_size, obuf_size)
