@@ -1550,7 +1550,7 @@ class MsgProcessor(ConsumerThread):
         
         # Run a TBF capture and save to disk
         self.log.info("Triggering local TBF dump")
-        self.messageServer.trigger(0, int(0.06*FS), 2, local=True)
+        self.messageServer.trigger(0, int(0.06*FS), 1, local=True)
         tTrigger = time.time()
         time.sleep(5.0)
         
