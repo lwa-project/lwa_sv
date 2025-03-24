@@ -899,6 +899,9 @@ class Roach2MonitorClient(object):
         subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
         chan0         = int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
         
+        chanE = int(round(88e6 / CHAN_BW))
+        chan0 = chanE - subband_nchan*nsubband*(4 - tuning)
+        
         scale_factor = self.config['roach']['scale_factor']
         if shift_factor is None:
             shift_factor = self.config['roach']['shift_factor']
