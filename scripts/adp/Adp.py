@@ -891,7 +891,7 @@ class Roach2MonitorClient(object):
             delay += currDelay
         self.roach.configure_adc_delay(index, delay)
         
-    @ISC.logException
+    #@ISC.logException
     def tune_drx(self, tuning, cfreq, shift_factor=None):
         bw = self.config['drx'][tuning]['capture_bandwidth']
         bw = round(bw, 3) # Round to mHz to avoid precision errors
