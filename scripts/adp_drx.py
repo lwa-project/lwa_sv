@@ -513,12 +513,12 @@ class TriggeredDumpOp(object):
 
 class BeamformerOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nsnap=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nbeam_max=1, nroach=16, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
         self.log   = log
         self.iring = iring
         self.oring = oring
         self.tuning = tuning
-        ninput_max = nsnap*32#*2
+        ninput_max = nroach*16#*2
         self.ntime_gulp = ntime_gulp
         self.guarantee = guarantee
         self.core = core
@@ -545,7 +545,7 @@ class BeamformerOp(object):
             BFSetGPU(self.gpu)
         ## Metadata
         nchan = self.nchan_max
-        nstand, npol = nsnap*32, 2
+        nstand, npol = nroach*16, 2
         ## Object
         self.bfbf = LinAlg()
         ## Delays and gains
@@ -798,12 +798,12 @@ class BeamformerOp(object):
 
 class CorrelatorOp(object):
     # Note: Input data are: [time,chan,ant,pol,cpx,8bit]
-    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nsnap=16, ntime_gulp=2500, utc_start_tt=None, guarantee=True, core=-1, gpu=-1):
+    def __init__(self, log, iring, oring, tuning=0, nchan_max=256, nroach=16, ntime_gulp=2500, utc_start_tt=None, guarantee=True, core=-1, gpu=-1):
         self.log   = log
         self.iring = iring
         self.oring = oring
         self.tuning = tuning
-        ninput_max = nsnap*32#*2
+        ninput_max = nroach*16#*2
         self.ntime_gulp = ntime_gulp
         self.guarantee = guarantee
         self.core = core
@@ -840,7 +840,7 @@ class CorrelatorOp(object):
         self.decim = 4
         nchan = self.nchan_max
         ochan = nchan//self.decim
-        nstand, npol = nsnap*32, 2
+        nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = Btcc()
         self.bfcc.init(8, int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, 1)
@@ -1206,7 +1206,7 @@ class RetransmitOp(object):
 
 class PacketizeOp(object):
     # Note: Input data are: [time,beam,pol,iq]
-    def __init__(self, log, iring, osock, tuning=0, nchan_max=256, nsnap=16, npkt_gulp=128, core=-1, gpu=-1, max_bytes_per_sec=None):
+    def __init__(self, log, iring, osock, tuning=0, nchan_max=256, nroach=16, npkt_gulp=128, core=-1, gpu=-1, max_bytes_per_sec=None):
         self.log   = log
         self.iring = iring
         self.sock  = osock
@@ -1235,7 +1235,7 @@ class PacketizeOp(object):
         ## Metadata
         self.nchan_send = min([self.nchan_max, 192])
         self.nblock_send = self.nchan_max // self.nchan_send
-        nstand, npol = nsnap*32, 2
+        nstand, npol = nroach*16, 2
         
         # Output packet rate
         ## nchan_send + npol^2 -> samples per packet
@@ -1543,13 +1543,13 @@ def main(argv):
                                max_bytes_per_sec=tbf_bw_max))
     ops.append(GPUCopyOp(log, capture_ring, gpu_ring,
                          ntime_gulp=GSIZE, core=cores[0], gpu=gpus[0]))
-    ops.append(BeamformerOp(log=log, iring=gpu_ring, oring=tengine_ring, 
+    ops.append(BeamformerOp(log=log, iring=gpu_ring, oring=tengine_ring,
                             tuning=tuning, ntime_gulp=GSIZE,
-                            nchan_max=nchan_max, nbeam_max=nbeam, 
+                            nroach=16, nchan_max=nchan_max, nbeam_max=nbeam,
                             core=cores.pop(0), gpu=gpus.pop(0)))
-    ops.append(RetransmitOp(log=log, osock=tsock, iring=tengine_ring, 
-                            tuning=tuning, nchan_max=nchan_max, 
-                            ntime_gulp=50, nbeam_max=nbeam, 
+    ops.append(RetransmitOp(log=log, osocks=tsocks, iring=tengine_ring,
+                            tuning=tuning, ntuning=ntuning, nchan_max=nchan_max,
+                            ntime_gulp=GSIZE, nbeam_max=nbeam,
                             core=cores.pop(0)))
     ops[-2].updatePacketizerPreferences(ops[-1])
     if True:
@@ -1560,11 +1560,12 @@ def main(argv):
             pcore = ccore
         ops.append(CorrelatorOp(log=log, iring=gpu_ring, oring=vis_ring, 
                                 tuning=tuning, ntime_gulp=GSIZE,
-                                nchan_max=nchan_max, 
-                                core=ccore, gpu=tuning))
+                                nroach=16, nchan_max=nchan_max,
+                                utc_start_tt=utc_start_tt,
+                                core=ccore, gpu=tuning % 2))
         ops.append(PacketizeOp(log=log, iring=vis_ring, osock=vsock,
-                               tuning=tuning, nchan_max=nchan_max//4, npkt_gulp=1, 
-                               core=pcore, gpu=tuning,
+                               tuning=tuning, nroach=16, nchan_max=nchan_max//4,
+                               npkt_gulp=1, core=pcore, gpu=tuning % 2,
                                max_bytes_per_sec=cor_bw_max))
         ops[-2].updatePacketizerPreferences(ops[-1])
         
