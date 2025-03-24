@@ -122,7 +122,7 @@ class PipelineMessageServer(object):
           * gain setting
         """
         
-        self.socket.send_string('DRX %i %.6f %i %i' % (tuning, frequency, filter, gain))
+        self.socket.send_string('DRX 1 %i %.6f %i %i 0' % (tuning, frequency, filter, gain))
         
     def bamConfig(self, beam, delays, gains, tuning, subslot):
         """
@@ -300,12 +300,14 @@ class DRXConfigurationClient(PipelineMessageClient):
             return False
         else:
             # Unpack
-            fields    = msg.split(None, 4)
-            tuning    = int(fields[1], 10)
-            frequency = float(fields[2])
-            filter    = int(fields[3], 10)
-            gain      = int(fields[4], 10)
-            return tuning, frequency, filter, gain
+            fields    = msg.split(None, 6)
+            beam      = int(fields[1], 10)
+            tuning    = int(fields[2], 10)
+            frequency = float(fields[3])
+            filter    = int(fields[4], 10)
+            gain      = int(fields[5], 10)
+            subslot   = int(fields[6], 10)
+            return beam, tuning, frequency, filter, gain, subslot
 
 
 class BAMConfigurationClient(PipelineMessageClient):

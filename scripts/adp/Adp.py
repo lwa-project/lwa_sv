@@ -185,6 +185,9 @@ class Drx(SlotCommandProcessor):
         rets = self.roaches.tune_drx(tuning, freq)
         
         if not internal:
+            self.messenger.drxConfig(slot, tuning, freq, filt, gain)
+            
+        if not internal:
             self.cur_freq[tuning] = freq
             self.cur_filt[tuning] = filt
             self.cur_gain[tuning] = gain
