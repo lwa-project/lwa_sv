@@ -915,7 +915,7 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_0
         elif tuning == 1:
             gbe = self.GBE_DRX_1
-        elif tuning == 1:
+        elif tuning == 2:
             gbe = self.GBE_DRX_2
         else:
             gbe = self.GBE_DRX_3
