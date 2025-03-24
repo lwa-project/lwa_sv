@@ -1473,7 +1473,7 @@ def main(argv):
     vaddr        = recConfig['host']
     vport        = recConfig['port']
     vbw          = recConfig['max_bytes_per_sec']
-   ## Network - T engine
+    ## Network - T engine
     tengine_ids  = drxConfig['tengine_idx']
     taddrs, tports = [], []
     for i,tengine_idx in enumerate(tengine_ids):
