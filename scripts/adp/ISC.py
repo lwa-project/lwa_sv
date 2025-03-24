@@ -64,7 +64,7 @@ def logException(func):
             
             # Print the traceback to the logger as a series of DEBUG messages
             for line in tbString.split('\n'):
-                logger.debug("%s", line)
+                logger.error("%s", line)
                 
     return tryExceptWrapper
 
