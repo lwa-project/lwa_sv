@@ -37,7 +37,7 @@
     },
     "drx": [
             {
-                "capture_bandwidth": 16e6,
+                "capture_bandwidth": 16.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      0,
                 "tengine_idx":       0,
@@ -47,7 +47,7 @@
                 "gpus":              [0]
             }, 
             {
-                "capture_bandwidth": 16e6,
+                "capture_bandwidth": 16.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      1,
                 "tengine_idx":       1,
@@ -57,7 +57,7 @@
                 "gpus":              [1]
             },
             {
-                "capture_bandwidth": 16e6,
+                "capture_bandwidth": 16.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      2,
                 "tengine_idx":       2,
@@ -67,7 +67,7 @@
                 "gpus":              [0]
             }, 
             {
-                "capture_bandwidth": 16e6,
+                "capture_bandwidth": 16.8e6,
                 "beam_count":        2,
                 "pipeline_idx":      3,
                 "tengine_idx":       3,
