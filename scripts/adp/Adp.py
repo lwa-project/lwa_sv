@@ -1491,7 +1491,7 @@ class MsgProcessor(ConsumerThread):
     # Helper function - download files
     def _download_tbf_files(self, tTrigger, nTunings, ageLimit=10.0, deleteAfterCopy=False):
         filenames = []
-        for s in (1,2,3,4,5,6):
+        for s in (1,2,3,4):
             cmd = "ssh adp%i 'ls -lt --time-style=\"+%%s\" /data0/test_adp*_*.tbf' | head -n%i " % (s, nTunings)
             latestTBF = subprocess.check_output(cmd, shell=True)
             try:
@@ -1556,7 +1556,7 @@ class MsgProcessor(ConsumerThread):
         self.log.info("Analyzing TBF capture")
         filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
                 
-        if len(filenames) >= 6 or 'FORCE' in arg:
+        if len(filenames) >= 4 or 'FORCE' in arg:
             # Verify the offsets
             cargs = ''
             if len(self.config['host']['bad_roaches']) > 0:
@@ -1642,7 +1642,7 @@ class MsgProcessor(ConsumerThread):
         self.log.info("Analyzing TBF capture")
         filenames = self._download_tbf_files(tTrigger, nTunings=len(self.config['drx']))
                 
-        if len(filenames) >= 6 or 'FORCE' in arg:
+        if len(filenames) >= 4 or 'FORCE' in arg:
             # Solve for the delays
             cargs = ''
             if len(self.config['host']['bad_roaches']) > 0:
