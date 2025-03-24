@@ -1131,7 +1131,7 @@ class RetransmitOp(object):
                 desc[-1].set_nchan(self.nchan_send)
                 desc[-1].set_nsrc(self.ntuning*self.nblock_send*4)
                 
-                src_id.append(self.nblock_send*self.tuning*4 + j*self.server)
+                src_id.append(self.nblock_send*4*self.tuning + self.nblock_send*(self.server-1) + j)
                 self.log("tuning: %i, server %i -> src_id: %i", self.tuning, self.server, src_id[0])
                 
         for iseq in self.iring.read():
