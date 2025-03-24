@@ -1131,7 +1131,7 @@ class RetransmitOp(object):
                 desc[-1].set_nchan(self.nchan_send)
                 desc[-1].set_nsrc(self.ntuning*self.nblock_send*4)
                 
-                src_id.append(self.nblock_send*self.tuning*self.server  + j)
+                src_id.append(self.nblock_send*self.tuning*4 + j*self.server)
                 
         for iseq in self.iring.read():
             ihdr = json.loads(iseq.header.tostring())
