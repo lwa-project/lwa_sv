@@ -229,20 +229,26 @@ class AdpRoach(object):
     def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27, equalizer_coeffs=None):
         # Note: gbe_idx is the 0-based index of the gigabit ethernet core
         
+        print("Here with", gbe_idx, start_chan, scale_factor, shift_factor)
+        
         # Validate the inputs
         assert( 0 <= gbe_idx and gbe_idx < 3 )
         assert( 10 <= start_chan and start_chan <= 4000 )
         if equalizer_coeffs is None:
             equalizer_coeffs = np.ones(4096, 'l')
         assert( len(equalizer_coeffs) == 4096 )
+        print("Made it through asserts - #1")
         
         # Compute the stop channel and updated packetizer registries as needed
         stop_chan = start_chan + self._fpgaState['pkt_gbe%i_n_chan_per_sub' % gbe_idx] * \
                             self._fpgaState['pkt_gbe%i_n_subband' % gbe_idx]
+        print("Stop chan is", stop_chan)
         assert( 20 <= stop_chan and stop_chan <= 4095 )
+        print("Made it through asserts - #2")
         updated = False
         for baseReg,value in zip(('start_chan', 'stop_chan'), (start_chan, stop_chan)):
             register = 'pkt_gbe%i_%s' % (gbe_idx, baseReg)
+            print("Working on register", register)
             
             ## Do no cache the start and stop channels
             #try:
@@ -254,6 +260,7 @@ class AdpRoach(object):
                 self.fpga.write_int(register, value)
                 self._fpgaState[register] = value
                 updated |= True
+                print("Set register", register)
                 
         # Update the FFT scale as needed
         try:
@@ -273,7 +280,8 @@ class AdpRoach(object):
             self._fpgaState['shift_factor'] = shift_factor
             self._fpgaState['eq_coeffs'] = equalizer_coeffs
             updated |= True
-            
+        print("Set equalizer values")
+        
         return updated
         
     def _read_pkt_tx_enable(self):

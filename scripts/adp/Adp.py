@@ -901,6 +901,7 @@ class Roach2MonitorClient(object):
         
         chanE = int(round(88e6 / CHAN_BW))
         chan0 = chanE - subband_nchan*nsubband*(4 - tuning)
+        self.log.info("Here with tuning %i -> chan0 %i", tuning, chan0)
         
         scale_factor = self.config['roach']['scale_factor']
         if shift_factor is None:
@@ -917,6 +918,7 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_2
         else:
             gbe = self.GBE_DRX_3
+        self.log.info("Tuning %i -> GBE %i", tuning, gbe)
         self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
                                                  equalizer_coeffs=self.equalizer_coeffs)
         return chan0
