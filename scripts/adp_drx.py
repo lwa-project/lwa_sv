@@ -1478,6 +1478,8 @@ def main(argv):
     tengine_ids  = drxConfig['tengine_idx']
     taddrs, tports = [], []
     for i,tengine_idx in enumerate(tengine_ids):
+        if i >= drxConfig['beam_count']:
+            continue
         tngConfig    = config['tengine'][tengine_idx]
         taddrs.append( config['host']['tengines'][tengine_idx] )
         tports.append( config['server']['data_ports' ][tngConfig['pipeline_idx']] + i + 1)
