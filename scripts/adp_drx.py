@@ -1104,7 +1104,7 @@ class RetransmitOp(object):
         self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        #self.server = int(socket.gethostname().replace('adp', '0'), 10)
+        self.server = int(socket.gethostname().replace('adp', '0'), 10)
         self.nchan_max = nchan_max
         
         self.udts = []
@@ -1129,9 +1129,9 @@ class RetransmitOp(object):
                 desc.append(HeaderInfo())
                 desc[-1].set_tuning(1+i)
                 desc[-1].set_nchan(self.nchan_send)
-                desc[-1].set_nsrc(self.ntuning*self.nblock_send)
+                desc[-1].set_nsrc(self.ntuning*self.nblock_send*4)
                 
-                src_id.append(self.nblock_send*self.tuning + j)
+                src_id.append(self.nblock_send*self.tuning*self.server  + j)
                 
         for iseq in self.iring.read():
             ihdr = json.loads(iseq.header.tostring())
@@ -1260,7 +1260,7 @@ class PacketizeOp(object):
             desc = []
             for i in range(self.nblock_send):
                 desc.append(HeaderInfo())
-                desc[-1].set_tuning((4 << 16) | (4 << 8) | (self.nblock_send*self.tuning + i + 1))
+                desc[-1].set_tuning((4 << 16) | (16 << 8) | (self.nblock_send*self.tuning*self.server + i + 1))
             
             for iseq in self.iring.read():
                 ihdr = json.loads(iseq.header.tostring())
@@ -1556,7 +1556,7 @@ def main(argv):
                             ntime_gulp=GSIZE, nbeam_max=nbeam,
                             core=cores.pop(0)))
     ops[-2].updatePacketizerPreferences(ops[-1])
-    if True:
+    if tuning == 0:
         ccore = ops[2].core
         try:
             pcore = cores.pop(0)
