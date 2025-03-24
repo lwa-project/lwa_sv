@@ -38,9 +38,9 @@
     "drx": [
             {
                 "capture_bandwidth": 16.8e6,
-                "beam_count":        2,
+                "beam_count":        4,
                 "pipeline_idx":      0,
-                "tengine_idx":       0,
+                "tengine_idx":       [0, 1, 2, 3],
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [0, 2, 3, 4, 5],
@@ -48,9 +48,9 @@
             }, 
             {
                 "capture_bandwidth": 16.8e6,
-                "beam_count":        2,
+                "beam_count":        4,
                 "pipeline_idx":      1,
-                "tengine_idx":       1,
+                "tengine_idx":       [0, 1, 2, 3],
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [8, 10, 11, 12, 13],
@@ -58,9 +58,9 @@
             },
             {
                 "capture_bandwidth": 16.8e6,
-                "beam_count":        2,
+                "beam_count":        4,
                 "pipeline_idx":      2,
-                "tengine_idx":       2,
+                "tengine_idx":       [0, 1, 2, 3],
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [6, 7, 0, 2, 3],
@@ -68,9 +68,9 @@
             }, 
             {
                 "capture_bandwidth": 16.8e6,
-                "beam_count":        2,
+                "beam_count":        4,
                 "pipeline_idx":      3,
-                "tengine_idx":       3,
+                "tengine_idx":       [0, 1, 2, 3],
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [14, 15, 8, 10, 11],
@@ -140,29 +140,29 @@
     "tengine": [
                 {
                     "pipeline_idx":      0,
-                    "recorder_idx":      [0, 1, 2],
-                    "cpus":              [0, 2, 3],
+                    "recorder_idx":      0,
+                    "cpus":              [0, 2, 3, 4],
                     "gpus":              [0],
                     "pfb_inverter":      true
                 },
                 {
                     "pipeline_idx":      1,
-                    "recorder_idx":      [0, 1, 2],
-                    "cpus":              [8, 9, 10],
+                    "recorder_idx":      1,
+                    "cpus":              [8, 9, 10, 11],
                     "gpus":              [1],
                     "pfb_inverter":      true
                 },
                 {
                     "pipeline_idx":      2,
-                    "recorder_idx":      [0, 1, 2],
-                    "cpus":              [3, 4, 5],
+                    "recorder_idx":      2,
+                    "cpus":              [1, 3, 4, 5],
                     "gpus":              [0],
                     "pfb_inverter":      true
                 },
                 {
                     "pipeline_idx":      3,
-                    "recorder_idx":      [0, 1, 2],
-                    "cpus":              [11, 12, 13],
+                    "recorder_idx":      3,
+                    "cpus":              [12, 13, 14, 15],
                     "gpus":              [1],
                     "pfb_inverter":      true
                 }

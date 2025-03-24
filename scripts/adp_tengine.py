@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from ndp import MCS2 as MCS
-from ndp import Ndp
-from ndp.NdpCommon import *
-from ndp import ISC
+from adp import MCS2 as MCS
+from adp import Adp
+from adp.AdpCommon import *
+from adp import ISC
 
 from bifrost.address import Address
 from bifrost.udp_socket import UDPSocket
@@ -455,7 +455,7 @@ class TEngineOp(object):
         self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.configMessage = ISC.DRXConfigurationClient(addr=('ndp',5832))
+        self.configMessage = ISC.DRXConfigurationClient(addr=('adp',5832))
         self._pending = deque()
         self.ntune = 2
         self.gain = [6, 6]
@@ -887,7 +887,7 @@ class PacketizeOp(object):
         self.size_proclog.update({'nseq_per_gulp': ntime_gulp})
         
         with UDPTransmit('drx', sock=self.osock, core=self.core) as udt:
-            udt.set_rate_limit(22000)
+            #udt.set_rate_limit(22000)
             
             desc0 = HeaderInfo()
             desc1 = HeaderInfo()
@@ -980,21 +980,21 @@ def get_numeric_suffix(s):
 def main(argv):
     parser = argparse.ArgumentParser(description='LWA-NA NDP T-Engine Service')
     parser.add_argument('-f', '--fork',       action='store_true',       help='Fork and run in the background')
-    parser.add_argument('-b', '--beam',       default=0, type=int,       help='DRX beam (0, 1, 2, or 3)')
-    parser.add_argument('-c', '--configfile', default='ndp_config.json', help='Specify config file')
+    parser.add_argument('-t', '--tuning',       default=0, type=int,       help='DRX beam (0, 1, 2, or 3)')
+    parser.add_argument('-c', '--configfile', default='adp_config.json', help='Specify config file')
     parser.add_argument('-l', '--logfile',    default=None,              help='Specify log file')
     parser.add_argument('-d', '--dryrun',     action='store_true',       help='Test without acting')
     parser.add_argument('-v', '--verbose',    action='count', default=0, help='Increase verbosity')
     parser.add_argument('-q', '--quiet',      action='count', default=0, help='Decrease verbosity')
     args = parser.parse_args()
-    beam = args.beam
+    beam = args.tuning
     
     # Fork, if requested
     if args.fork:
         stderr = '/tmp/%s_%i.stderr' % (os.path.splitext(os.path.basename(__file__))[0], tuning)
         daemonize(stdin='/dev/null', stdout='/dev/null', stderr=stderr)
         
-    config = Ndp.parse_config_file(args.configfile)
+    config = Adp.parse_config_file(args.configfile)
     drxConfigs = config['drx']
     ntuning = len(drxConfigs)
     drxConfig = drxConfigs[0]
@@ -1006,7 +1006,7 @@ def main(argv):
     if args.logfile is None:
         logHandler = logging.StreamHandler(sys.stdout)
     else:
-        logHandler = Ndp.NdpFileHandler(config, args.logfile)
+        logHandler = Adp.AdpFileHandler(config, args.logfile)
     logHandler.setFormatter(logFormat)
     log.addHandler(logHandler)
     verbosity = args.verbose - args.quiet
@@ -1017,8 +1017,8 @@ def main(argv):
     log.info("Starting %s with PID %i", argv[0], os.getpid())
     log.info("Cmdline args: \"%s\"", ' '.join(argv[1:]))
     log.info("Version:      %s", __version__)
-    log.info("Current MJD:  %f", Ndp.MCS2.slot2mjd())
-    log.info("Current MPM:  %i", Ndp.MCS2.slot2mpm())
+    log.info("Current MJD:  %f", Adp.MCS2.slot2mjd())
+    log.info("Current MPM:  %i", Adp.MCS2.slot2mpm())
     log.info("Config file:  %s", args.configfile)
     log.info("Log file:     %s", args.logfile)
     log.info("Dry run:      %r", args.dryrun)
@@ -1047,7 +1047,7 @@ def main(argv):
     try:
         server_idx = get_numeric_suffix(hostname) - 1
     except ValueError:
-        server_idx = 0 # HACK to allow testing on head node "ndp"
+        server_idx = 0 # HACK to allow testing on head node "adp"
     log.info("Hostname:     %s", hostname)
     log.info("Server index: %i", server_idx)
     
@@ -1099,7 +1099,7 @@ def main(argv):
     tengine_ring = Ring(name="tengine-%i" % beam, space="cuda_host", core=cores[-1])
     
     GSIZE = 1960
-    nchan_max = int(round(sum([c['capture_bandwidth'] for c in drxConfigs])/CHAN_BW))    # Subtly different from what is in ndp_drx.py
+    nchan_max = int(round(sum([c['capture_bandwidth'] for c in drxConfigs])/CHAN_BW))    # Subtly different from what is in adp_drx.py
     
     nblock = int(round(drxConfig['capture_bandwidth']/CHAN_BW)) // 384
     nblock = max([nblock, 1])

@@ -537,7 +537,7 @@ class BeamformerOp(object):
         
         self.nchan_max = nchan_max
         self.nbeam_max = nbeam_max
-        self.configMessage = ISC.BAMConfigurationClient(addr=('ndp',5832))
+        self.configMessage = ISC.BAMConfigurationClient(addr=('adp',5832))
         self._pending = deque()
         
         # Setup the beamformer
@@ -563,7 +563,7 @@ class BeamformerOp(object):
         try:
             ##Read in the precalculated complex gains for all of the steps of the achromatic beams.
             hostname = socket.gethostname()
-            cgainsFile = '/home/ndp/complexGains_%s.npz' % hostname
+            cgainsFile = '/home/adp/complexGains_%s.npz' % hostname
             self.complexGains = np.load(cgainsFile)['cgains'][:,:8,:,:]
     	
             ##Figure out which indices to pull for the given tuning
@@ -823,7 +823,7 @@ class CorrelatorOp(object):
         self.nchan_max = nchan_max
         def null_config():
             return None
-        self.configMessage = null_config#ISC.CORConfigurationClient(addr=('ndp',5832))
+        self.configMessage = null_config#ISC.CORConfigurationClient(addr=('adp',5832))
         self._pending = deque()
         self.navg_tt = int(round(5 * FS // (2*NCHAN*self.ntime_gulp))) * (2*NCHAN*self.ntime_gulp)
         self.navg_seq = self.navg_tt // (2*NCHAN)
@@ -843,7 +843,7 @@ class CorrelatorOp(object):
         nstand, npol = nroach*16, 2
         ## Object
         self.bfcc = Btcc()
-        self.bfcc.init(8, int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol, 1)
+        self.bfcc.init(8, int(np.ceil((self.ntime_gulp/16.0))*16), ochan, nstand, npol)
         ## Intermediate arrays
         ## NOTE:  This should be OK to do since the snaps only output one bandwidth per INI
         self.udata = BFArray(shape=(int(np.ceil((self.ntime_gulp/16.0))*16),ochan,nstand*npol), dtype='ci8', space='cuda')
@@ -1104,15 +1104,15 @@ class RetransmitOp(object):
         self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.server = int(socket.gethostname().replace('ndp', '0'), 10)
+        #self.server = int(socket.gethostname().replace('adp', '0'), 10)
         self.nchan_max = nchan_max
         
         self.udts = []
         self.nchan_send = min([self.nchan_max, 384])
         self.nblock_send = self.nchan_max // self.nchan_send
         for sock in self.socks:
-            udt = UDPVerbsTransmit('ibeam%i_%i' % (1, self.nchan_send), sock=sock, core=self.core)
-            udt.set_rate_limit(430000)
+            udt = UDPTransmit('ibeam%i_%i' % (1, self.nchan_send), sock=sock, core=self.core)
+            #udt.set_rate_limit(430000)
             for i in range(self.nblock_send):
                 # Recycle transmitters so that we can index easier later on
                 self.udts.append(udt)
@@ -1223,7 +1223,7 @@ class PacketizeOp(object):
         
         self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
         
-        self.server = int(socket.gethostname().replace('ndp', '0'), 10)
+        self.server = int(socket.gethostname().replace('adp', '0'), 10)
         self.nchan_max = nchan_max
         if max_bytes_per_sec is None:
             max_bytes_per_sec = 104857600        # default to 100 MB/s
@@ -1254,8 +1254,8 @@ class PacketizeOp(object):
                                   'ngpu': 1,
                                   'gpu0': BFGetGPU(),})
         
-        with UDPVerbsTransmit('cor_%i' % self.nchan_send, sock=self.sock, core=self.core) as udt:
-            udt.set_rate_limit(self.max_pkts_per_sec)
+        with UDPTransmit('cor_%i' % self.nchan_send, sock=self.sock, core=self.core) as udt:
+            #udt.set_rate_limit(self.max_pkts_per_sec)
             
             desc = []
             for i in range(self.nblock_send):
@@ -1443,6 +1443,7 @@ def main(argv):
     
     log.info("Waiting to get UTC_START")
     utc_start_dt = get_utc_start(shutdown_event)
+    utc_start_tt = utc_start_dt.timestamp()
     log.info("UTC_START:    %s", utc_start_dt.strftime(DATE_FORMAT))
     
     hostname = socket.gethostname()
@@ -1472,12 +1473,14 @@ def main(argv):
     vaddr        = recConfig['host']
     vport        = recConfig['port']
     vbw          = recConfig['max_bytes_per_sec']
-    ## Network - T engine
-    tengine_idx  = drxConfig['tengine_idx']
-    tngConfig    = config['tengine'][tengine_idx]
-    taddr        = config['host']['tengines'][tengine_idx]
-    tport        = config['server']['data_ports' ][tngConfig['pipeline_idx']]
-    
+   ## Network - T engine
+    tengine_ids  = drxConfig['tengine_idx']
+    taddrs, tports = [], []
+    for i,tengine_idx in enumerate(tengine_ids):
+        tngConfig    = config['tengine'][tengine_idx]
+        taddrs.append( config['host']['tengines'][tengine_idx] )
+        tports.append( config['server']['data_ports' ][tngConfig['pipeline_idx']] + i + 1)
+        
     nroach_tot = len(config['host']['roaches'])
     nserver    = len(config['host']['servers'])
     nroach, roach0 = nroach_tot, 0
@@ -1488,7 +1491,6 @@ def main(argv):
     log.info("Src address:  %s:%i", iaddr, iport)
     log.info("TBF address:  %s:%i", oaddr, oport)
     log.info("COR address:  %s:%i", vaddr, vport)
-    log.info("TNG address:  %s:%i", taddr, tport)
     log.info("Roaches:      %i-%i", roach0+1, roach0+nroach)
     log.info("Tunings:      %i (of %i)", tuning+1, ntuning)
     log.info("CPUs:         %s", ' '.join([str(v) for v in cores]))
@@ -1515,10 +1517,12 @@ def main(argv):
     vsock = UDPSocket()
     vsock.connect(vaddr)
     
-    taddr = Address(taddr, tport)
-    tsock = UDPSocket()
-    tsock.connect(taddr)
-    
+    tsocks = []
+    for taddr,tport in zip(taddrs, tports):
+        ctaddr = Address(taddr, tport)
+        tsocks.append( UDPSocket() )
+        tsocks[-1].connect(ctaddr)
+        
     nchan_max = int(round(drxConfig['capture_bandwidth']/CHAN_BW/nserver))
     tbf_bw_max    = obw/nserver/ntuning
     cor_bw_max    = vbw/nserver/ntuning
