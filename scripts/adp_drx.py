@@ -1261,8 +1261,11 @@ class PacketizeOp(object):
             desc = []
             for i in range(self.nblock_send):
                 desc.append(HeaderInfo())
-                desc[-1].set_tuning((4 << 16) | (16 << 8) | (self.nblock_send*self.tuning*self.server + i + 1))
-            
+                desc[-1].set_tuning((4 << 16) \
+                                    | (16 << 8) \
+                                    | (self.nblock_send*4*self.tuning \
+                                       + self.nblock_send*(self.server-1) + i + 1))
+                
             for iseq in self.iring.read():
                 ihdr = json.loads(iseq.header.tostring())
                 
