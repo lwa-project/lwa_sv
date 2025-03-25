@@ -21,10 +21,11 @@ from .iptools import *
 
 # TODO: Consider refactoring into generic ADC16Roach base class and AdpRoach specialisation
 class AdpRoach(object):
-    def __init__(self, number, port=7147):
+    def __init__(self, number, port=7147, logger=None):
         # Note: number is the 1-based index of the roach
         self.num  = number
         self.port = port
+        self.logger = logger
         self.is_marked_bad = False
         self.connect()
         
@@ -231,9 +232,9 @@ class AdpRoach(object):
         
     def configure_fengine(self, gbe_idx, start_chan, scale_factor=1.948, shift_factor=27, equalizer_coeffs=None):
         # Note: gbe_idx is the 0-based index of the gigabit ethernet core
-        
-        print("Here with", gbe_idx, start_chan, scale_factor, shift_factor)
-        
+        if self.logger is not None:
+            self.logger.info("%s - configure_fengine with %i %i %f %i", self.hostname, gbe_idx, start_chan, scale_factor, shift_factor)
+            
         if gbe_idx == 3:
             return False
         
@@ -243,19 +244,25 @@ class AdpRoach(object):
         if equalizer_coeffs is None:
             equalizer_coeffs = np.ones(4096, 'l')
         assert( len(equalizer_coeffs) == 4096 )
-        print("Made it through asserts - #1")
-        
+        if self.logger is not None:
+            self.logger.info("%s - made it through asserts - #1", self.hostname)
+            
         # Compute the stop channel and updated packetizer registries as needed
         stop_chan = start_chan + self._fpgaState['pkt_gbe%i_n_chan_per_sub' % gbe_idx] * \
                             self._fpgaState['pkt_gbe%i_n_subband' % gbe_idx]
-        print("Stop chan is", stop_chan)
+        if self.logger is not None:
+            self.logger.info("%s - stop chan will be %i", self.hostname, stop_chan)
+            
         assert( 20 <= stop_chan and stop_chan <= 4095 )
-        print("Made it through asserts - #2")
+        if self.logger is not None:
+            self.logger.info("%s - made it through asserts - #2", self.hostname)
+            
         updated = False
         for baseReg,value in zip(('start_chan', 'stop_chan'), (start_chan, stop_chan)):
             register = 'pkt_gbe%i_%s' % (gbe_idx, baseReg)
-            print("Working on register", register)
-            
+            if self.logger is not None:
+                self.logger.info("%s - working on register '%s'", self.hostname, register)
+                
             ## Do no cache the start and stop channels
             #try:
             #    currValue = self._fpgaState[register]
@@ -266,8 +273,9 @@ class AdpRoach(object):
                 self.fpga.write_int(register, value)
                 self._fpgaState[register] = value
                 updated |= True
-                print("Set register", register)
-                
+                if self.logger is not None:
+                    self.logger.info("%s - set register '%s'", self.hostname, register)
+                    
         # Update the FFT scale as needed
         try:
             currScale = self._fpgaState['scale_factor']
@@ -286,24 +294,25 @@ class AdpRoach(object):
             self._fpgaState['shift_factor'] = shift_factor
             self._fpgaState['eq_coeffs'] = equalizer_coeffs
             updated |= True
-        print("Set equalizer values")
-        
+        if self.logger is not None:
+            self.logger.info("%s - set equalizer values", self.hostname)
+            
         return updated
         
     def _read_pkt_tx_enable(self):
         bitset = self.fpga.read_int('pkt_tx_enable')
-        gbe_bitset  = bitset & 0b1111
+        gbe_bitset  = bitset & 0b0111
         return gbe_bitset
         
     def _write_pkt_tx_enable(self, gbe_bitset):
-        bitset = gbe_bitset & 0b1111
+        bitset = gbe_bitset & 0b0111
         try:
             txReady = self._fpgaState['tx_ready']
         except KeyError:
             txReady = False
         if not txReady:
             self.fpga.write_int('pkt_tx_rst', 0b0000)
-            self.fpga.write_int('pkt_tx_rst', 0b1111)
+            self.fpga.write_int('pkt_tx_rst', 0b0111)
             self.fpga.write_int('pkt_tx_rst', 0b0000)
             
             self._fpgaState['tx_ready'] = True
@@ -319,7 +328,7 @@ class AdpRoach(object):
         self.reset(syncFunction=syncFunction)
         
         # Ready the packetizer
-        gbe_bitset  = 0b1111
+        gbe_bitset  = 0b0111
         self._write_pkt_tx_enable(gbe_bitset)
         
     def enable_data(self, gbe):
@@ -337,7 +346,7 @@ class AdpRoach(object):
         self._write_pkt_tx_enable(gbe_bitset)
         
     def processing_started(self):
-        ret = (self.fpga.read_int('pkt_tx_enable') == 0b1111)
+        ret = (self.fpga.read_int('pkt_tx_enable') == 0b0111)
         return ret
         
     def data_enabled(self, gbe):
