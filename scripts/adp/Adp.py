@@ -728,7 +728,7 @@ class Roach2MonitorClient(object):
         # Note: num is 1-based index of the roach
         self.config = config
         self.log    = log
-        self.roach  = AdpRoach(num, config['roach']['port'])
+        self.roach  = AdpRoach(num, config['roach']['port'], logger=log)
         self.host   = self.roach.hostname
         self.device = ROACH2Device(self.host)
         self.num = num
@@ -892,7 +892,7 @@ class Roach2MonitorClient(object):
             delay += currDelay
         self.roach.configure_adc_delay(index, delay)
         
-    #@ISC.logException
+    @ISC.logException
     def tune_drx(self, tuning, cfreq, shift_factor=None):
         bw = self.config['drx'][tuning]['capture_bandwidth']
         bw = round(bw, 3) # Round to mHz to avoid precision errors
@@ -900,9 +900,8 @@ class Roach2MonitorClient(object):
         subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
         chan0         = int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
         
-        chanE = int(round(85e6 / CHAN_BW))
-        chan0 = chanE - subband_nchan*nsubband*(4 - tuning)
-        self.log.info("Here with tuning %i -> chan0 %i", tuning, chan0)
+        chan0 = int(round(28e6 / CHAN_BW))
+        chan0 += subband_nchan*nsubband*tuning
         
         scale_factor = self.config['roach']['scale_factor']
         if shift_factor is None:
@@ -910,7 +909,7 @@ class Roach2MonitorClient(object):
             
         if self.is_marked_bad():
             return chan0
-
+            
         if tuning == 0:
             gbe = self.GBE_DRX_0
         elif tuning == 1:
@@ -919,9 +918,10 @@ class Roach2MonitorClient(object):
             gbe = self.GBE_DRX_2
         else:
             gbe = self.GBE_DRX_3
-        self.log.info("Tuning %i -> GBE %i", tuning, gbe)
-        self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor, shift_factor=shift_factor,
-                                                 equalizer_coeffs=self.equalizer_coeffs)
+            
+        self.roach.configure_fengine(gbe, chan0, scale_factor=scale_factor,
+                                     shift_factor=shift_factor,
+                                     equalizer_coeffs=self.equalizer_coeffs)
         return chan0
         
     # @ISC.logException
