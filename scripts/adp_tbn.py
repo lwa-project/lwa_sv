@@ -686,8 +686,12 @@ def main(argv):
     pipeline_idx = tbnConfig['pipeline_idx']
     if config['host']['servers-data'][server_idx].startswith('adp'):
         iaddr    = config['server']['data_ifaces'][pipeline_idx]
+        if server_idx in (4, 5):
+            iaddr = 'p5p1'
     else:
         iaddr    = config['host']['servers-data'][server_idx]
+        if server_idx in (4, 5):
+            iaddr = 'p5p1'
     iport        = config['server']['data_ports' ][pipeline_idx]
     ## Network - output
     recorder_idx = tbnConfig['recorder_idx']
