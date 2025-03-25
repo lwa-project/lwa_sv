@@ -40,7 +40,7 @@ class AdpRoach(object):
         self.is_marked_bad = True
         
     def connect(self):
-        self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=1.0)
+        self.fpga = corr.katcp_wrapper.FpgaClient(self.hostname, self.port, timeout=2.0)
         time.sleep(0.1)
         
     def program(self, boffile, nsubband0, subband_nchan0, nsubband1, subband_nchan1, nsubband2, subband_nchan2, nsubband3, subband_nchan3, adc_registers={}, max_attempts=5, bypass_pfb=False):
@@ -110,8 +110,8 @@ class AdpRoach(object):
         self.fpga.write_int('pkt_gbe1_n_subband', nsubband1)
         self.fpga.write_int('pkt_gbe2_n_chan_per_sub', subband_nchan2)
         self.fpga.write_int('pkt_gbe2_n_subband', nsubband2)
-        self.fpga.write_int('pkt_gbe3_n_chan_per_sub', subband_nchan3)
-        self.fpga.write_int('pkt_gbe3_n_subband', nsubband3)
+        # self.fpga.write_int('pkt_gbe3_n_chan_per_sub', subband_nchan3)
+        # self.fpga.write_int('pkt_gbe3_n_subband', nsubband3)
         
         # ... and save these to the internal state so that we can use them later
         self._fpgaState['pkt_gbe0_n_chan_per_sub'] = subband_nchan0
@@ -148,6 +148,9 @@ class AdpRoach(object):
         return ok, out
         
     def configure_10gbe(self, gbe_idx, dst_ips, dst_ports, arp_table, src_ip_base="192.168.40.50", src_port_base=4000):
+        if gbe_idx == 3:
+            return True
+            
         if isinstance(dst_ports, int):
             dst_ports = [dst_ports] * len(dst_ips)
         mac_base    = mac2int("02:02:00:00:00:00")
@@ -230,6 +233,9 @@ class AdpRoach(object):
         # Note: gbe_idx is the 0-based index of the gigabit ethernet core
         
         print("Here with", gbe_idx, start_chan, scale_factor, shift_factor)
+        
+        if gbe_idx == 3:
+            return False
         
         # Validate the inputs
         assert( 0 <= gbe_idx and gbe_idx < 3 )
