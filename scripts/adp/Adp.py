@@ -900,7 +900,7 @@ class Roach2MonitorClient(object):
         subband_nchan = int(math.ceil(bw / CHAN_BW / nsubband))
         chan0         = int(round(cfreq / CHAN_BW)) - nsubband*subband_nchan//2
         
-        chanE = int(round(88e6 / CHAN_BW))
+        chanE = int(round(85e6 / CHAN_BW))
         chan0 = chanE - subband_nchan*nsubband*(4 - tuning)
         self.log.info("Here with tuning %i -> chan0 %i", tuning, chan0)
         
