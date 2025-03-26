@@ -20,7 +20,7 @@ TimeoutStopSec=20
 # Logging
 StandardOutput=syslog
 StandardError=syslog
-SyslogIdentifier=adp-drx-3
+SyslogIdentifier=adp-drx-2
 
 # Run before process
 ExecStartPre=/bin/bash -c '[ -d /home/adp/log ] || mkdir -p /home/adp/log'
