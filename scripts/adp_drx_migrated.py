@@ -1357,6 +1357,8 @@ def main(argv):
     try:
         server_idx = get_numeric_suffix(hostname) - 1
         server_idx += 4
+        if server_idx > 5:
+            server_idx -= 2
     except ValueError:
         server_idx = 0 # HACK to allow testing on head node "adp"
     log.info("Hostname:     %s", hostname)
