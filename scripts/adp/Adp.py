@@ -643,7 +643,7 @@ class AdpServerMonitorClient(object):
             self._shell_command("systemctl stop adp-drx-%i" % tuning)
             if self.host in ('adp1', 'adp2'):
                 self._shell_command("systemctl stop adp-drx-2")
-            else:
+            elif self.host in ('adp3', 'adp4'):
                 self._shell_command("systemctl stop adp-drx-3")
             return True
         except subprocess.CalledProcessError:
@@ -654,7 +654,7 @@ class AdpServerMonitorClient(object):
             self._shell_command("systemctl start adp-drx-%i" % tuning)
             if self.host in ('adp1', 'adp2'):
                 self._shell_command("systemctl start adp-drx-2")
-            else:
+            elif self.host in ('adp3', 'adp4'):
                 self._shell_command("systemctl start adp-drx-3")
             return True
         except subprocess.CalledProcessError:
