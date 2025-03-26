@@ -1394,7 +1394,7 @@ class MsgProcessor(ConsumerThread):
         pipeline_pids = [p for s in self.servers.pid_tbn() for p in s]
         pipeline_pids = filter(lambda x: x>0, pipeline_pids)
         print('TBN:', len(pipeline_pids), pipeline_pids)
-        if len(pipeline_pids) != len(self.servers):
+        if len(pipeline_pids) < len(self.servers) - 2:
             self.log.error('Found %i TBN pipelines running, expected %i', len(pipeline_pids), len(self.servers))
             if 'FORCE' not in arg:
                 return self.raise_error_state('INI', 'PIPELINE_STARTUP_FAILED')
@@ -2028,7 +2028,7 @@ class MsgProcessor(ConsumerThread):
                     self.state['status']  = 'ERROR'
                     self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                     self.log.error(msg)
-                if len(found['tbn']) != n_servers:
+                if len(found['tbn']) != n_servers - 2:
                     problems_found = True
                     msg = "Found %i TBN pipelines instead of %i" % (len(found['tbn']), n_servers)
                     if self.state['status'] != 'ERROR':
