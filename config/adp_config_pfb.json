@@ -16,7 +16,7 @@
         }
     },
     "host": {
-        "servers": ["adp1","adp2","adp3","adp4","adp5","adp6"],
+        "servers": ["adp1","adp2","adp3","adp4","adp1","adp2"],
         "roaches": ["roach1", "roach2", "roach3", "roach4",
                     "roach5", "roach6", "roach7", "roach8",
                     "roach9", "roach10","roach11","roach12",
@@ -26,11 +26,11 @@
                          "mcg40s4-data", "mcg40s5-data", "mcg40s6-data"],
         "tengines": ["adp-data1", "adp-data1"],
         "servers-tbn": ["mcg40s1-data", "mcg40s1-data", "mcg40s1-data",
-                        "mcg40s2-data", "mcg40s2-data", "mcg40s2-data",
+                        "mcg40s1-data", "mcg40s2-data", "mcg40s2-data",
+                        "mcg40s2-data", "mcg40s2-data", "mcg40s3-data",
                         "mcg40s3-data", "mcg40s3-data", "mcg40s3-data",
                         "mcg40s4-data", "mcg40s4-data", "mcg40s4-data",
-                        "mcg40s5-data", "mcg40s5-data", "mcg40s5-data",
-                        "mcg40s6-data"]
+                        "mcg40s4-data"]
     },
     "ipmi": {
         "username": "admin",
