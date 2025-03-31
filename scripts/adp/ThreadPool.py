@@ -155,7 +155,7 @@ class ObjectPool(list):
               print(objs2.val       # --> [-1, -2, -3])
     """
     def __init__(self, objs=[], future_pool=None):
-        list.__init__(self, list(set(objs)))
+        list.__init__(self, objs)
         if future_pool is not None:
             list.__setattr__(self, 'future_pool', future_pool)
         else:
