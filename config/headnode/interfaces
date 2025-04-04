@@ -26,12 +26,12 @@ iface eth1 inet static
  netmask 255.255.255.0
 
 # 40 GbE data network
-auto p2p1
-iface p2p1 inet static
+auto p1p1
+iface p1p1 inet static
  address 192.168.40.10
  netmask 255.255.255.128
  mtu 9000
- post-up route add -net 239.168.40.0 netmask 255.255.255.0 dev p2p1
+ post-up route add -net 239.168.40.0 netmask 255.255.255.0 dev p1p1
 
 auto p8p1
 iface p8p1 inet static
