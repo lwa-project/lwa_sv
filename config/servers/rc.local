@@ -18,10 +18,10 @@ for i in `seq 0 1 31`; do
 done
 
 # NIC tuning
-ethtool -C p5p1 rx-frames 88
-ethtool -G p5p1 rx 8192
+ethtool -C p1p1 rx-frames 88
+ethtool -G p1p1 rx 8192
 
 # IRQ affinity
-/usr/local/bin/configure_irq_affinity.py p5p1
+/usr/local/bin/configure_irq_affinity.py p1p1
 
 exit 0

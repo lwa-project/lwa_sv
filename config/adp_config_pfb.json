@@ -90,7 +90,7 @@
         "gpu_ids":         [0, 1],
         "disk_ids":        ["/"],
         "data_ports":      [4015, 4016, 4017, 4018],
-        "data_ifaces":     ["p2p1", "p2p1", "p2p1", "p2p1"],
+        "data_ifaces":     ["p1p1", "p1p1", "p1p1", "p1p1"],
         "startup_timeout": 240,
         "temperatures": ["CPU1 Temperature", "CPU2 Temperature",
                          "TR1 Temperature",  "TR2 Temperature",
