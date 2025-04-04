@@ -1369,7 +1369,7 @@ def main(argv):
     if config['host']['servers-data'][server_idx].startswith('adp'):
         iaddr    = config['server']['data_ifaces'][pipeline_idx]
         if server_idx in (4, 5):
-            iaddr = 'p5p1'
+            iaddr = 'p1p1'
     else:
         iaddr    = config['host']['servers-data'][server_idx]
     iport        = config['server']['data_ports' ][pipeline_idx]

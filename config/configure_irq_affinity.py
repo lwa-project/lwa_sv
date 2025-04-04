@@ -27,7 +27,7 @@ def main(argv):
 	try:
 		iface = sys.argv[1]
 	except IndexError:
-		iface = 'p5p1'
+		iface = 'p1p1'
 	interrupts_file = "/proc/interrupts"
 	irqs = []
 	with open(interrupts_file, 'r') as f:
