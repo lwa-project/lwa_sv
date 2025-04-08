@@ -1057,6 +1057,9 @@ class RetransmitOp(object):
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
         self.server = int(socket.gethostname().replace('adp', '0'), 10)
+        self.server += 4
+        if self.server > 6:
+            self.server -= 2
         self.nchan_max = nchan_max
         
     def main(self):
@@ -1135,6 +1138,9 @@ class PacketizeOp(object):
         self.in_proclog.update({'nring':1, 'ring0':self.iring.name})
         
         self.server = int(socket.gethostname().replace('adp', '0'), 10)
+        self.server += 4
+        if self.server > 6:
+            self.server -= 2
         self.nchan_max = nchan_max
         if max_bytes_per_sec is None:
             max_bytes_per_sec = 104857600        # default to 100 MB/s
@@ -1160,7 +1166,7 @@ class PacketizeOp(object):
         
         with UDPTransmit('cor_%i' % self.nchan_max, sock=self.sock, core=self.core) as udt:
             desc = HeaderInfo()
-            desc.set_tuning((4 << 16) | (6 << 8) | self.server+4)
+            desc.set_tuning((4 << 16) | (6 << 8) | self.server)
             
             for iseq in self.iring.read():
                 ihdr = json.loads(iseq.header.tostring())
