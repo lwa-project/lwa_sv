@@ -161,7 +161,7 @@ class BufferCopyOp(object):
                 base_time_tag = iseq.time_tag
                 
                 clear_to_trigger = False
-                if chan0*CHAN_BW > 60e6 and self.tuning == 1:
+                if False and chan0*CHAN_BW > 60e6 and self.tuning == 1:
                     clear_to_trigger = True
                 to_keep = [6,7, 224,225, 494,495]
                 tchan = min([72, nchan])
@@ -402,7 +402,7 @@ class TriggeredDumpOp(object):
         # HACK TESTING
         dump_time_tag = time_tag
         if (dump_time_tag == 0 and local) or not local:
-            time_offset    = -4.0
+            time_offset    = -2.0
             time_offset_s  = int(time_offset)
             time_offset_us = int(round((time_offset-time_offset_s)*1e6))
             time_offset    = datetime.timedelta(seconds=time_offset_s, microseconds=time_offset_us)
