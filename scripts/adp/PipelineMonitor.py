@@ -222,27 +222,40 @@ class BifrostPipeline(object):
         
         new_state = {}
         for block in contents.keys():
-            if block[:3] != 'udp':
-                continue
-                
             t = time.time()
-            try:
-                log     = contents[block]['stats']
-                good    = log['ngood_bytes']
-                missing = log['nmissing_bytes']
-                invalid = log['ninvalid_bytes']
-                late    = log['nlate_bytes']
-                nvalid  = log['nvalid']
-            except KeyError:
-                good, missing, invalid, late, nvalid = 0, 0, 0, 0, 0
-                
-            new_state[block] = {'time'   : t, 
-                                'good'   : good, 
-                                'missing': missing, 
-                                'invalid': invalid, 
-                                'late'   : late, 
-                                'nvalid' : nvalid}
             
+            if block[:3] == 'udp':
+                try:
+                    log     = contents[block]['stats']
+                    good    = log['ngood_bytes']
+                    missing = log['nmissing_bytes']
+                    invalid = log['ninvalid_bytes']
+                    late    = log['nlate_bytes']
+                    nvalid  = log['nvalid']
+                except KeyError:
+                    good, missing, invalid, late, nvalid = 0, 0, 0, 0, 0
+                    
+                new_state[block] = {'time'   : t, 
+                                    'good'   : good, 
+                                    'missing': missing, 
+                                    'invalid': invalid, 
+                                    'late'   : late, 
+                                    'nvalid' : nvalid}
+                
+            elif block == 'PowerLineFlaggerOp':
+                try:
+                    log       = contents[block]['stats']
+                    flag_now  = log['flag_frac_now']
+                    flag_move = log['flag_frac_move']
+                    flag_ts   = log['flag_update']
+                except KeyError:
+                    flag_now = flag_move = -1.0
+                    
+                new_state[block] = {'time': t,
+                                    'flag_frac_now' : flag_now,
+                                    'flag_frac_move': flag_move,
+                                    'flag_update'   : flag_ts}
+                
         try:
             self._last_state = self._state
         except AttributeError:
@@ -357,6 +370,20 @@ class BifrostPipeline(object):
         # correlator.
         self.rx_rate()
         return self._corr_active
+        
+    def get_flagging_stats(self, flag_type='now', block='PowerLineFlaggerOp'):
+        """
+        Return the flagging fraction.  flag_type can either be 'now' for the last
+        gulp of data analyzed or 'move' for a moving average value.
+        """
+        
+        if flag_type not in ('now', 'move'):
+            raise ValueError("Unknown flag_type '%s'" % flag_type)
+            
+        try:
+            return self._state[block]["flag_frac_%s" % flag_type]
+        except KeyError:
+            return -1.0
 
 class BifrostRemotePipeline(BifrostPipeline):
     def __init__(self, host, pid):

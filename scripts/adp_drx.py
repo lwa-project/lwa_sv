@@ -13,7 +13,7 @@ from bifrost.packet_writer import HeaderInfo, DiskWriter, UDPTransmit
 from bifrost.ring import Ring
 import bifrost.affinity as cpu_affinity
 import bifrost.ndarray as BFArray
-from bifrost.ndarray import copy_array
+from bifrost.ndarray import copy_array, memset_array
 from bifrost.unpack import unpack as Unpack
 from bifrost.reduce import reduce as Reduce
 from bifrost.quantize import quantize as Quantize
@@ -319,6 +319,8 @@ class GPUCopyOp(object):
                             ## Copy
                             copy_array(odata, idata)
                             
+                            BFSync()
+                            
                         ## Update the base time tag
                         base_time_tag += self.ntime_gulp*ticksPerTime
                         
@@ -328,6 +330,298 @@ class GPUCopyOp(object):
                         self.perf_proclog.update({'acquire_time': acquire_time, 
                                                   'reserve_time': reserve_time, 
                                                   'process_time': process_time,})
+
+class PowerLineFlaggerOp(object):
+    def __init__(self, log, iring, oring, clip_threshold=8, ntime_gulp=2500, guarantee=True, core=-1, gpu=-1):
+        self.log   = log
+        self.iring = iring
+        self.oring = oring
+        self.clip_threshold = float(clip_threshold)
+        self.ntime_gulp = ntime_gulp
+        self.guarantee = guarantee
+        self.core = core
+        self.gpu = gpu
+
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        self.stats_proclog = ProcLog(type(self).__name__+"/stats")
+        
+        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+        self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+        self.stats_proclog.update({'flag_frac_now': -1.0,
+                                   'flag_frac_move': -1.0,
+                                   'flag_update': -1})
+        
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+            
+        # Random pool setup
+        self.POOL_SIZE_LOG2 = 28
+        self.rng = np.random.default_rng()
+        self.pool = self.rng.standard_normal(2**self.POOL_SIZE_LOG2, dtype=np.float32)
+        self.pool = BFArray(self.pool, space='cuda')
+        
+    def main(self):
+        cpu_affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': cpu_affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
+        
+        # Flagging control parameters
+        CHAN_BLOCK_SIZE = 12
+        NTIME_FAST = 20
+        
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=self.guarantee):
+                ihdr = json.loads(iseq.header.tostring())
+                
+                self.sequence_proclog.update(ihdr)
+                
+                self.log.info("PowerLineFlagger: Start of new sequence: %s", str(ihdr))
+                
+                nchan  = ihdr['nchan']
+                nstand = ihdr['nstand']
+                npol   = ihdr['npol']
+                igulp_size = self.ntime_gulp*nchan*nstand*npol              # 4+4 complex
+                ishape = (self.ntime_gulp,nchan,nstand*npol)
+                ogulp_size = igulp_size
+                oshape = ishape
+                
+                nblock = nchan // CHAN_BLOCK_SIZE
+                ticksPerTime = int(FS) // int(CHAN_BW)
+                base_time_tag = iseq.time_tag
+                
+                ohdr = ihdr.copy()
+                ohdr['clip_threshold'] = self.clip_threshold
+                ohdr_str = json.dumps(ohdr)
+                
+                self.oring.resize(ogulp_size, 10*ogulp_size)
+                
+                try:
+                    flagged
+                    pool_pos
+                except NameError:
+                    flagged = BFArray(shape=(nchan,nstand*npol), dtype=np.uint32, space='cuda')
+                    pool_pos = self.rng.integers(0, self.pool.size-1,
+                                                 size=(nchan,nstand*npol),
+                                                 dtype=np.uint32)
+                    pool_pos = BFArray(pool_pos, space='cuda')
+                    
+                prev_time = time.time()
+                iter_count = 0
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    for ispan in iseq.read(igulp_size):
+                        if ispan.size < igulp_size:
+                            continue # Ignore final gulp
+                        curr_time = time.time()
+                        acquire_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        with oseq.reserve(ogulp_size) as ospan:
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            ## Setup and load
+                            idata = ispan.data_view('ci4').reshape(ishape)
+                            odata = ospan.data_view('ci4').reshape(oshape)
+                            
+                            ## Default is no flagging
+                            copy_array(odata, idata)
+                            
+                            ## Compute mean power across all stands/pols in sets of CHAN_BLOCK_SIZE channels
+                            try:
+                                idata = idata.reshape(self.ntime_gulp,nblock,CHAN_BLOCK_SIZE*nstand*npol)
+                                tdata
+                            except NameError:
+                                tdata = BFArray(shape=(self.ntime_gulp,nblock,1), dtype='f32',
+                                                space='cuda')
+                            BFMap(f"""
+                                  float pwr_mean = 0.0f;
+                                  for(int k=0; k<{CHAN_BLOCK_SIZE*nstand*npol}; k+=4) {{
+                                      auto temp0 = a(i,j,k);
+                                      signed char re0 = ((signed char) (temp0.real_imag & 0xF0)) / 16;
+                                      signed char im0 = ((signed char) (temp0.real_imag << 4)) / 16;
+                                      
+                                      auto temp1 = a(i,j,k+1);
+                                      signed char re1 = ((signed char) (temp1.real_imag & 0xF0)) / 16;
+                                      signed char im1 = ((signed char) (temp1.real_imag << 4)) / 16;
+                                      
+                                      auto temp2 = a(i,j,k+2);
+                                      signed char re2 = ((signed char) (temp2.real_imag & 0xF0)) / 16;
+                                      signed char im2 = ((signed char) (temp2.real_imag << 4)) / 16;
+                                      
+                                      auto temp3 = a(i,j,k+3);
+                                      signed char re3 = ((signed char) (temp3.real_imag & 0xF0)) / 16;
+                                      signed char im3 = ((signed char) (temp3.real_imag << 4)) / 16;
+                                      
+                                      pwr_mean += (re0*re0 + im0*im0)
+                                                  + (re1*re1 + im1*im1)
+                                                  + (re2*re2 + im2*im2)
+                                                  + (re3*re3 + im3*im3);
+                                  }}
+                                  b(i,j,0) = pwr_mean / {CHAN_BLOCK_SIZE*nstand*npol};
+                                  """,
+                                  {'a': idata, 'b': tdata}, axis_names=('i','j'),
+                                  shape=(self.ntime_gulp,nblock))
+                                  
+                            ## Flag
+                            memset_array(flagged, 0)
+                            BFMap(f"""
+                                   /*
+                                    * Part 1 - Building fast and slow time windows
+                                    * 
+                                    * For detecting bursts we want to use smaller time windows to
+                                    * help better capture the burst without too much dilution from
+                                    * the off burst time.
+                                    * 
+                                    * For determining the baselines noise characteristic in the off-
+                                    * burst time we want more samples to get a better estimate of
+                                    * the mean.
+                                    *
+                                    * To balance these two we make a 16 sample "fast" window and a
+                                    * 32 sample "slow" window that has a 16 sample overlap/stride.
+                                    * These are computed sequentially - fast first and then slow by
+                                    * averaging the fast windows together.
+                                    */
+                                   float mean_fast[{self.ntime_gulp//NTIME_FAST}];
+                                   for(int i=0; i<{self.ntime_gulp//NTIME_FAST}; i++) mean_fast[i] = 0.0f;
+                                   
+                                   for(int i=0; i<{self.ntime_gulp}; i++) {{
+                                       auto temp = a(i,j,0);
+                                       mean_fast[i/{NTIME_FAST}] += temp / {NTIME_FAST};
+                                   }}
+                                   
+                                   float mean_slow[{self.ntime_gulp//NTIME_FAST - 1}];
+                                   for(int i=0; i<{self.ntime_gulp//NTIME_FAST - 1}; i++) {{
+                                       mean_slow[i] = (mean_fast[i] + mean_fast[i+1])*0.5f;
+                                   }}
+                                   
+                                   /*
+                                    * Part 2 - Baseline noise and burst determination
+                                    * 
+                                    * For the baseline noise we'll use the minimum value of the slow
+                                    * windows.  For the lowest valued window we'll go back to the
+                                    * the mean power data stored in "a" to find the mean and 
+                                    * standard deviation of those data.  This will be used later to
+                                    * determine what times/channel chunks need to be flagged.
+                                    */
+                                   float min_slow_pwr, pwr_std;
+                                   min_slow_pwr = mean_slow[0] + 1.0f;
+                                   for(int i=0; i<{self.ntime_gulp//NTIME_FAST - 1}; i++) {{
+                                        if( mean_slow[i] < min_slow_pwr ) {{
+                                            min_slow_pwr = mean_slow[i];
+                                            
+                                            pwr_std = 0.0f;
+                                            for(int s=0; s<{2*NTIME_FAST}; s++) {{
+                                                auto temp = a(i*{NTIME_FAST}+s,j,0);
+                                                pwr_std += (temp - min_slow_pwr)
+                                                           *(temp - min_slow_pwr);
+                                            }}
+                                            pwr_std /= {2*NTIME_FAST};
+                                            pwr_std = sqrtf(pwr_std);
+                                        }}
+                                    }}
+                                    
+                                    /*
+                                     * Part 3 - Flagging
+                                     *
+                                     * Loop through the time samples to find bad times when the                                      * power is >8*sigma over the mean power.  In those windows
+                                     * replace the data with appropriately-scaled Gaussian noise.
+                                     * The scaling of the noise is determined from the minimum slow
+                                     * window power and its relation ship to the data's scale via
+                                     * the exponential distribution, plus an empirical correction
+                                     * for quantization.
+                                     */
+                                    float sigma = sqrtf(min_slow_pwr * 0.5f);
+                                    sigma *= 1.15267220e-05*sigma*sigma*sigma
+                                             - 8.93112370e-04*sigma*sigma
+                                             + 2.49709188e-02*sigma
+                                             + 8.55697984e-01;
+                                    float threshold = min_slow_pwr
+                                                      + {self.clip_threshold:.4f}f*pwr_std;
+                                    for(int i=0; i<{self.ntime_gulp}; i++) {{
+                                        auto temp = a(i,j,0);
+                                        if( temp > threshold ) {{
+                                            for(int jP=0; jP<{CHAN_BLOCK_SIZE}; jP++) {{
+                                                auto jPP = {CHAN_BLOCK_SIZE}*j + jP;
+                                                signed char re, im, real_imag;
+                                                auto pos = p(jPP,k);
+                                                
+                                                re = min(7.0f,
+                                                         max(-7.0f,
+                                                             roundf(r(pos++) * sigma)));
+                                                pos &= {(1 << self.POOL_SIZE_LOG2) - 1};
+                                                
+                                                im = min(7.0f,
+                                                         max(-7.0f,
+                                                             roundf(r(pos++) * sigma)));
+                                                pos &= {(1 << self.POOL_SIZE_LOG2) - 1};
+                                                
+                                                real_imag  = ((re * 16) & 0xF0);
+                                                real_imag |= ((im * 16) >> 4);
+                                                b(i,jPP,k).real_imag = real_imag;
+                                                f(jPP,k) += 1;
+                                                p(jPP,k) = pos;
+                                            }}
+                                        }}
+                                    }}
+                                    """,
+                                    {'a': tdata, 'b': odata, 'f': flagged, 'r': self.pool, 'p': pool_pos}, axis_names=('j','k'),
+                                    shape=(nblock,nstand*npol))
+                                    
+                            ## Bring back the flagging info so we can see how we are doing
+                            try:
+                                copy_array(cpu_flagged, flagged)
+                            except NameError:
+                                cpu_flagged = flagged.copy(space='cuda_host')
+                                
+                            ## Sync to make sure the ring data is ready for the next block
+                            #BFSync()
+                            # ^^^ This is actually handled by the copy above since it's device -> host
+                            
+                            ## Aggregate the flags into a single number
+                            self.flag_frac_now = cpu_flagged.sum()/idata.size
+                            self.flag_frac_move = 0.0005 * self.flag_frac_now \
+                                                  + (1 - 0.0005) * self.flag_frac_move
+                            self.flag_update = base_time_tag*1
+                            
+                            ## Update the proclog file
+                            self.stats_proclog.update({'flag_frac_now': self.flag_frac_now,
+                                                       'flag_frac_move': self.flag_frac_move,
+                                                       'flag_update': self.flag_update})
+                            
+                            ## Report regularly
+                            iter_count = iter_count + 1
+                            if iter_count == 1500:
+                                self.log.info("PowerLineFlagger - flagged %.2f%%", 100*self.flag_frac_move)
+                                iter_count = 0
+                                
+                        ## Update the base time tag
+                        base_time_tag += self.ntime_gulp*ticksPerTime
+                        
+                        curr_time = time.time()
+                        process_time = curr_time - prev_time
+                        prev_time = curr_time
+                        self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                  'reserve_time': reserve_time, 
+                                                  'process_time': process_time,})
+                        
+                # Cleanup
+                try:
+                    del pool_pos
+                    del tdata
+                    del cpu_flagged
+                except NameError:
+                    pass
 
 def get_time_tag(dt=datetime.datetime.utcnow(), seq_offset=0):
     timestamp = int((dt - ADP_EPOCH).total_seconds())
@@ -1394,7 +1688,10 @@ def main(argv):
     nbeam = drxConfig['beam_count']
     cores = drxConfig['cpus']
     gpus  = drxConfig['gpus']
-    
+    enable_plf = False
+    if 'powerline_flagged' in drxConfig:
+        enable_plf = drxConfig['powerline_flagger']
+        
     log.info("Src address:  %s:%i", iaddr, iport)
     log.info("TBF address:  %s:%i", oaddr, oport)
     log.info("COR address:  %s:%i", vaddr, vport)
@@ -1412,6 +1709,9 @@ def main(argv):
     capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     gpu_ring     = Ring(name="gpu-%i" % tuning, space='cuda')
+    plf_ring     = gpu_ring:
+    if enable_plf:
+        plf_ring     = Ring(name="plf-%i" % tuning, space='cuda')
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
     vis_ring     = Ring(name="vis-%i" % tuning, space='cuda_host')
     
@@ -1453,7 +1753,10 @@ def main(argv):
                                max_bytes_per_sec=tbf_bw_max))
     ops.append(GPUCopyOp(log, capture_ring, gpu_ring,
                          ntime_gulp=GSIZE, core=cores[0], gpu=gpus[0]))
-    ops.append(BeamformerOp(log=log, iring=gpu_ring, oring=tengine_ring, 
+    if enable_plf:
+        ops.append(PowerLineFlaggerOp(log, gpu_ring, plf_ring,
+                                      ntime_gulp=GSIZE, core=cores[0], gpu=gpus[0]))
+    ops.append(BeamformerOp(log=log, iring=plf_ring, oring=tengine_ring, 
                             tuning=tuning, ntime_gulp=GSIZE,
                             nchan_max=nchan_max, nbeam_max=nbeam, 
                             core=cores.pop(0), gpu=gpus.pop(0)))
@@ -1467,7 +1770,7 @@ def main(argv):
             pcore = cores.pop(0)
         except IndexError:
             pcore = ccore
-        ops.append(CorrelatorOp(log=log, iring=gpu_ring, oring=vis_ring, 
+        ops.append(CorrelatorOp(log=log, iring=plf_ring, oring=vis_ring, 
                                 tuning=tuning, ntime_gulp=GSIZE,
                                 nchan_max=nchan_max, 
                                 core=ccore, gpu=tuning))

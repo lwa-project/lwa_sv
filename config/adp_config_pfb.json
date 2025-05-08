@@ -45,7 +45,8 @@
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [0, 2, 3, 4, 5],
-                "gpus":              [0]
+                "gpus":              [0],
+                "powerline_flagger": true
             }, 
             {
                 "capture_bandwidth": 19.8e6,
@@ -55,7 +56,8 @@
                 "tbf_recorder_idx":  0,
                 "cor_recorder_idx":  4,
                 "cpus":              [8, 9, 10, 11, 12],
-                "gpus":              [1]
+                "gpus":              [1],
+                "powerline_flagger": true
             }
     ],
     "tbf": {

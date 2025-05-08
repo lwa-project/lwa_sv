@@ -1921,9 +1921,10 @@ class MsgProcessor(ConsumerThread):
                         loss = pipeline.rx_loss()
                         txbw = pipeline.tx_rate()
                         cact = pipeline.is_corr_active()
+                        flg  = pipeline.get_flagging_stats(flag_type='move')
                         
                         if name.find('drx') != -1:
-                            found['drx'].append( (host,name,side,loss,txbw,cact) )
+                            found['drx'].append( (host,name,side,loss,txbw,cact,flg) )
                         elif name.find('tbn') != -1:
                             found['tbn'].append( (host,name,side,loss,txbw) )
                         elif name.find('tengine') != -1:
@@ -1969,7 +1970,7 @@ class MsgProcessor(ConsumerThread):
                     continue
                 total_drx_bw = {0:0, 1:0}
                 total_drx_inactive = {0:0, 1:0}
-                for host,name,side,loss,txbw,cact in found['drx']:
+                for host,name,side,loss,txbw,cact,flg in found['drx']:
                     total_drx_bw[side] += txbw
                     total_drx_inactive[side] += (1 if txbw == 0 else 0)
                     if loss > 0.01:    # >1% packet loss
@@ -1987,6 +1988,14 @@ class MsgProcessor(ConsumerThread):
                         self.state['status']  = 'ERROR'
                         self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                         self.log.error(msg)
+                    if flg > 0.02:      # >2% flagging
+                        problems_found = True
+                        msg = "%s, DRX-%i -- Flagging fraction at %.1f%%" % (host, side, flg*100)
+                        if self.state['status'] != 'ERROR':
+                            self.state['lastlog'] = msg
+                            self.state['status'] = 'WARNING'
+                            self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
+                        self.log.warning(msg)
                 for side in range(n_tunings):
                     if self.drx.cur_freq[side] > 0 and total_drx_inactive[side] > 0:
                         problems_found = True
