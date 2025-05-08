@@ -364,6 +364,9 @@ class PowerLineFlaggerOp(object):
         self.pool = self.rng.standard_normal(2**self.POOL_SIZE_LOG2, dtype=np.float32)
         self.pool = BFArray(self.pool, space='cuda')
         
+        self.flag_frac_now = 0.0
+        self.flag_frac_move = 0.0
+        
     def main(self):
         cpu_affinity.set_core(self.core)
         if self.gpu != -1:
@@ -1696,7 +1699,7 @@ def main(argv):
     cores = [14, 15, 9, 10, 11]
     gpus  = [1, 1, 1, 1, 1]
     enable_plf = False
-    if 'powerline_flagged' in drxConfig:
+    if 'powerline_flagger' in drxConfig:
         enable_plf = drxConfig['powerline_flagger']
         
     log.info("Src address:  %s:%i", iaddr, iport)
@@ -1716,7 +1719,7 @@ def main(argv):
     capture_ring = Ring(name="capture-%i" % tuning, space='cuda_host')
     tbf_ring     = Ring(name="buffer-%i" % tuning)
     gpu_ring     = Ring(name="gpu-%i" % tuning, space='cuda')
-    plf_ring     = gpu_ring:
+    plf_ring     = gpu_ring
     if enable_plf:
         plf_ring     = Ring(name="plf-%i" % tuning, space='cuda')
     tengine_ring = Ring(name="tengine-%i" % tuning, space='cuda_host')
