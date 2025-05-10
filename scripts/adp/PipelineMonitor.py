@@ -250,6 +250,7 @@ class BifrostPipeline(object):
                     flag_ts   = log['flag_update']
                 except KeyError:
                     flag_now = flag_move = -1.0
+                    flag_ts = 0
                     
                 new_state[block] = {'time': t,
                                     'flag_frac_now' : flag_now,
@@ -448,6 +449,7 @@ class BifrostRemotePipeline(BifrostPipeline):
                     flag_ts   = log['flag_update']
                 except KeyError:
                     flag_now = flag_move = -1.0
+                    flag_ts = 0
                     
                 new_state[block] = {'time': t,
                                     'flag_frac_now' : flag_now,
