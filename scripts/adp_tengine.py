@@ -444,13 +444,13 @@ class TEngineOp(object):
                                     bfft2.init(pdata, gdata3, axes=1, apply_fftshift=True)
                                     bfft2.execute(pdata, gdata3, inverse=True)
                                 
-                                ## Attenuate the band edges to deal with aliasing from the phase rotation
-                                BFMap("""
-                                      a(i,0,k,l) *= 0.1;
-                                      a(i,%i,k,l) *= 0.1;
-                                      """ % (self.nchan_out-1),
-                                      {'a': pdata}, axis_names=('i','k','l'),
-                                      shape=(self.ntime_gulp,nstand,npol))
+                                ### Attenuate the band edges to deal with aliasing from the phase rotation
+                                #BFMap("""
+                                #      a(i,0,k,l) *= 0.1;
+                                #      a(i,%i,k,l) *= 0.1;
+                                #      """ % (self.nchan_out-1),
+                                #      {'a': pdata}, axis_names=('i','k','l'),
+                                #      shape=(self.ntime_gulp,nstand,npol))
                                 
                                 ## Phase rotation
                                 gdata3 = gdata3.reshape((-1,nstand*npol))
@@ -462,15 +462,15 @@ class TEngineOp(object):
                                 gdata3 = gdata3.reshape((-1,nstand,npol))
                                 
                                 ## FIR filter
-                                fdata = gdata3
-                                #try:
-                                #    bfir.execute(gdata3, fdata)
-                                #except NameError:
-                                #    fdata = BFArray(shape=gdata3.shape, dtype=gdata3.dtype, space='cuda')
-                                #    
-                                #    bfir = Fir()
-                                #    bfir.init(self.coeffs, 1)
-                                #    bfir.execute(gdata3, fdata)
+                                #fdata = gdata3
+                                try:
+                                    bfir.execute(gdata3, fdata)
+                                except NameError:
+                                    fdata = BFArray(shape=gdata3.shape, dtype=gdata3.dtype, space='cuda')
+                                    
+                                    bfir = Fir()
+                                    bfir.init(self.coeffs, 1)
+                                    bfir.execute(gdata3, fdata)
                                     
                                 ## Quantization
                                 try:
@@ -514,7 +514,7 @@ class TEngineOp(object):
                                     del gdata3
                                     del bfft2
                                     del fdata
-                                    #del bfir
+                                    del bfir
                                     del qdata
                                     del tdata
                                 except NameError:
@@ -537,7 +537,7 @@ class TEngineOp(object):
                             del gdata3
                             del bfft2
                             del fdata
-                            #del bfir
+                            del bfir
                             del qdata
                             del tdata
                         except NameError:
