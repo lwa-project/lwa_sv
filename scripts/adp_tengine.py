@@ -514,7 +514,7 @@ class TEngineOp(object):
                                     del gdata3
                                     del bfft2
                                     del fdata
-                                    del bfir
+                                    #del bfir
                                     del qdata
                                     del tdata
                                 except NameError:
@@ -535,7 +535,9 @@ class TEngineOp(object):
                         try:
                             del pdata
                             del gdata3
+                            del bfft2
                             del fdata
+                            #del bfir
                             del qdata
                             del tdata
                         except NameError:
