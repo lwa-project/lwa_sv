@@ -2058,6 +2058,12 @@ class MsgProcessor(ConsumerThread):
                     self.state['status']  = 'ERROR'
                     self.state['info']    = '%s! 0x%02X! %s' % ('SUMMARY', 0x0E, msg)
                     self.log.error(msg)
+                    ext_msg = []
+                    for r,p in zip(self.roaches, roaches_programmed):
+                        if not p:
+                            ext_msg.append(r.host)
+                    ext_msg = ' '.join(ext_msg)
+                    self.log.error('Board(s) are: %s', ext_msg)
                     
                 if False:
                     """
