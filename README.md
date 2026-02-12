@@ -4,6 +4,9 @@
 
 Software and firmware for the ADP subsystem at the LWA Sevilleta station.
 
+> [!IMPORTANT]
+> The ADP system was retired in February 2026 as part of the upgrade of the LWA-SV station.
+
 ## [LWA-SV Dev. Wiki (github)](https://github.com/ledatelescope/lwa_sv/wiki)
 
 ## Installation
